@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jun 15, 2025 at 02:36 PM
+-- Generation Time: Oct 06, 2025 at 06:45 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -68,8 +68,8 @@ CREATE TABLE `cateringpackages` (
 -- Dumping data for table `cateringpackages`
 --
 
-INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_phone`, `cp_place`, `cp_date`, `cp_desc`, `cp_price`, `cp_avail`) VALUES
-(1, 6, 'Cxyris Tan', '09603070809', 'San Sebastian Cathedral, P.Laygo St., Lipa City, Batangas', '2025-06-21', 'hello', 99000.00, NULL);
+INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_phone`, `cp_place`, `cp_date`, `cp_desc`, `cp_price`, `cp_avail`, `is_deleted`) VALUES
+(1, 6, 'Cxyris Tan', '09603070809', 'San Sebastian Cathedral, P.Laygo St., Lipa City, Batangas', '2025-06-21', 'hello', 99000.00, NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -93,10 +93,10 @@ CREATE TABLE `employee` (
 -- Dumping data for table `employee`
 --
 
-INSERT INTO `employee` (`emp_id`, `emp_fn`, `emp_ln`, `emp_sex`, `emp_email`, `emp_phone`, `emp_role`, `created_at`) VALUES
-(1, 'Kyle', 'Vanleet', 'Male', 'f@gmaail.com', '09674535234', 'Chef', '2025-06-05 15:36:36'),
-(2, 'John', 'Def', 'Male', 'jd@gmail.com', '09125637121', 'Dishwasher', '2025-06-12 05:02:51'),
-(3, 'Francine', 'Diaz', 'Female', 'fd@gmail.com', '0965237482323', 'FoodAttendant', '2025-06-12 05:07:18');
+INSERT INTO `employee` (`emp_id`, `emp_fn`, `emp_ln`, `emp_sex`, `emp_email`, `emp_phone`, `emp_role`, `created_at`, `is_deleted`) VALUES
+(1, 'Kyle', 'Vanleet', 'Male', 'f@gmaail.com', '09674535234', 'Chef', '2025-06-05 15:36:36', 0),
+(2, 'John', 'Def', 'Male', 'jd@gmail.com', '09125637121', 'Dishwasher', '2025-06-12 05:02:51', 0),
+(3, 'Francine', 'Diaz', 'Female', 'fd@gmail.com', '0965237482323', 'FoodAttendant', '2025-06-12 05:07:18', 0);
 
 -- --------------------------------------------------------
 
@@ -123,8 +123,8 @@ CREATE TABLE `eventbookings` (
 -- Dumping data for table `eventbookings`
 --
 
-INSERT INTO `eventbookings` (`eb_id`, `user_id`, `eb_name`, `eb_contact`, `eb_type`, `eb_venue`, `eb_date`, `eb_guest`, `eb_order`, `eb_status`, `created_at`) VALUES
-(4, 6, 'Cxyris Tan', '09603070809', 'marriage', 'San Sebastian Cathedral, P.Laygo Street, Lipa City, Batangas', '2025-06-21 05:00:00', '1000', 'party trays', 'Pending', '2025-06-15 10:45:54');
+INSERT INTO `eventbookings` (`eb_id`, `user_id`, `eb_name`, `eb_contact`, `eb_type`, `eb_venue`, `eb_date`, `eb_guest`, `eb_order`, `eb_status`, `created_at`, `is_deleted`) VALUES
+(4, 6, 'Cxyris Tan', '09603070809', 'marriage', 'San Sebastian Cathedral, P.Laygo Street, Lipa City, Batangas', '2025-06-21 05:00:00', '1000', 'party trays', 'Pending', '2025-06-15 10:45:54', 0);
 
 -- --------------------------------------------------------
 
@@ -442,10 +442,10 @@ CREATE TABLE `orders` (
 -- Dumping data for table `orders`
 --
 
-INSERT INTO `orders` (`order_id`, `user_id`, `order_date`, `order_status`, `order_amount`, `order_needed`, `created_at`, `updated_at`) VALUES
-(1, 5, '2025-06-14 05:00:00', 'pending', 4600.00, '2025-06-15', '2025-06-14 18:25:00', '2025-06-14 18:25:00'),
-(2, 5, '2025-06-15 05:00:00', 'pending', 2700.00, '2025-06-20', '2025-06-15 10:10:35', '2025-06-15 10:10:35'),
-(3, 5, '2025-06-15 05:00:00', 'pending', 3100.00, '2025-06-15', '2025-06-15 12:33:22', '2025-06-15 12:33:22');
+INSERT INTO `orders` (`order_id`, `user_id`, `order_date`, `order_status`, `order_amount`, `order_needed`, `created_at`, `updated_at`, `is_deleted`) VALUES
+(1, 5, '2025-06-14 05:00:00', 'pending', 4600.00, '2025-06-15', '2025-06-14 18:25:00', '2025-06-14 18:25:00', 0),
+(2, 5, '2025-06-15 05:00:00', 'pending', 2700.00, '2025-06-20', '2025-06-15 10:10:35', '2025-06-15 10:10:35', 0),
+(3, 5, '2025-06-15 05:00:00', 'pending', 3100.00, '2025-06-15', '2025-06-15 12:33:22', '2025-06-15 12:33:22', 0);
 
 -- --------------------------------------------------------
 

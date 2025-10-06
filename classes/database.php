@@ -2,21 +2,29 @@
 class database {
 
     function opencon() {
+        // Fast-fail and sensible defaults to avoid long hangs when DB is unreachable
         return new PDO(
             dsn: 'mysql:host=localhost;dbname=sandok',
             username: 'root',
-            password: ''
+            password: '',
+            options: [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+                // Timeout in seconds for connections so the page doesn't hang for minutes
+                PDO::ATTR_TIMEOUT => 3,
+            ]
         );
     }
 
     // MENU
 
-    function addMenu($name, $desc, $pax, $price, $avail) {
+    function addMenu($name, $desc, $pax, $price, $menu_pic, $avail) {
         try {
             $con = $this->opencon();
             $con->beginTransaction();
-            $query = $con->prepare("INSERT INTO menu (menu_name, menu_desc, menu_pax, menu_price, menu_avail) VALUES (?, ?, ?, ?, ?)");
-            $query->execute([$name, $desc, $pax, $price, $avail]);
+            $query = $con->prepare("INSERT INTO menu (menu_name, menu_desc, menu_pax, menu_price, menu_pic, menu_avail) VALUES (?, ?, ?, ?, ?, ?)");
+            $query->execute([$name, $desc, $pax, $price, $menu_pic, $avail]);
             $con->commit();
             return true;
         } catch (PDOException $e) {
@@ -50,6 +58,17 @@ class database {
         return false;
     }
 }
+
+    // Quick update of availability flag for menu actions
+    function setMenuAvailability($id, $avail) {
+        try {
+            $con = $this->opencon();
+            $stmt = $con->prepare("UPDATE menu SET menu_avail = ? WHERE menu_id = ?");
+            return $stmt->execute([(int)$avail, (int)$id]);
+        } catch (PDOException $e) {
+            return false;
+        }
+    }
 
      function archiveMenu($id) {
             $con = $this->opencon();
@@ -545,6 +564,109 @@ function getFilteredMenuOOP($category_id = null, $pax = null, $avail = null, $so
     }
  
     $sql = "SELECT m.* FROM menu m $join $whereSql $sortSql";
+    $stmt = $con->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Efficient count for filtered menu list (for pagination)
+function countFilteredMenu($category_id = null, $pax = null, $avail = null, $q = null) {
+    $con = $this->opencon();
+    $params = [];
+    $join = '';
+    $where = ['m.is_deleted = 0'];
+    if ($category_id) {
+        $join .= " INNER JOIN menucategory mc ON m.menu_id = mc.menu_id ";
+        $where[] = "mc.category_id = ?";
+        $params[] = $category_id;
+    }
+
+    if ($pax == '6-8') {
+        $where[] = "(m.menu_pax BETWEEN 6 AND 8)";
+    } elseif ($pax == '10-15') {
+        $where[] = "(m.menu_pax BETWEEN 10 AND 15)";
+    } elseif ($pax == '20-30') {
+        $where[] = "(m.menu_pax BETWEEN 20 AND 30)";
+    } elseif ($pax == '50-100') {
+        $where[] = "(m.menu_pax BETWEEN 50 AND 100)";
+    } elseif ($pax == 'piece') {
+        $where[] = "(LOWER(m.menu_pax) LIKE '%pc%' OR LOWER(m.menu_pax) LIKE '%piece%')";
+    } elseif ($pax !== null && $pax !== '') {
+        $where[] = "m.menu_pax = ?";
+        $params[] = $pax;
+    }
+
+    if ($avail !== null && $avail !== '') {
+        $where[] = "m.menu_avail = ?";
+        $params[] = $avail;
+    }
+
+    if ($q !== null && $q !== '') {
+        $where[] = "m.menu_name LIKE ?";
+        $params[] = "%" . $q . "%";
+    }
+
+    $whereSql = $where ? "WHERE " . implode(" AND ", $where) : "";
+    $sql = "SELECT COUNT(*) as cnt FROM menu m $join $whereSql";
+    $stmt = $con->prepare($sql);
+    $stmt->execute($params);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ? (int)$row['cnt'] : 0;
+}
+
+// Paged fetch with filters, sort, and search
+function getFilteredMenuPaged($category_id = null, $pax = null, $avail = null, $sort = null, $limit = 10, $offset = 0, $q = null) {
+    $con = $this->opencon();
+    $params = [];
+    $join = '';
+    $where = ['m.is_deleted = 0'];
+    if ($category_id) {
+        $join .= " INNER JOIN menucategory mc ON m.menu_id = mc.menu_id ";
+        $where[] = "mc.category_id = ?";
+        $params[] = $category_id;
+    }
+
+    if ($pax == '6-8') {
+        $where[] = "(m.menu_pax BETWEEN 6 AND 8)";
+    } elseif ($pax == '10-15') {
+        $where[] = "(m.menu_pax BETWEEN 10 AND 15)";
+    } elseif ($pax == '20-30') {
+        $where[] = "(m.menu_pax BETWEEN 20 AND 30)";
+    } elseif ($pax == '50-100') {
+        $where[] = "(m.menu_pax BETWEEN 50 AND 100)";
+    } elseif ($pax == 'piece') {
+        $where[] = "(LOWER(m.menu_pax) LIKE '%pc%' OR LOWER(m.menu_pax) LIKE '%piece%')";
+    } elseif ($pax !== null && $pax !== '') {
+        $where[] = "m.menu_pax = ?";
+        $params[] = $pax;
+    }
+
+    if ($avail !== null && $avail !== '') {
+        $where[] = "m.menu_avail = ?";
+        $params[] = $avail;
+    }
+
+    if ($q !== null && $q !== '') {
+        $where[] = "m.menu_name LIKE ?";
+        $params[] = "%" . $q . "%";
+    }
+
+    $whereSql = $where ? "WHERE " . implode(" AND ", $where) : "";
+
+    $sortSql = "ORDER BY m.menu_id DESC";
+    if ($sort) {
+        switch ($sort) {
+            case 'price_asc': $sortSql = "ORDER BY m.menu_price ASC"; break;
+            case 'price_desc': $sortSql = "ORDER BY m.menu_price DESC"; break;
+            case 'alpha_asc': $sortSql = "ORDER BY m.menu_name ASC"; break;
+            case 'alpha_desc': $sortSql = "ORDER BY m.menu_name DESC"; break;
+            case 'pax_asc': $sortSql = "ORDER BY m.menu_pax ASC"; break;
+            case 'pax_desc': $sortSql = "ORDER BY m.menu_pax DESC"; break;
+        }
+    }
+
+    $limit = (int)$limit; $offset = (int)$offset;
+    $sql = "SELECT m.* FROM menu m $join $whereSql $sortSql LIMIT $limit OFFSET $offset";
     $stmt = $con->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
