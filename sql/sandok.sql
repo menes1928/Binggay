@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 08, 2025 at 11:00 AM
+-- Generation Time: Oct 08, 2025 at 02:35 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -84,6 +84,8 @@ CREATE TABLE `employee` (
   `emp_email` varchar(100) NOT NULL,
   `emp_phone` varchar(255) NOT NULL,
   `emp_role` varchar(255) NOT NULL,
+  `emp_avail` tinyint(1) DEFAULT NULL,
+  `emp_photo` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -91,10 +93,10 @@ CREATE TABLE `employee` (
 -- Dumping data for table `employee`
 --
 
-INSERT INTO `employee` (`emp_id`, `emp_fn`, `emp_ln`, `emp_sex`, `emp_email`, `emp_phone`, `emp_role`, `created_at`) VALUES
-(1, 'Kyle', 'Vanleet', 'Male', 'f@gmaail.com', '09674535234', 'Chef', '2025-06-05 15:36:36'),
-(2, 'John', 'Def', 'Male', 'jd@gmail.com', '09125637121', 'Dishwasher', '2025-06-12 05:02:51'),
-(3, 'Francine', 'Diaz', 'Female', 'fd@gmail.com', '0965237482323', 'FoodAttendant', '2025-06-12 05:07:18');
+INSERT INTO `employee` (`emp_id`, `emp_fn`, `emp_ln`, `emp_sex`, `emp_email`, `emp_phone`, `emp_role`, `emp_avail`, `emp_photo`, `created_at`) VALUES
+(1, 'Kyle', 'Vanleet', 'Male', 'f@gmaail.com', '09674535234', 'Chef', 1, NULL, '2025-06-05 15:36:36'),
+(2, 'John', 'Def', 'Male', 'jd@gmail.com', '09125637121', 'Dishwasher', 1, NULL, '2025-06-12 05:02:51'),
+(3, 'Francine', 'Diaz', 'Female', 'fd@gmail.com', '0965237482323', 'FoodAttendant', 1, NULL, '2025-06-12 05:07:18');
 
 -- --------------------------------------------------------
 
@@ -336,14 +338,6 @@ INSERT INTO `menucategory` (`mc_id`, `category_id`, `menu_id`) VALUES
 (52, 4, 52),
 (53, 4, 53),
 (54, 4, 54),
-(55, 5, 55),
-(56, 5, 56),
-(57, 5, 57),
-(58, 5, 58),
-(59, 5, 59),
-(60, 5, 60),
-(61, 5, 61),
-(62, 5, 62),
 (63, 6, 63),
 (64, 6, 64),
 (65, 6, 65),
@@ -360,7 +354,15 @@ INSERT INTO `menucategory` (`mc_id`, `category_id`, `menu_id`) VALUES
 (81, 1, 3),
 (82, 1, 4),
 (83, 1, 5),
-(84, 1, 8);
+(84, 1, 8),
+(85, 5, 56),
+(86, 5, 55),
+(87, 5, 58),
+(88, 5, 57),
+(89, 5, 60),
+(90, 5, 59),
+(91, 5, 62),
+(92, 5, 61);
 
 -- --------------------------------------------------------
 
@@ -590,7 +592,7 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `category`
 --
 ALTER TABLE `category`
-  MODIFY `category_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `category_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `cateringpackages`
@@ -620,7 +622,7 @@ ALTER TABLE `menu`
 -- AUTO_INCREMENT for table `menucategory`
 --
 ALTER TABLE `menucategory`
-  MODIFY `mc_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=85;
+  MODIFY `mc_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=97;
 
 --
 -- AUTO_INCREMENT for table `orderaddress`
