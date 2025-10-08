@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 07, 2025 at 03:24 AM
+-- Generation Time: Oct 08, 2025 at 11:00 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -260,16 +260,15 @@ INSERT INTO `menu` (`menu_id`, `menu_name`, `menu_desc`, `menu_pax`, `menu_price
 (113, 'Beef Kare-kare (Half Pan)', NULL, '6-8 pax', 900.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
 (114, 'Beef Kare-kare (Full Pan)', NULL, '10-15 pax', 1600.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
 (115, 'Beef Caldereta (Half Pan)', NULL, '6-8 pax', 900.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(116, 'Beef Caldereta (Full Pan)', NULL, '10-15 pax', 1600.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(117, 'Beef Sinigang (Half Pan)', NULL, '6-8 pax', 900.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(118, 'Beef Sinigang (Full Pan)', NULL, '10-15 pax', 1600.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(119, 'Beef Nilaga or Bulalo (Half Pan)', NULL, '6-8 pax', 900.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(120, 'Beef Nilaga or Bulalo (Full Pan)', NULL, '10-15 pax', 1600.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(121, 'Beef Garlic Pepper Steak (Half Pan)', NULL, '6-8 pax', 900.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(122, 'Beef Garlic Pepper Steak (Full Pan)', NULL, '10-15 pax', 1600.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(123, 'Beef Steak (Half Pan)', NULL, '6-8 pax', 900.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(124, 'Beef Steak (Full Pan)', NULL, '10-15 pax', 1600.00, 'default.jpg', 1, '2025-06-14 13:09:20'),
-(125, 'wda', '', '5 pieces', 70.00, '68e46806a48a4_kibblesn-bits-original-beef-chicken-dry-dog-food-3-5lb-1024x1024.png', 1, '2025-10-07 01:08:22');
+(116, 'Beef Caldereta (Full Pan)', '', '10-15', 1600.00, '', 1, '2025-06-14 13:09:20'),
+(117, 'Beef Sinigang (Half Pan)', '', '6-8', 900.00, '', 1, '2025-06-14 13:09:20'),
+(118, 'Beef Sinigang (Full Pan)', '', '10-15', 1600.00, '', 1, '2025-06-14 13:09:20'),
+(119, 'Beef Nilaga or Bulalo (Half Pan)', '', '6-8', 900.00, '', 1, '2025-06-14 13:09:20'),
+(120, 'Beef Nilaga or Bulalo (Full Pan)', '', '10-15', 1600.00, '', 1, '2025-06-14 13:09:20'),
+(121, 'Beef Garlic Pepper Steak (Half Pan)', '', '6-8', 900.00, '', 1, '2025-06-14 13:09:20'),
+(122, 'Beef Garlic Pepper Steak (Full Pan)', '', '10-15', 1600.00, '', 1, '2025-06-14 13:09:20'),
+(123, 'Beef Steak (Half Pan)', '', '6-8', 900.00, '', 1, '2025-06-14 13:09:20'),
+(124, 'Beef Steak (Full Pan)', '', '10-15', 1600.00, '', 1, '2025-06-14 13:09:20');
 
 -- --------------------------------------------------------
 
@@ -431,18 +430,17 @@ CREATE TABLE `orders` (
   `order_amount` decimal(10,2) NOT NULL,
   `order_needed` date NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `is_deleted` tinyint(1) NOT NULL DEFAULT 0
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `orders`
 --
 
-INSERT INTO `orders` (`order_id`, `user_id`, `order_date`, `order_status`, `order_amount`, `order_needed`, `created_at`, `updated_at`, `is_deleted`) VALUES
-(1, 5, '2025-06-14 05:00:00', 'pending', 4600.00, '2025-06-15', '2025-06-14 18:25:00', '2025-06-14 18:25:00', 0),
-(2, 5, '2025-06-15 05:00:00', 'pending', 2700.00, '2025-06-20', '2025-06-15 10:10:35', '2025-06-15 10:10:35', 0),
-(3, 5, '2025-06-15 05:00:00', 'pending', 3100.00, '2025-06-15', '2025-06-15 12:33:22', '2025-06-15 12:33:22', 0);
+INSERT INTO `orders` (`order_id`, `user_id`, `order_date`, `order_status`, `order_amount`, `order_needed`, `created_at`, `updated_at`) VALUES
+(1, 5, '2025-06-14 05:00:00', 'pending', 4600.00, '2025-06-15', '2025-06-14 18:25:00', '2025-06-14 18:25:00'),
+(2, 5, '2025-06-15 05:00:00', 'pending', 2700.00, '2025-06-20', '2025-06-15 10:10:35', '2025-06-15 10:10:35'),
+(3, 5, '2025-06-15 05:00:00', 'pending', 3100.00, '2025-06-15', '2025-06-15 12:33:22', '2025-06-15 12:33:22');
 
 -- --------------------------------------------------------
 
