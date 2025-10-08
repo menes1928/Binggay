@@ -1,139 +1,90 @@
 <?php
-// Menu items data
-$menuItems = [
-    [
-        'id' => 1,
-        'name' => 'Filipino Fiesta Party Tray',
-        'description' => 'A delightful assortment of Filipino favorites including Pancit Canton, Lumpia Shanghai, BBQ Chicken, and Sweet & Sour Meatballs. Perfect for celebrations!',
-        'price' => 8500,
-        'image' => 'https://images.unsplash.com/photo-1735190093631-d66ecd1bc433?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaWxpcGlubyUyMHBhcnR5JTIwdHJheSUyMGZvb2R8ZW58MXx8fHwxNzU5OTIzMTI4fDA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '50-60 people',
-        'prepTime' => '2-3 hours',
-        'popular' => true,
-        'rating' => 4.9,
-        'reviews' => 156
-    ],
-    [
-        'id' => 2,
-        'name' => 'Premium Buffet Spread',
-        'description' => 'Luxurious catering spread featuring roasted meats, seafood delights, pasta stations, and fresh salads. Includes setup and serving utensils.',
-        'price' => 25000,
-        'image' => 'https://images.unsplash.com/photo-1668097519018-f7d13a079c0a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXRlcmluZyUyMGJ1ZmZldCUyMGZvb2R8ZW58MXx8fHwxNzU5OTExOTQyfDA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Catering Packages',
-        'servings' => '100-120 people',
-        'prepTime' => '4-5 hours',
-        'popular' => true,
-        'rating' => 5.0,
-        'reviews' => 89
-    ],
-    [
-        'id' => 3,
-        'name' => 'Executive Lunch Box',
-        'description' => 'Individually packed gourmet meals with choice of protein, steamed rice, vegetables, and dessert. Perfect for corporate events and meetings.',
-        'price' => 250,
-        'image' => 'https://images.unsplash.com/photo-1744957280662-af6472128abd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYWNrZWQlMjBtZWFsJTIwYm94fGVufDF8fHx8MTc1OTkyMzEyOXww&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Packed Meals',
-        'servings' => '1 person',
-        'prepTime' => '30 mins',
-        'popular' => false,
-        'rating' => 4.7,
-        'reviews' => 234
-    ],
-    [
-        'id' => 4,
-        'name' => 'Artisan Grazing Table',
-        'description' => 'Beautifully curated selection of premium cheeses, charcuterie, fresh fruits, nuts, crackers, and gourmet dips. Aesthetically arranged for visual impact.',
-        'price' => 12000,
-        'image' => 'https://images.unsplash.com/photo-1653559251018-f59d60ab3223?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmF6aW5nJTIwdGFibGUlMjBjaGFyY3V0ZXJpZXxlbnwxfHx8fDE3NTk5MjMxMzB8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Grazing Tables',
-        'servings' => '40-50 people',
-        'prepTime' => '3 hours',
-        'popular' => true,
-        'rating' => 4.9,
-        'reviews' => 112
-    ],
-    [
-        'id' => 5,
-        'name' => 'Classic Chicken Adobo',
-        'description' => 'Traditional Filipino chicken adobo simmered in soy sauce, vinegar, and spices. Tender, flavorful, and authentically home-cooked.',
-        'price' => 3500,
-        'image' => 'https://images.unsplash.com/photo-1606525575548-2d62ed40291d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaWxpcGlubyUyMGFkb2JvJTIwZGlzaHxlbnwxfHx8fDE3NTk4MzgwNzB8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '30-40 people',
-        'prepTime' => '2 hours',
-        'popular' => false,
-        'rating' => 4.8,
-        'reviews' => 198
-    ],
-    [
-        'id' => 6,
-        'name' => 'Crispy Fried Chicken Platter',
-        'description' => 'Golden fried chicken pieces, perfectly seasoned and fried to crispy perfection. Served with special dipping sauces and coleslaw.',
-        'price' => 4200,
-        'image' => 'https://images.unsplash.com/photo-1643892467625-65df6a500524?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmcmllZCUyMGNoaWNrZW4lMjBwbGF0dGVyfGVufDF8fHx8MTc1OTkyMzEzMHww&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '35-40 people',
-        'prepTime' => '1.5 hours',
-        'popular' => true,
-        'rating' => 4.9,
-        'reviews' => 267
-    ],
-    [
-        'id' => 7,
-        'name' => 'Creamy Carbonara Pasta',
-        'description' => 'Rich and creamy pasta carbonara with bacon bits, parmesan cheese, and fresh herbs. A crowd favorite for any occasion.',
-        'price' => 3800,
-        'image' => 'https://images.unsplash.com/photo-1588013273468-315fd88ea34c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYXN0YSUyMGNhcmJvbmFyYXxlbnwxfHx8fDE3NTk4MTMzMzF8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '30-35 people',
-        'prepTime' => '1 hour',
-        'popular' => false,
-        'rating' => 4.7,
-        'reviews' => 143
-    ],
-    [
-        'id' => 8,
-        'name' => 'Grilled Seafood Platter',
-        'description' => 'Fresh seafood medley including grilled fish, prawns, and squid. Served with lemon butter sauce and steamed vegetables.',
-        'price' => 6500,
-        'image' => 'https://images.unsplash.com/photo-1758448786233-2051ecd150c8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmlsbGVkJTIwc2VhZm9vZCUyMHBsYXR0ZXJ8ZW58MXx8fHwxNzU5OTIzMTMxfDA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Catering Packages',
-        'servings' => '40-45 people',
-        'prepTime' => '2.5 hours',
-        'popular' => false,
-        'rating' => 4.8,
-        'reviews' => 91
-    ],
-    [
-        'id' => 9,
-        'name' => 'Budget-Friendly Family Meal',
-        'description' => 'Affordable meal pack perfect for small gatherings. Includes rice, choice of 2 viands, and drinks.',
-        'price' => 180,
-        'image' => 'https://images.unsplash.com/photo-1744957280662-af6472128abd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYWNrZWQlMjBtZWFsJTIwYm94fGVufDF8fHx8MTc1OTkyMzEyOXww&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Packed Meals',
-        'servings' => '1 person',
-        'prepTime' => '20 mins',
-        'popular' => false,
-        'rating' => 4.5,
-        'reviews' => 421
-    ],
-    [
-        'id' => 10,
-        'name' => 'Deluxe Grazing Board',
-        'description' => 'Premium grazing board with imported and local cheeses, cured meats, seasonal fruits, artisan breads, and gourmet spreads.',
-        'price' => 8500,
-        'image' => 'https://images.unsplash.com/photo-1653559251018-f59d60ab3223?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmF6aW5nJTIwdGFibGUlMjBjaGFyY3V0ZXJpZXxlbnwxfHx8fDE3NTk5MjMxMzB8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Grazing Tables',
-        'servings' => '25-30 people',
-        'prepTime' => '2 hours',
-        'popular' => false,
-        'rating' => 5.0,
-        'reviews' => 78
-    ]
-];
+require_once __DIR__ . '/../classes/database.php';
 
-$categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazing Tables'];
+// Build menu items and categories from DB
+$db = new database();
+$pdo = $db->opencon();
+
+// Categories list for filter
+$categories = ['All'];
+$availableCategories = [];
+try {
+    $catStmt = $pdo->query("SELECT category_name FROM category ORDER BY category_name ASC");
+    $availableCategories = array_map(fn($r) => $r['category_name'], $catStmt->fetchAll());
+    $categories = array_merge($categories, $availableCategories);
+} catch (Throwable $e) {
+    // keep just 'All' on failure
+}
+
+// Helper: derive category from menu_name using keywords; only return if in DB categories
+function derive_category_name(string $name, array $validCats): ?string {
+    $n = strtolower($name);
+    $map = [
+        'Beef' => ['beef', 'bulalo', 'steak'],
+        'Pork' => ['pork', 'liempo', 'humba', 'binagoongan', 'menudo', 'dinuguan', 'pochero', 'estofado', 'kare-kare (pork)', 'tokwa\'t baboy', 'spare ribs', 'bbq spare ribs', 'baby back ribs', 'bicol express', 'bicol'],
+        'Chicken' => ['chicken', 'manok', 'cordon bleu', 'lollipop'],
+        'Seafood' => ['seafood', 'shrimp', 'tahong', 'bangus', 'fish', 'salvatore', 'tuna'],
+        'Pasta' => ['pasta', 'spaghetti', 'carbonara', 'pesto', 'pansit', 'pancit'],
+        'Vegetables' => ['vegg', 'vegetable', 'vegies', 'veggies', 'laing', 'chopsuey', 'pakbet', 'tokwa', 'lumpiang'],
+        'Best Sellers' => ['best seller']
+    ];
+    foreach ($map as $cat => $keywords) {
+        if (!in_array($cat, $validCats, true)) continue;
+        foreach ($keywords as $kw) {
+            if (strpos($n, $kw) !== false) return $cat;
+        }
+    }
+    return null;
+}
+
+// Fetch menu items
+$menuItems = [];
+try {
+    $sql = "
+        SELECT m.menu_id, m.menu_name, m.menu_desc, m.menu_pax, m.menu_price, m.menu_pic, m.menu_avail,
+               (
+                   SELECT c.category_name
+                   FROM menucategory mc2
+                   JOIN category c ON c.category_id = mc2.category_id
+                   WHERE mc2.menu_id = m.menu_id
+                   ORDER BY c.category_name ASC
+                   LIMIT 1
+               ) AS category_name
+        FROM menu m
+        ORDER BY m.created_at DESC, m.menu_id DESC
+    ";
+    $rows = $pdo->query($sql)->fetchAll();
+    foreach ($rows as $r) {
+        // Resolve image or fallback
+        $pic = trim((string)($r['menu_pic'] ?? ''));
+        $imgRel = '../menu/' . ($pic !== '' ? $pic : '');
+        $imgFs = __DIR__ . '/../menu/' . ($pic !== '' ? $pic : '');
+        if ($pic === '' || !file_exists($imgFs)) {
+            $imgRel = '../images/logo.png';
+        }
+
+        // Determine category
+        $derived = derive_category_name((string)$r['menu_name'], $availableCategories);
+        $categoryName = $derived ?? ($r['category_name'] ?? 'Uncategorized');
+        $isBest = ((string)($r['category_name'] ?? '') === 'Best Sellers');
+
+        $menuItems[] = [
+            'id' => (int)$r['menu_id'],
+            'name' => (string)$r['menu_name'],
+            'description' => (string)($r['menu_desc'] ?? ''),
+            'price' => (float)$r['menu_price'],
+            'image' => $imgRel,
+            'category' => $categoryName,
+            'servings' => (string)($r['menu_pax'] ?? ''),
+            'prepTime' => '—',
+            'popular' => $isBest,
+            'rating' => 5.0,
+            'reviews' => 0
+        ];
+    }
+} catch (Throwable $e) {
+    // On failure, leave empty; UI will show no items when searching
+}
 ?>
 
 <!DOCTYPE html>
@@ -363,7 +314,7 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
             <div class="flex items-center justify-between gap-4 flex-wrap">
                 <!-- Logo -->
                 <div class="flex items-center gap-3 animate-fade-in-up">
-                    <img src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=150&h=150&fit=crop&crop=center" 
+                    <img src="images/logo.png" 
                          alt="Sandok ni Binggay" 
                          class="w-16 h-16 rounded-full border-4 border-primary shadow-lg object-cover">
                     <div class="hidden md:block">
@@ -446,7 +397,7 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <?php foreach($menuItems as $item): ?>
                     <?php if($item['popular']): ?>
-                        <?php include 'menu_card_template.php'; ?>
+                        <?php menu_card_template(); ?>
                     <?php endif; ?>
                 <?php endforeach; ?>
             </div>
@@ -457,7 +408,7 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
             <h3 id="sectionTitle" class="text-2xl font-medium text-primary mb-6">All Menu Items</h3>
             <div id="menuGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <?php foreach($menuItems as $item): ?>
-                    <?php include 'menu_card_template.php'; ?>
+                    <?php menu_card_template(); ?>
                 <?php endforeach; ?>
             </div>
         </div>
@@ -500,9 +451,220 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
                     <span class="font-medium">Total:</span>
                     <span id="cartTotal" class="text-2xl font-bold text-primary">₱0</span>
                 </div>
-                <button class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
+                <button onclick="openCheckout()" class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
                     Proceed to Checkout
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+    <div id="checkoutModal" class="modal">
+        <div class="modal-content bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-medium text-primary">Checkout</h2>
+                    <button onclick="closeCheckout()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <form id="checkoutForm" onsubmit="processOrder(event)">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Left Column: Customer Information -->
+                        <div class="space-y-6">
+                            <div>
+                                <h3 class="text-lg font-medium text-primary mb-4">Customer Information</h3>
+                                
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium mb-2">Full Name <span class="text-red-500">*</span></label>
+                                        <input type="text" id="customerName" required 
+                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+                                               placeholder="Juan Dela Cruz">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium mb-2">Phone Number <span class="text-red-500">*</span></label>
+                                        <input type="tel" id="customerPhone" required 
+                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+                                               placeholder="0919-123-4567">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium mb-2">Email Address <span class="text-red-500">*</span></label>
+                                        <input type="email" id="customerEmail" required 
+                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+                                               placeholder="juan@example.com">
+                                    </div>
+
+                                    <div>
+                                        <h4 class="text-sm font-medium mb-2">Delivery Address <span class="text-red-500">*</span></h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Street</label>
+                                                <input type="text" id="oa_street" required
+                                                       class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                                                       placeholder="House No. / Street / Barangay">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">City</label>
+                                                <select id="oa_city" required
+                                                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none bg-white">
+                                                    <option value="Lipa City">Lipa City</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Province</label>
+                                                <select id="oa_province" required
+                                                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none bg-white">
+                                                    <option value="Batangas">Batangas</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium mb-2">Event Date & Time <span class="text-red-500">*</span></label>
+                                        <input type="datetime-local" id="eventDate" required 
+                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium mb-2">Special Instructions (Optional)</label>
+                                        <textarea id="specialInstructions" rows="3"
+                                                  class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none resize-none"
+                                                  placeholder="Any dietary restrictions, allergies, or special requests..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Payment Method -->
+                            <div>
+                                <h3 class="text-lg font-medium text-primary mb-4">Payment Method</h3>
+                                <div class="space-y-3">
+                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                                        <input type="radio" name="paymentMethod" value="cod" checked class="w-4 h-4 text-primary">
+                                        <div class="ml-3 flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <i class="fas fa-money-bill-wave text-primary"></i>
+                                                <span class="font-medium">Cash on Delivery</span>
+                                            </div>
+                                            <p class="text-sm text-gray-500 mt-1">Pay when your order is delivered</p>
+                                        </div>
+                                    </label>
+
+                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                                        <input type="radio" name="paymentMethod" value="gcash" class="w-4 h-4 text-primary">
+                                        <div class="ml-3 flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <i class="fas fa-mobile-alt text-primary"></i>
+                                                <span class="font-medium">GCash</span>
+                                            </div>
+                                            <p class="text-sm text-gray-500 mt-1">Send payment via GCash</p>
+                                        </div>
+                                    </label>
+
+                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                                        <input type="radio" name="paymentMethod" value="bank" class="w-4 h-4 text-primary">
+                                        <div class="ml-3 flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <i class="fas fa-university text-primary"></i>
+                                                <span class="font-medium">Bank Transfer</span>
+                                            </div>
+                                            <p class="text-sm text-gray-500 mt-1">Transfer to our bank account</p>
+                                        </div>
+                                    </label>
+
+                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                                        <input type="radio" name="paymentMethod" value="card" class="w-4 h-4 text-primary">
+                                        <div class="ml-3 flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <i class="fas fa-credit-card text-primary"></i>
+                                                <span class="font-medium">Credit/Debit Card</span>
+                                            </div>
+                                            <p class="text-sm text-gray-500 mt-1">Pay securely with your card</p>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Order Summary -->
+                        <div>
+                            <h3 class="text-lg font-medium text-primary mb-4">Order Summary</h3>
+                            
+                            <div class="bg-gray-50 rounded-lg p-4 mb-4 max-h-96 overflow-y-auto">
+                                <div id="checkoutItems" class="space-y-3"></div>
+                            </div>
+
+                            <div class="space-y-3 border-t border-gray-200 pt-4">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-600">Subtotal:</span>
+                                    <span id="checkoutSubtotal" class="font-medium">₱0</span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-600">Delivery Fee:</span>
+                                    <span id="checkoutDelivery" class="font-medium">₱200</span>
+                                </div>
+                                <div class="flex justify-between text-lg font-bold text-primary border-t border-gray-200 pt-3">
+                                    <span>Total:</span>
+                                    <span id="checkoutTotal">₱0</span>
+                                </div>
+                            </div>
+
+                            <!-- Important Notes -->
+                            <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div class="flex gap-2">
+                                    <i class="fas fa-info-circle text-yellow-600 mt-1"></i>
+                                    <div class="text-sm text-yellow-800">
+                                        <p class="font-medium mb-2">Important Notes:</p>
+                                        <ul class="list-disc list-inside space-y-1 text-xs">
+                                            <li>Orders must be placed at least 24 hours in advance</li>
+                                            <li>A 50% deposit may be required for large orders</li>
+                                            <li>We only deliver through Grab</li>
+                                            <li>Delivery fee is shouldered by the customer</li>
+                                            <li>We'll contact you to confirm your order details</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <button type="submit" class="w-full mt-6 bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
+                                <i class="fas fa-check-circle mr-2"></i>
+                                Place Order
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="modal">
+        <div class="modal-content bg-white rounded-lg max-w-md w-full mx-4">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-check text-3xl text-green-600"></i>
+                </div>
+                <h2 class="text-2xl font-medium text-primary mb-2">Order Placed Successfully!</h2>
+                <p class="text-gray-600 mb-6">Thank you for your order. We'll contact you shortly to confirm the details.</p>
+                
+                <div class="bg-gray-50 rounded-lg p-4 mb-6 text-left">
+                    <p class="text-sm text-gray-600 mb-2">Order Reference:</p>
+                    <p id="orderReference" class="text-lg font-bold text-primary"></p>
+                </div>
+
+                <div class="space-y-3">
+                    <button onclick="closeSuccess()" class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
+                        Continue Shopping
+                    </button>
+                    <button onclick="window.print()" class="w-full border-2 border-gray-300 hover:border-primary text-gray-700 hover:text-primary py-3 rounded-lg transition-colors font-medium">
+                        <i class="fas fa-print mr-2"></i>Print Receipt
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -759,6 +921,137 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
         // Close modal when clicking outside
         document.getElementById('itemModal').addEventListener('click', function(e) {
             if(e.target === this) closeModal();
+        });
+
+        // Checkout functions
+        function openCheckout() {
+            if(cart.length === 0) {
+                alert('Your cart is empty!');
+                return;
+            }
+
+            // Populate checkout items
+            const checkoutItems = document.getElementById('checkoutItems');
+            checkoutItems.innerHTML = cart.map(item => `
+                <div class="flex gap-3 pb-3 border-b border-gray-200">
+                    <img src="${item.image}" alt="${item.name}" class="w-16 h-16 object-cover rounded-lg">
+                    <div class="flex-1">
+                        <h4 class="font-medium text-sm">${item.name}</h4>
+                        <p class="text-xs text-gray-500">${item.servings}</p>
+                        <div class="flex items-center justify-between mt-1">
+                            <span class="text-xs text-gray-600">Qty: ${item.quantity}</span>
+                            <span class="text-sm font-semibold text-primary">₱${(item.price * item.quantity).toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Calculate totals
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const deliveryFee = 200;
+            const total = subtotal + deliveryFee;
+
+            document.getElementById('checkoutSubtotal').textContent = '₱' + subtotal.toLocaleString();
+            document.getElementById('checkoutDelivery').textContent = '₱' + deliveryFee.toLocaleString();
+            document.getElementById('checkoutTotal').textContent = '₱' + total.toLocaleString();
+
+            // Set minimum date to tomorrow
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('eventDate').min = tomorrow.toISOString().slice(0, 16);
+
+            document.getElementById('checkoutModal').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeCheckout() {
+            document.getElementById('checkoutModal').classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+
+        function processOrder(event) {
+            event.preventDefault();
+
+            // Gather form fields aligned to DB
+            const name = document.getElementById('customerName').value.trim();
+            const phone = document.getElementById('customerPhone').value.trim();
+            const email = document.getElementById('customerEmail').value.trim();
+            const oa_street = document.getElementById('oa_street').value.trim();
+            const oa_city = document.getElementById('oa_city').value.trim();
+            const oa_province = document.getElementById('oa_province').value.trim();
+            const eventDT = document.getElementById('eventDate').value; // yyyy-MM-ddTHH:mm
+            const order_needed = eventDT ? eventDT.split('T')[0] : '';
+            const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+            const specialInstructions = document.getElementById('specialInstructions').value.trim();
+
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const deliveryFee = 200;
+            const total = subtotal + deliveryFee;
+
+            const payload = {
+                customer_name: name,
+                customer_phone: phone,
+                customer_email: email,
+                oa_street,
+                oa_city,
+                oa_province,
+                order_needed,
+                payment_method: paymentMethod,
+                notes: specialInstructions,
+                items: cart.map(it => ({ menu_id: it.id, quantity: it.quantity, price: it.price })),
+                subtotal,
+                delivery_fee: deliveryFee,
+                total
+            };
+
+            fetch('submit_order.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data || !data.success) {
+                    throw new Error(data && data.message ? data.message : 'Order failed');
+                }
+                document.getElementById('orderReference').textContent = data.reference || ('SB-' + data.order_id);
+                closeCheckout();
+                document.getElementById('successModal').classList.add('active');
+                cart = [];
+                updateCart();
+            })
+            .catch(err => {
+                console.error('Checkout error:', err);
+                alert('Sorry, we could not place your order. Please try again.');
+            });
+        }
+
+        function closeSuccess() {
+            document.getElementById('successModal').classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+
+        // Close modals when clicking outside
+        document.getElementById('checkoutModal').addEventListener('click', function(e) {
+            if(e.target === this) closeCheckout();
+        });
+
+        document.getElementById('successModal').addEventListener('click', function(e) {
+            if(e.target === this) closeSuccess();
+        });
+
+        // Payment method selection visual feedback
+        document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll('input[name="paymentMethod"]').forEach(r => {
+                    r.parentElement.classList.remove('border-primary', 'bg-green-50');
+                    r.parentElement.classList.add('border-gray-200');
+                });
+                if(this.checked) {
+                    this.parentElement.classList.add('border-primary', 'bg-green-50');
+                    this.parentElement.classList.remove('border-gray-200');
+                }
+            });
         });
     </script>
 </body>
