@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 08, 2025 at 04:12 PM
+-- Generation Time: Oct 08, 2025 at 07:47 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -58,9 +58,7 @@ CREATE TABLE `cateringpackages` (
   `cp_phone` varchar(11) NOT NULL,
   `cp_place` varchar(255) NOT NULL,
   `cp_date` date NOT NULL,
-  `cp_desc` text DEFAULT NULL,
   `cp_price` decimal(10,2) NOT NULL,
-  `cp_avail` tinyint(1) DEFAULT NULL,
   `cp_addon_pax` int(11) DEFAULT NULL,
   `cp_notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
@@ -70,8 +68,8 @@ CREATE TABLE `cateringpackages` (
 -- Dumping data for table `cateringpackages`
 --
 
-INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_phone`, `cp_place`, `cp_date`, `cp_desc`, `cp_price`, `cp_avail`, `cp_addon_pax`, `cp_notes`, `created_at`) VALUES
-(1, 6, 'Cxyris Tan', '09603070809', 'San Sebastian Cathedral, P.Laygo St., Lipa City, Batangas', '2025-06-21', 'hello', 99000.00, NULL, NULL, NULL, '2025-10-08 13:58:18');
+INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_phone`, `cp_place`, `cp_date`, `cp_price`, `cp_addon_pax`, `cp_notes`, `created_at`) VALUES
+(1, 6, 'Cxyris Tan', '09603070809', 'San Sebastian Cathedral, P.Laygo St., Lipa City, Batangas', '2025-06-21', 99000.00, NULL, '', '2025-10-08 17:16:57');
 
 -- --------------------------------------------------------
 
@@ -129,7 +127,7 @@ CREATE TABLE `eventbookings` (
 --
 
 INSERT INTO `eventbookings` (`eb_id`, `user_id`, `eb_name`, `eb_contact`, `eb_type`, `eb_venue`, `eb_date`, `eb_order`, `eb_status`, `created_at`, `eb_package_pax`, `eb_addon_pax`, `eb_notes`) VALUES
-(4, 6, 'Cxyris Tan', '09603070809', 'marriage', 'San Sebastian Cathedral, P.Laygo Street, Lipa City, Batangas', '2025-06-21 05:00:00', 'party trays', 'Pending', '2025-06-15 10:45:54', NULL, NULL, NULL);
+(4, 6, 'Cxyris Tan', '09603070809', 'Wedding', 'San Sebastian Cathedral, P.Laygo Street, Lipa City, Batangas', '2025-06-21 05:00:00', 'party trays', 'In Progress', '2025-06-15 10:45:54', '50', 2, '');
 
 -- --------------------------------------------------------
 
@@ -465,7 +463,7 @@ CREATE TABLE `payments` (
   `pay_date` date DEFAULT NULL,
   `pay_amount` decimal(10,2) DEFAULT NULL,
   `pay_method` enum('Cash','Online','Credit') DEFAULT NULL,
-  `pay_status` enum('Paid','Pending') DEFAULT NULL,
+  `pay_status` enum('Paid','Partial','Pending') DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -474,10 +472,10 @@ CREATE TABLE `payments` (
 --
 
 INSERT INTO `payments` (`pay_id`, `order_id`, `cp_id`, `user_id`, `pay_date`, `pay_amount`, `pay_method`, `pay_status`, `created_at`) VALUES
-(1, 1, NULL, 5, '2025-06-14', 4600.00, 'Cash', 'Pending', '2025-10-08 14:00:22'),
-(2, 2, NULL, 5, '2025-06-15', 2700.00, 'Cash', 'Pending', '2025-10-08 14:00:22'),
-(3, NULL, 1, 6, '2025-06-15', 49500.00, 'Online', '', '2025-10-08 14:00:22'),
-(4, 3, NULL, 5, '2025-06-15', 3100.00, 'Cash', 'Pending', '2025-10-08 14:00:22');
+(1, 1, NULL, 5, '2025-06-14', 4600.00, 'Cash', '', '2025-10-08 14:00:22'),
+(2, 2, NULL, 5, '2025-06-15', 2700.00, 'Cash', '', '2025-10-08 14:00:22'),
+(3, NULL, 1, 6, '2025-06-15', 49500.00, 'Online', 'Paid', '2025-10-08 17:03:24'),
+(4, 3, NULL, 5, '2025-06-15', 3100.00, 'Cash', '', '2025-10-08 14:00:22');
 
 -- --------------------------------------------------------
 
@@ -654,7 +652,7 @@ ALTER TABLE `orders`
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `users`

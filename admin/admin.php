@@ -135,6 +135,551 @@ if ($sectionEarly === 'products') {
         }
     }
 }
+// Orders early actions (AJAX endpoints)
+if ($sectionEarly === 'orders') {
+    $action = $_GET['action'] ?? '';
+    $oid = isset($_GET['order_id']) ? (int)$_GET['order_id'] : 0;
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    if ($oid <= 0 && isset($_POST['order_id'])) { $oid = (int)$_POST['order_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    if ($action && $oid > 0) {
+        $pdo = $db->opencon();
+        if ($action === 'get_order' && $isAjaxAction) {
+            header('Content-Type: application/json');
+            try {
+                $stmt = $pdo->prepare("SELECT o.*, u.user_fn, u.user_ln, oa.oa_street, oa.oa_city, oa.oa_province, p.pay_method, p.pay_date, p.pay_status
+                                        FROM orders o
+                                        LEFT JOIN users u ON u.user_id = o.user_id
+                                        LEFT JOIN orderaddress oa ON oa.order_id = o.order_id
+                                        LEFT JOIN payments p ON p.order_id = o.order_id
+                                        WHERE o.order_id = ?");
+                $stmt->execute([$oid]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$row) { echo json_encode(['success'=>false,'message'=>'Order not found']); exit; }
+                echo json_encode(['success'=>true,'data'=>$row]);
+            } catch (Throwable $e) {
+                echo json_encode(['success'=>false,'message'=>'Error fetching order']);
+            }
+            exit;
+        }
+        if ($action === 'update_order' && $isAjaxAction) {
+            header('Content-Type: application/json');
+            try {
+                $status = (string)($_POST['order_status'] ?? 'pending');
+                $needed = (string)($_POST['order_needed'] ?? date('Y-m-d'));
+                $street = trim((string)($_POST['oa_street'] ?? ''));
+                $city = trim((string)($_POST['oa_city'] ?? ''));
+                $province = trim((string)($_POST['oa_province'] ?? ''));
+                $pdo->beginTransaction();
+                $ok1 = $pdo->prepare("UPDATE orders SET order_status = ?, order_needed = ? WHERE order_id = ?")
+                          ->execute([$status, $needed, $oid]);
+                // Upsert orderaddress
+                $stmt = $pdo->prepare("SELECT oa_id FROM orderaddress WHERE order_id = ?");
+                $stmt->execute([$oid]);
+                if ($stmt->fetchColumn()) {
+                    $pdo->prepare("UPDATE orderaddress SET oa_street=?, oa_city=?, oa_province=? WHERE order_id=?")
+                        ->execute([$street, $city, $province, $oid]);
+                } else {
+                    $pdo->prepare("INSERT INTO orderaddress (order_id, oa_street, oa_city, oa_province) VALUES (?, ?, ?, ?)")
+                        ->execute([$oid, $street, $city, $province]);
+                }
+                $pdo->commit();
+                echo json_encode(['success'=>true]);
+            } catch (Throwable $e) {
+                try { $pdo->rollBack(); } catch (Throwable $e2) {}
+                echo json_encode(['success'=>false,'message'=>'Error updating order']);
+            }
+            exit;
+        }
+        if ($action === 'mark_paid') {
+            try {
+                // Try to update existing payment record
+                $upd = $pdo->prepare("UPDATE payments SET pay_status='Paid', pay_date=CURDATE() WHERE order_id=?");
+                $upd->execute([$oid]);
+                if ($upd->rowCount() === 0) {
+                    // Create if not exists
+                    $ord = $pdo->prepare("SELECT user_id, order_amount, order_date FROM orders WHERE order_id=?");
+                    $ord->execute([$oid]);
+                    $o = $ord->fetch(PDO::FETCH_ASSOC);
+                    if ($o) {
+                        $pdo->prepare("INSERT INTO payments (order_id, cp_id, user_id, pay_date, pay_amount, pay_method, pay_status) VALUES (?, NULL, ?, CURDATE(), ?, 'Cash', 'Paid')")
+                            ->execute([$oid, (int)$o['user_id'], (float)$o['order_amount']]);
+                    }
+                }
+                // Also mark the order itself as Completed
+                $pdo->prepare("UPDATE orders SET order_status='Completed' WHERE order_id=?")
+                    ->execute([$oid]);
+            } catch (Throwable $e) {}
+        } elseif ($action === 'delete') {
+            try {
+                // Remove payments first (no FK cascade in schema), then delete order (cascades items and address)
+                $pdo->prepare("DELETE FROM payments WHERE order_id = ?")->execute([$oid]);
+                $pdo->prepare("DELETE FROM orders WHERE order_id = ?")->execute([$oid]);
+            } catch (Throwable $e) {}
+        }
+        if ($isAjaxAction) {
+            header('Content-Type: application/json');
+            echo json_encode(['success'=>true]);
+            exit;
+        } else {
+            header('Location: ?section=orders');
+            exit;
+        }
+    }
+}
+
+// Bookings early actions (AJAX endpoints)
+if ($sectionEarly === 'bookings') {
+    $action = $_GET['action'] ?? '';
+    $bid = isset($_GET['booking_id']) ? (int)$_GET['booking_id'] : 0;
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    if ($bid <= 0 && isset($_POST['booking_id'])) { $bid = (int)$_POST['booking_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    $pdo = $db->opencon();
+
+    if ($action === 'get_booking' && $bid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $stmt = $pdo->prepare("SELECT eb.* FROM eventbookings eb WHERE eb.eb_id=?");
+            $stmt->execute([$bid]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            // Latest booking payment for this user (payments rows reserved for bookings have both order_id and cp_id NULL)
+            $pay = $pdo->prepare("SELECT pay_id, pay_date, pay_amount, pay_method, pay_status FROM payments WHERE user_id=? AND order_id IS NULL AND cp_id IS NULL ORDER BY pay_date DESC, pay_id DESC LIMIT 1");
+            $pay->execute([(int)$row['user_id']]);
+            $p = $pay->fetch(PDO::FETCH_ASSOC) ?: null;
+            echo json_encode(['success'=>true,'data'=>$row,'payment'=>$p]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Fetch failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'update' && $bid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['eb_name'] ?? ''));
+            $contact = trim((string)($_POST['eb_contact'] ?? ''));
+            $type = trim((string)($_POST['eb_type'] ?? ''));
+            $venue = trim((string)($_POST['eb_venue'] ?? ''));
+            $dateStr = (string)($_POST['eb_date'] ?? '');
+            $order = trim((string)($_POST['eb_order'] ?? ''));
+            $status = trim((string)($_POST['eb_status'] ?? 'Pending'));
+            $pax = isset($_POST['eb_package_pax']) ? (string)$_POST['eb_package_pax'] : null;
+            $addon = isset($_POST['eb_addon_pax']) ? (int)$_POST['eb_addon_pax'] : null;
+            $notes = isset($_POST['eb_notes']) ? trim((string)$_POST['eb_notes']) : null;
+            if ($name === '' || $contact === '' || $type === '' || $venue === '' || $dateStr === '' || $order === '') {
+                echo json_encode(['success'=>false,'message'=>'All fields are required']); exit;
+            }
+            // Coerce datetime-local to timestamp (assume local timezone)
+            $dt = date('Y-m-d H:i:s', strtotime($dateStr));
+            $sql = "UPDATE eventbookings SET eb_name=?, eb_contact=?, eb_type=?, eb_venue=?, eb_date=?, eb_order=?, eb_status=?, eb_package_pax=?, eb_addon_pax=?, eb_notes=? WHERE eb_id=?";
+            $pdo->prepare($sql)->execute([$name,$contact,$type,$venue,$dt,$order,$status, $pax !== '' ? $pax : null, $addon, $notes, $bid]);
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Update failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'mark_paid' && $bid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $method = (string)($_POST['pay_method'] ?? 'Cash');
+            $amount = (float)($_POST['pay_amount'] ?? 0);
+            // Get booking to read user_id
+            $b = $pdo->prepare("SELECT user_id FROM eventbookings WHERE eb_id=?");
+            $b->execute([$bid]);
+            $userId = (int)$b->fetchColumn();
+            if ($userId <= 0) { echo json_encode(['success'=>false,'message'=>'User not found for booking']); exit; }
+            // Insert a payment row reserved for bookings (order_id and cp_id are NULL)
+            $ins = $pdo->prepare("INSERT INTO payments (order_id, cp_id, user_id, pay_date, pay_amount, pay_method, pay_status) VALUES (NULL, NULL, ?, CURDATE(), ?, ?, 'Paid')");
+            $ins->execute([$userId, $amount, $method]);
+            // Update booking status to Paid
+            $pdo->prepare("UPDATE eventbookings SET eb_status='Paid' WHERE eb_id=?")->execute([$bid]);
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Mark paid failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'delete' && $bid > 0) {
+        try { $pdo->prepare("DELETE FROM eventbookings WHERE eb_id=?")->execute([$bid]); } catch (Throwable $e) {}
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=bookings'); exit;
+    }
+}
+
+// Catering Packages early actions (AJAX endpoints)
+if ($sectionEarly === 'catering') {
+    $action = $_GET['action'] ?? '';
+    $cpid = isset($_GET['cp_id']) ? (int)$_GET['cp_id'] : 0;
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    if ($cpid <= 0 && isset($_POST['cp_id'])) { $cpid = (int)$_POST['cp_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    $pdo = $db->opencon();
+
+    if ($action === 'get_cp' && $cpid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM cateringpackages WHERE cp_id=?");
+            $stmt->execute([$cpid]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            // Latest payment for this catering package
+            $pay = $pdo->prepare("SELECT pay_id, pay_date, pay_amount, pay_method, pay_status FROM payments WHERE cp_id=? ORDER BY pay_date DESC, pay_id DESC LIMIT 1");
+            $pay->execute([$cpid]);
+            $p = $pay->fetch(PDO::FETCH_ASSOC) ?: null;
+            echo json_encode(['success'=>true,'data'=>$row,'payment'=>$p]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Fetch failed']); }
+        exit;
+    }
+
+    if ($action === 'update' && $cpid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['cp_name'] ?? ''));
+            $phone = trim((string)($_POST['cp_phone'] ?? ''));
+            $place = trim((string)($_POST['cp_place'] ?? ''));
+            $date = (string)($_POST['cp_date'] ?? '');
+            $price = (float)($_POST['cp_price'] ?? 0);
+            $addon = isset($_POST['cp_addon_pax']) && $_POST['cp_addon_pax'] !== '' ? (int)$_POST['cp_addon_pax'] : null;
+            $notes = isset($_POST['cp_notes']) ? trim((string)$_POST['cp_notes']) : null;
+            if ($name === '' || $phone === '' || $place === '' || $date === '' || $price < 0) {
+                echo json_encode(['success'=>false,'message'=>'All required fields must be filled']); exit;
+            }
+            // phone 11 digits
+            $digits = preg_replace('/\D+/', '', $phone);
+            if (strlen($digits) !== 11) { echo json_encode(['success'=>false,'message'=>'Phone must be exactly 11 digits']); exit; }
+            $phone = $digits;
+            $sql = "UPDATE cateringpackages SET cp_name=?, cp_phone=?, cp_place=?, cp_date=?, cp_price=?, cp_addon_pax=?, cp_notes=? WHERE cp_id=?";
+            $pdo->prepare($sql)->execute([$name,$phone,$place,$date,$price,$addon,$notes,$cpid]);
+
+            // Update payment only when a specific pay_id is provided (avoid inserting on edit)
+            $cpPayId = isset($_POST['cp_pay_id']) ? (int)$_POST['cp_pay_id'] : 0;
+            $cpPayAmount = isset($_POST['cp_pay_amount']) && $_POST['cp_pay_amount'] !== '' ? (float)$_POST['cp_pay_amount'] : null;
+            $cpPayMethod = isset($_POST['cp_pay_method']) ? trim((string)$_POST['cp_pay_method']) : '';
+            $cpPayStatus = isset($_POST['cp_pay_status']) ? trim((string)$_POST['cp_pay_status']) : '';
+            if ($cpPayId > 0 && ($cpPayAmount !== null || $cpPayMethod !== '' || $cpPayStatus !== '')) {
+                $cur = $pdo->prepare("SELECT pay_amount, pay_method, pay_status FROM payments WHERE pay_id=? AND cp_id=? LIMIT 1");
+                $cur->execute([$cpPayId, $cpid]);
+                $prow = $cur->fetch(PDO::FETCH_ASSOC);
+                if ($prow) {
+                    $newAmount = ($cpPayAmount !== null) ? $cpPayAmount : (isset($prow['pay_amount']) ? (float)$prow['pay_amount'] : 0);
+                    $newMethod = ($cpPayMethod !== '') ? $cpPayMethod : ($prow['pay_method'] ?? 'Cash');
+                    $newStatus = ($cpPayStatus !== '') ? $cpPayStatus : ($prow['pay_status'] ?? 'Pending');
+                    $upd = $pdo->prepare("UPDATE payments SET pay_amount=?, pay_method=?, pay_status=? WHERE pay_id=? AND cp_id=?");
+                    $upd->execute([$newAmount, $newMethod, $newStatus, $cpPayId, $cpid]);
+                }
+            }
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Update failed']); }
+        exit;
+    }
+
+    if ($action === 'mark_paid' && $cpid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $method = (string)($_POST['pay_method'] ?? 'Cash');
+            // Get cp to read user_id and price for status computation
+            $c = $pdo->prepare("SELECT user_id, cp_price FROM cateringpackages WHERE cp_id=?");
+            $c->execute([$cpid]);
+            $cpRow = $c->fetch(PDO::FETCH_ASSOC);
+            $userId = (int)($cpRow['user_id'] ?? 0);
+            $cpPrice = (float)($cpRow['cp_price'] ?? 0);
+            if ($userId <= 0) { echo json_encode(['success'=>false,'message'=>'User not found for package']); exit; }
+            // Enforce amount as exactly the package price on the server side
+            $amount = $cpPrice;
+            // For admin 'Paid' button, we consider this fully paid regardless (sets status to 'Paid')
+            $status = 'Paid';
+            // Upsert payment: if a payment exists for this cp_id, update it; else insert a new one
+            $sel = $pdo->prepare("SELECT pay_id FROM payments WHERE cp_id=? ORDER BY pay_date DESC, pay_id DESC LIMIT 1");
+            $sel->execute([$cpid]);
+            $existingPayId = (int)($sel->fetchColumn() ?: 0);
+            if ($existingPayId > 0) {
+                $upd = $pdo->prepare("UPDATE payments SET pay_amount=?, pay_method=?, pay_status=?, pay_date=CURDATE(), user_id=? WHERE pay_id=? AND cp_id=?");
+                $upd->execute([$amount, $method, $status, $userId, $existingPayId, $cpid]);
+            } else {
+                $ins = $pdo->prepare("INSERT INTO payments (order_id, cp_id, user_id, pay_date, pay_amount, pay_method, pay_status) VALUES (NULL, ?, ?, CURDATE(), ?, ?, ?)");
+                $ins->execute([$cpid, $userId, $amount, $method, $status]);
+            }
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Mark paid failed']); }
+        exit;
+    }
+
+    if ($action === 'delete' && $cpid > 0) {
+        try {
+            // Remove related payments first
+            $pdo->prepare("DELETE FROM payments WHERE cp_id=?")->execute([$cpid]);
+            $pdo->prepare("DELETE FROM cateringpackages WHERE cp_id=?")->execute([$cpid]);
+        } catch (Throwable $e) {}
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=catering'); exit;
+    }
+}
+
+// Categories early actions (AJAX endpoints)
+if ($sectionEarly === 'categories') {
+    $action = $_GET['action'] ?? '';
+    $cid = isset($_GET['category_id']) ? (int)$_GET['category_id'] : 0;
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    if ($cid <= 0 && isset($_POST['category_id'])) { $cid = (int)$_POST['category_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    $pdo = $db->opencon();
+    if ($action === 'search_menu') {
+        header('Content-Type: application/json');
+        try {
+            $q = trim((string)($_GET['q'] ?? ''));
+            $stmt = $pdo->prepare("SELECT menu_id, menu_name FROM menu WHERE menu_name LIKE ? ORDER BY menu_name ASC LIMIT 20");
+            $stmt->execute(['%'.$q.'%']);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['success'=>true,'data'=>$rows]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Search failed']);
+        }
+        exit;
+    }
+    if ($action === 'list_menu') {
+        header('Content-Type: application/json');
+        try {
+            $rows = $pdo->query("SELECT menu_id, menu_name FROM menu ORDER BY menu_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['success'=>true,'data'=>$rows]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'List failed']);
+        }
+        exit;
+    }
+    if ($action === 'create') {
+        $name = trim((string)($_POST['category_name'] ?? ''));
+        $menuIds = isset($_POST['menu_ids']) ? (array)$_POST['menu_ids'] : [];
+        try {
+            if ($name === '') throw new Exception('Category name is required');
+            $pdo->beginTransaction();
+            $ins = $pdo->prepare("INSERT INTO category (category_name) VALUES (?)");
+            $ins->execute([$name]);
+            $newId = (int)$pdo->lastInsertId();
+            if ($menuIds) {
+                $insMC = $pdo->prepare("INSERT INTO menucategory (category_id, menu_id) VALUES (?, ?)");
+                foreach ($menuIds as $mid) {
+                    $mid = (int)$mid; if ($mid <= 0) continue;
+                    try { $insMC->execute([$newId, $mid]); } catch (Throwable $e) {}
+                }
+            }
+            $pdo->commit();
+            if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+            header('Location: ?section=categories'); exit;
+        } catch (Throwable $e) {
+            try { $pdo->rollBack(); } catch (Throwable $e2) {}
+            if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>false,'message'=>'Create failed']); exit; }
+            header('Location: ?section=categories&error=1'); exit;
+        }
+    }
+    if ($action === 'get_category' && $cid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $cat = $pdo->prepare("SELECT category_id, category_name FROM category WHERE category_id=?");
+            $cat->execute([$cid]);
+            $c = $cat->fetch(PDO::FETCH_ASSOC);
+            if (!$c) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            $m = $pdo->prepare("SELECT m.menu_id, m.menu_name FROM menucategory mc JOIN menu m ON m.menu_id=mc.menu_id WHERE mc.category_id=? ORDER BY m.menu_name");
+            $m->execute([$cid]);
+            $menus = $m->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['success'=>true,'data'=>['category'=>$c,'menus'=>$menus]]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Fetch failed']);
+        }
+        exit;
+    }
+    if ($action === 'update' && $cid > 0) {
+        $name = trim((string)($_POST['category_name'] ?? ''));
+        $menuIds = isset($_POST['menu_ids']) ? (array)$_POST['menu_ids'] : [];
+        try {
+            if ($name === '') throw new Exception('Category name is required');
+            $pdo->beginTransaction();
+            $pdo->prepare("UPDATE category SET category_name=? WHERE category_id=?")->execute([$name, $cid]);
+            // Replace menu assignments
+            $pdo->prepare("DELETE FROM menucategory WHERE category_id=?")->execute([$cid]);
+            if ($menuIds) {
+                $insMC = $pdo->prepare("INSERT INTO menucategory (category_id, menu_id) VALUES (?, ?)");
+                foreach ($menuIds as $mid) { $mid=(int)$mid; if ($mid>0) { try { $insMC->execute([$cid, $mid]); } catch (Throwable $e) {} } }
+            }
+            $pdo->commit();
+            if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+            header('Location: ?section=categories'); exit;
+        } catch (Throwable $e) {
+            try { $pdo->rollBack(); } catch (Throwable $e2) {}
+            if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>false,'message'=>'Update failed']); exit; }
+            header('Location: ?section=categories&error=1'); exit;
+        }
+    }
+    if ($action === 'delete' && $cid > 0) {
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare("DELETE FROM menucategory WHERE category_id=?")->execute([$cid]);
+            $pdo->prepare("DELETE FROM category WHERE category_id=?")->execute([$cid]);
+            $pdo->commit();
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} }
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=categories'); exit;
+    }
+}
+
+// Employees early actions (AJAX endpoints)
+if ($sectionEarly === 'employees') {
+    $action = $_GET['action'] ?? '';
+    $eid = isset($_GET['employee_id']) ? (int)$_GET['employee_id'] : 0;
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    if ($eid <= 0 && isset($_POST['employee_id'])) { $eid = (int)$_POST['employee_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    $pdo = $db->opencon();
+
+    if ($action === 'get_employee' && $eid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $stmt = $pdo->prepare("SELECT emp_id, emp_fn, emp_ln, emp_sex, emp_email, emp_phone, emp_role, emp_avail, emp_photo FROM employee WHERE emp_id=?");
+            $stmt->execute([$eid]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            echo json_encode(['success'=>true,'data'=>$row]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Fetch failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'create') {
+        header('Content-Type: application/json');
+        try {
+            $fn = trim((string)($_POST['emp_fn'] ?? ''));
+            $ln = trim((string)($_POST['emp_ln'] ?? ''));
+            $sex = trim((string)($_POST['emp_sex'] ?? ''));
+            $email = trim((string)($_POST['emp_email'] ?? ''));
+            $phone = trim((string)($_POST['emp_phone'] ?? ''));
+            $role = trim((string)($_POST['emp_role'] ?? ''));
+            $avail = isset($_POST['emp_avail']) ? (int)($_POST['emp_avail'] ? 1 : 0) : 1;
+
+            if ($fn === '' || $ln === '' || $sex === '' || $email === '' || $phone === '' || $role === '') {
+                echo json_encode(['success'=>false,'message'=>'All fields are required']); exit;
+            }
+
+            // Phone must be 11 digits numeric
+            $digits = preg_replace('/\D+/', '', $phone);
+            if (strlen($digits) !== 11) {
+                echo json_encode(['success'=>false,'message'=>'Phone must be exactly 11 digits']); exit;
+            }
+            $phone = $digits;
+
+            $photoPath = null;
+            if (!empty($_FILES['emp_photo']) && is_uploaded_file($_FILES['emp_photo']['tmp_name'])) {
+                $orig = $_FILES['emp_photo']['name'];
+                $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                $allowed = ['jpg','jpeg','png','webp','gif','avif'];
+                if (!in_array($ext, $allowed)) { echo json_encode(['success'=>false,'message'=>'Unsupported image type']); exit; }
+                $newName = uniqid('emp_', true) . '.' . $ext;
+                $destDir = realpath(__DIR__ . '/../uploads/profile');
+                if ($destDir === false) { $destDir = __DIR__ . '/../uploads/profile'; }
+                @mkdir($destDir, 0775, true);
+                $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $newName;
+                if (!move_uploaded_file($_FILES['emp_photo']['tmp_name'], $destPath)) {
+                    echo json_encode(['success'=>false,'message'=>'Failed to upload photo']); exit;
+                }
+                // Store relative path (same pattern as users table)
+                $photoPath = '../uploads/profile/' . $newName;
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO employee (emp_fn, emp_ln, emp_sex, emp_email, emp_phone, emp_role, emp_avail, emp_photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$fn, $ln, $sex, $email, $phone, $role, $avail, $photoPath]);
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Create failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'update' && $eid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $fn = trim((string)($_POST['emp_fn'] ?? ''));
+            $ln = trim((string)($_POST['emp_ln'] ?? ''));
+            $sex = trim((string)($_POST['emp_sex'] ?? ''));
+            $email = trim((string)($_POST['emp_email'] ?? ''));
+            $phone = trim((string)($_POST['emp_phone'] ?? ''));
+            $role = trim((string)($_POST['emp_role'] ?? ''));
+            $avail = isset($_POST['emp_avail']) ? (int)($_POST['emp_avail'] ? 1 : 0) : 1;
+
+            if ($fn === '' || $ln === '' || $sex === '' || $email === '' || $phone === '' || $role === '') {
+                echo json_encode(['success'=>false,'message'=>'All fields are required']); exit;
+            }
+
+            // Phone must be 11 digits numeric
+            $digits = preg_replace('/\D+/', '', $phone);
+            if (strlen($digits) !== 11) {
+                echo json_encode(['success'=>false,'message'=>'Phone must be exactly 11 digits']); exit;
+            }
+            $phone = $digits;
+
+            $photoSql = '';
+            $params = [$fn, $ln, $sex, $email, $phone, $role, $avail, $eid];
+            if (!empty($_FILES['emp_photo']) && is_uploaded_file($_FILES['emp_photo']['tmp_name'])) {
+                $orig = $_FILES['emp_photo']['name'];
+                $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                $allowed = ['jpg','jpeg','png','webp','gif','avif'];
+                if (!in_array($ext, $allowed)) { echo json_encode(['success'=>false,'message'=>'Unsupported image type']); exit; }
+                $newName = uniqid('emp_', true) . '.' . $ext;
+                $destDir = realpath(__DIR__ . '/../uploads/profile');
+                if ($destDir === false) { $destDir = __DIR__ . '/../uploads/profile'; }
+                @mkdir($destDir, 0775, true);
+                $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $newName;
+                if (!move_uploaded_file($_FILES['emp_photo']['tmp_name'], $destPath)) {
+                    echo json_encode(['success'=>false,'message'=>'Failed to upload photo']); exit;
+                }
+                $photoPath = '../uploads/profile/' . $newName;
+                $photoSql = ', emp_photo = ?';
+                // Insert photo param before $eid
+                array_splice($params, -1, 0, [$photoPath]);
+            }
+
+            $sql = "UPDATE employee SET emp_fn=?, emp_ln=?, emp_sex=?, emp_email=?, emp_phone=?, emp_role=?, emp_avail=?" . $photoSql . " WHERE emp_id=?";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Update failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'toggle' && $eid > 0) {
+        // Toggle availability
+        try {
+            $curr = $pdo->prepare("SELECT emp_avail FROM employee WHERE emp_id=?");
+            $curr->execute([$eid]);
+            $v = (int)$curr->fetchColumn();
+            $nv = $v === 1 ? 0 : 1;
+            $pdo->prepare("UPDATE employee SET emp_avail=? WHERE emp_id=?")->execute([$nv, $eid]);
+        } catch (Throwable $e) {}
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=employees'); exit;
+    }
+
+    if ($action === 'delete' && $eid > 0) {
+        try { $pdo->prepare("DELETE FROM employee WHERE emp_id=?")->execute([$eid]); } catch (Throwable $e) {}
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=employees'); exit;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -257,6 +802,92 @@ if ($sectionEarly === 'products') {
             if ($menu_pic === '') return null;
             if (str_starts_with($menu_pic, 'http') || str_contains($menu_pic, '/')) return $menu_pic;
             return '../menu/' . $menu_pic;
+        }
+        // Category chip classes (bg + border) used in Categories table chips
+        function category_chip_classes($name, $id) {
+            $n = strtolower((string)$name);
+            // Keyword-based mapping first (matches modal behavior)
+            if (strpos($n, 'beef') !== false) return 'bg-red-50 border-red-300';
+            if (strpos($n, 'pork') !== false) return 'bg-rose-50 border-rose-300';
+            if (strpos($n, 'chicken') !== false) return 'bg-amber-50 border-amber-300';
+            if (strpos($n, 'seafood') !== false || strpos($n, 'fish') !== false || strpos($n, 'shrimp') !== false) return 'bg-sky-50 border-sky-300';
+            if (strpos($n, 'vegetable') !== false || strpos($n, 'veggie') !== false || strpos($n, 'vegt') !== false) return 'bg-emerald-50 border-emerald-300';
+            if (strpos($n, 'pasta') !== false) return 'bg-yellow-50 border-yellow-300';
+            if (strpos($n, 'dessert') !== false || strpos($n, 'sweet') !== false) return 'bg-fuchsia-50 border-fuchsia-300';
+            if (strpos($n, 'best') !== false) return 'bg-indigo-50 border-indigo-300';
+            // Otherwise select a deterministic color from a palette based on category id
+            $palette = [
+                'bg-purple-50 border-purple-300',
+                'bg-teal-50 border-teal-300',
+                'bg-cyan-50 border-cyan-300',
+                'bg-lime-50 border-lime-300',
+                'bg-blue-50 border-blue-300',
+                'bg-orange-50 border-orange-300',
+                'bg-pink-50 border-pink-300',
+                'bg-stone-50 border-stone-300',
+                'bg-emerald-50 border-emerald-300',
+                'bg-sky-50 border-sky-300',
+                'bg-amber-50 border-amber-300',
+                'bg-rose-50 border-rose-300',
+                'bg-red-50 border-red-300',
+                'bg-indigo-50 border-indigo-300',
+                'bg-fuchsia-50 border-fuchsia-300',
+                'bg-yellow-50 border-yellow-300'
+            ];
+            $idx = 0;
+            if ($id !== null) {
+                $idx = (int)$id;
+            } else {
+                $idx = (int)(crc32((string)$name) & 0xffff);
+            }
+            return $palette[$idx % count($palette)];
+        }
+        function category_chip_style($name, $id) {
+            $n = strtolower((string)$name);
+            // If matched to a known keyword palette, prefer Tailwind classes (no inline style)
+            if (strpos($n, 'beef') !== false || strpos($n, 'pork') !== false || strpos($n, 'chicken') !== false
+                || strpos($n, 'seafood') !== false || strpos($n, 'fish') !== false || strpos($n, 'shrimp') !== false
+                || strpos($n, 'vegetable') !== false || strpos($n, 'veggie') !== false || strpos($n, 'vegt') !== false
+                || strpos($n, 'pasta') !== false || strpos($n, 'dessert') !== false || strpos($n, 'sweet') !== false
+                || strpos($n, 'best') !== false) {
+                return '';
+            }
+            // Deterministic “random” color based on category id or name
+            $seed = ($id !== null) ? (int)$id : (int)(crc32((string)$name) & 0xffff);
+            $h = ($seed * 137) % 360; // use a prime-ish multiplier for dispersion
+            $bg = "hsla($h, 85%, 96%, 1)"; // very light background
+            $bd = "hsla($h, 55%, 70%, 1)"; // mid border
+            return "background-color: $bg; border-color: $bd;";
+        }
+        // Booking chips: base classes and deterministic color helpers for Type/Order
+        function booking_chip_base_classes() {
+            return 'inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium';
+        }
+        function booking_type_chip_style($value) {
+            $n = strtolower(trim((string)$value));
+            if ($n === '') return '';
+            // Deterministic color based on the value (keeps unique look per type)
+            $seed = (int)(crc32($n) & 0xffff);
+            $h = ($seed * 137) % 360;
+            $bg = "hsla($h, 85%, 96%, 1)"; // very light background
+            $bd = "hsla($h, 55%, 70%, 1)"; // mid border
+            return "background-color: $bg; border-color: $bd;";
+        }
+        function booking_order_chip_classes($value) {
+            $n = strtolower(trim((string)$value));
+            if ($n === 'customize' || $n === 'customised' || $n === 'customized') return 'bg-amber-50 border-amber-300';
+            if ($n === 'party trays' || $n === 'party_trays' || $n === 'party-trays' || $n === 'partytray' || $n === 'party tray') return 'bg-sky-50 border-sky-300';
+            // Fallback neutral
+            return 'bg-stone-50 border-stone-300';
+        }
+        function booking_status_chip_classes($value) {
+            $n = strtolower(trim((string)$value));
+            if ($n === 'paid') return 'bg-emerald-50 border-emerald-300 text-emerald-800';
+            if ($n === 'completed') return 'bg-blue-50 border-blue-300 text-blue-800';
+            if ($n === 'in progress' || $n === 'processing' || $n === 'ongoing') return 'bg-amber-50 border-amber-300 text-amber-800';
+            if ($n === 'canceled' || $n === 'cancelled') return 'bg-rose-50 border-rose-300 text-rose-800';
+            // Pending/default
+            return 'bg-gray-50 border-gray-300 text-gray-800';
         }
     ?>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -811,7 +1442,7 @@ if ($sectionEarly === 'products') {
                     <!-- Filters and search -->
                     <form id="products-filter" method="get" class="card p-4 mb-4">
                         <input type="hidden" name="section" value="products" />
-                        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2 items-end">
+                        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-2 items-end">
                             <div>
                                 <label class="text-sm text-muted-foreground">Search</label>
                                 <input id="filter-q" type="text" name="q" value="<?php echo htmlspecialchars($q); ?>" placeholder="Search by name" class="w-full mt-1 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
@@ -861,6 +1492,9 @@ if ($sectionEarly === 'products') {
                                         }
                                     ?>
                                 </select>
+                            </div>
+                            <div class="flex md:justify-end">
+                                <button type="button" id="products-clear" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Clear</button>
                             </div>
                         </div>
                         <!-- Apply/Reset buttons removed in favor of real-time filtering -->
@@ -1048,87 +1682,786 @@ if ($sectionEarly === 'products') {
                     </div>
                 </div>
 
+                <?php
+                // Orders data for Orders Management section
+                $orders = [];
+                $ordersCount = 0;
+                if ($section === 'orders') {
+                    try {
+                        $pdo = $db->opencon();
+                        $opage = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+                        $olimit = 10;
+                        $ooffset = ($opage - 1) * $olimit;
+                        $osearch = trim($_GET['q'] ?? '');
+                        $ostatus = trim($_GET['status'] ?? '');
+                        $opayMethod = trim($_GET['pay_method'] ?? '');
+                        $orderedDate = trim($_GET['ordered_date'] ?? '');
+                        $neededDate = trim($_GET['needed_date'] ?? '');
+                        $owhere = [];
+                        $oparams = [];
+                        if ($osearch !== '') {
+                            $owhere[] = "(u.user_fn LIKE ? OR u.user_ln LIKE ? OR o.order_id = ? OR oa.oa_city LIKE ? OR oa.oa_province LIKE ?)";
+                            $oparams[] = "%$osearch%"; $oparams[] = "%$osearch%"; $oparams[] = ctype_digit($osearch) ? (int)$osearch : 0; $oparams[] = "%$osearch%"; $oparams[] = "%$osearch%";
+                        }
+                        if ($ostatus !== '') { $owhere[] = "o.order_status = ?"; $oparams[] = $ostatus; }
+                        if ($opayMethod !== '') { $owhere[] = "pay.pay_method = ?"; $oparams[] = $opayMethod; }
+                        if ($orderedDate !== '') { $owhere[] = "DATE(o.order_date) = ?"; $oparams[] = $orderedDate; }
+                        if ($neededDate !== '') { $owhere[] = "DATE(o.order_needed) = ?"; $oparams[] = $neededDate; }
+            $owsql = $owhere ? ('WHERE '.implode(' AND ', $owhere)) : '';
+            $joinPay = "LEFT JOIN ( SELECT p1.* FROM payments p1 JOIN (SELECT order_id, MAX(pay_id) AS max_pid FROM payments GROUP BY order_id) t ON t.max_pid = p1.pay_id ) pay ON pay.order_id=o.order_id";
+            $stmtCnt = $pdo->prepare("SELECT COUNT(DISTINCT o.order_id) FROM orders o LEFT JOIN users u ON u.user_id=o.user_id LEFT JOIN orderaddress oa ON oa.order_id=o.order_id $joinPay $owsql");
+                        $stmtCnt->execute($oparams);
+                        $ordersCount = (int)$stmtCnt->fetchColumn();
+            $sql = "SELECT o.*, u.user_fn, u.user_ln, oa.oa_street, oa.oa_city, oa.oa_province, pay.pay_method, pay.pay_status
+                                FROM orders o
+                                LEFT JOIN users u ON u.user_id=o.user_id
+                                LEFT JOIN orderaddress oa ON oa.order_id=o.order_id
+                $joinPay
+                                $owsql
+                                ORDER BY o.order_date DESC
+                                LIMIT $olimit OFFSET $ooffset";
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute($oparams);
+                        $orows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                        $ids = array_column($orows, 'order_id');
+                        $itemsByOrder = [];
+                        if ($ids) {
+                            $in = implode(',', array_fill(0, count($ids), '?'));
+                            $sti = $pdo->prepare("SELECT oi.order_id, oi.oi_quantity, oi.oi_price, m.menu_name FROM orderitems oi LEFT JOIN menu m ON m.menu_id=oi.menu_id WHERE oi.order_id IN ($in)");
+                            $sti->execute($ids);
+                            while ($it = $sti->fetch(PDO::FETCH_ASSOC)) {
+                                $oidx = (int)$it['order_id'];
+                                if (!isset($itemsByOrder[$oidx])) { $itemsByOrder[$oidx] = []; }
+                                $itemsByOrder[$oidx][] = $it;
+                            }
+                        }
+                        foreach ($orows as $r) {
+                            $oidx = (int)$r['order_id'];
+                            $r['items'] = $itemsByOrder[$oidx] ?? [];
+                            $orders[] = $r;
+                        }
+                    } catch (Throwable $e) {
+                        $orders = []; $ordersCount = 0;
+                    }
+                }
+                // Orders chip helpers
+                function ord_chip_base(){ return 'inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium'; }
+                function ord_item_chip(){ return 'bg-blue-50 border-blue-300 text-blue-800'; }
+                function ord_addr_chip(){ return 'bg-violet-50 border-violet-300 text-violet-800'; }
+                function ord_method_chip($m){ $n=strtolower(trim((string)$m)); if($n==='cash')return 'bg-amber-50 border-amber-300 text-amber-800'; if($n==='online')return 'bg-sky-50 border-sky-300 text-sky-800'; if($n==='credit')return 'bg-indigo-50 border-indigo-300 text-indigo-800'; return 'bg-stone-50 border-stone-300 text-stone-800'; }
+                function ord_status_chip($s){ $n=strtolower(trim((string)$s)); if($n==='completed')return 'bg-emerald-50 border-emerald-300 text-emerald-800'; if($n==='in progress'||$n==='processing'||$n==='ongoing')return 'bg-amber-50 border-amber-300 text-amber-800'; if($n==='canceled'||$n==='cancelled')return 'bg-rose-50 border-rose-300 text-rose-800'; return 'bg-gray-50 border-gray-300 text-gray-800'; }
+                function ord_pay_status_chip($s){ $n=strtolower(trim((string)$s)); if($n==='paid')return 'bg-emerald-50 border-emerald-300 text-emerald-800'; if($n==='partial')return 'bg-blue-50 border-blue-300 text-blue-800'; if($n==='pending'||$n==='unpaid')return 'bg-gray-50 border-gray-300 text-gray-800'; if($n==='failed')return 'bg-rose-50 border-rose-300 text-rose-800'; if($n==='refunded')return 'bg-indigo-50 border-indigo-300 text-indigo-800'; return 'bg-stone-50 border-stone-300 text-stone-800'; }
+                ?>
                 <div id="orders-content" class="section-content <?php echo ($section === 'orders') ? '' : 'hidden '; ?>p-6">
-                    <div class="card max-w-2xl mx-auto p-8">
-                        <h2 class="text-2xl font-medium text-primary mb-2">Orders Management</h2>
-                        <p class="text-muted-foreground mb-8">Track and manage customer orders</p>
-                        <div class="text-center py-12">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <div class="w-8 h-8 bg-primary rounded-full"></div>
-                            </div>
-                            <p class="text-muted-foreground mb-4">Order tracking, fulfillment status, and customer communication tools will be shown here.</p>
-                            <div class="inline-flex items-center gap-2 text-sm text-primary">
-                                <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                                Coming Soon
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-medium text-primary">Orders Management</h2>
+                            <p class="text-muted-foreground">View orders and manage fulfillment and payments</p>
+                        </div>
+                    </div>
+                    <form id="orders-filter" method="get" class="card p-3 mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 2xl:grid-cols-7 gap-2 items-end">
+                        <input type="hidden" name="section" value="orders" />
+                        <div>
+                            <label class="text-xs text-muted-foreground">Search</label>
+                            <input id="orders-q" type="text" name="q" value="<?= htmlspecialchars($_GET['q'] ?? '') ?>" placeholder="Search..." class="w-full mt-0.5 px-2 py-1 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground">Status</label>
+                            <select id="orders-status" name="status" class="w-full mt-0.5 px-2 py-1 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">All</option>
+                                <?php $statuses=['pending','in progress','completed','canceled']; $cur=$_GET['status']??''; foreach($statuses as $s){$sel=$cur===$s?'selected':''; echo "<option value=\"$s\" $sel>".ucfirst($s)."</option>";} ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground">Payment Method</label>
+                            <select id="orders-paymethod" name="pay_method" class="w-full mt-0.5 px-2 py-1 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <?php $pm=$_GET['pay_method']??''; $opts=[''=>'All','Cash'=>'Cash','Online'=>'Online','Credit'=>'Credit']; foreach($opts as $k=>$v){$sel=(string)$pm===(string)$k?'selected':''; echo "<option value=\"".htmlspecialchars($k)."\" $sel>".htmlspecialchars($v)."</option>";} ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground">Date Ordered</label>
+                            <input id="orders-ordered-date" type="date" name="ordered_date" value="<?= htmlspecialchars($_GET['ordered_date'] ?? '') ?>" class="w-full mt-0.5 px-2 py-1 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground">Date Needed</label>
+                            <input id="orders-needed-date" type="date" name="needed_date" value="<?= htmlspecialchars($_GET['needed_date'] ?? '') ?>" class="w-full mt-0.5 px-2 py-1 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div class="flex md:justify-end">
+                            <button type="button" id="orders-clear" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Clear</button>
+                        </div>
+                    </form>
+
+                    <div id="orders-table" class="card overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead class="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th class="text-left p-3">Order #</th>
+                                        <th class="text-left p-3">User</th>
+                                        <th class="text-left p-3">Items</th>
+                                        <th class="text-left p-3">Total</th>
+                                        <th class="text-left p-3">Ordered</th>
+                                        <th class="text-left p-3">Needed</th>
+                                        <th class="text-left p-3">Address</th>
+                                        <th class="text-left p-3">Status</th>
+                                        <th class="text-left p-3">Payment Method</th>
+                                        <th class="text-left p-3">Payment Status</th>
+                                        <th class="text-left p-3">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (!empty($orders)): ?>
+                                        <?php foreach ($orders as $o): ?>
+                                            <?php
+                                                $fullname = trim(($o['user_fn'] ?? '').' '.($o['user_ln'] ?? ''));
+                                                $addrParts = array_filter([$o['oa_street'] ?? '', $o['oa_city'] ?? '', $o['oa_province'] ?? '']);
+                                                $addr = $addrParts ? implode(', ', $addrParts) : '—';
+                                                $itemsHtml = '—';
+                                                if (!empty($o['items'])) {
+                                                    $tmp = [];
+                                                    foreach ($o['items'] as $it) {
+                                                        $nm = $it['menu_name'] ?? 'Item';
+                                                        $qty = (float)$it['oi_quantity'];
+                                                        $price = (float)$it['oi_price'];
+                                                        $label = htmlspecialchars("$nm x$qty @ ₱".number_format($price,2));
+                                                        $tmp[] = '<span class="'.ord_chip_base().' '.ord_item_chip().'">'.$label.'</span>';
+                                                    }
+                                                    $itemsHtml = '<div class="flex flex-col gap-1">'.implode('', $tmp).'</div>';
+                                                }
+                                                $pay = ($o['pay_method'] ? '<span class="'.ord_chip_base().' '.ord_method_chip($o['pay_method']).'">'.htmlspecialchars($o['pay_method']).'</span>' : '—');
+                                            ?>
+                                            <tr class="border-t border-gray-100 hover:bg-gray-50 align-top">
+                                                <td class="p-3">#<?= (int)$o['order_id'] ?></td>
+                                                <td class="p-3"><?= htmlspecialchars($fullname ?: '—') ?></td>
+                                                <td class="p-3"><?= $itemsHtml ?></td>
+                                                <td class="p-3">₱<?= number_format((float)($o['order_amount'] ?? 0), 2) ?></td>
+                                                <td class="p-3"><?= htmlspecialchars($o['order_date'] ?? '') ?></td>
+                                                <td class="p-3"><?= htmlspecialchars($o['order_needed'] ?? '') ?></td>
+                                                <td class="p-3"><?php if($addr && $addr!=='—'){ ?><span class="<?= ord_chip_base().' '.ord_addr_chip(); ?>" title="<?= htmlspecialchars($addr) ?>"><?= htmlspecialchars($addr) ?></span><?php } else { echo '—'; } ?></td>
+                                                <td class="p-3">
+                                                    <span class="<?= ord_chip_base().' '.ord_status_chip($o['order_status'] ?? ''); ?>"><?= htmlspecialchars(ucfirst($o['order_status'] ?? 'pending')) ?></span>
+                                                </td>
+                                                <td class="p-3 whitespace-nowrap"><?= $pay ?></td>
+                                                <td class="p-3"><?php $ps = trim((string)($o['pay_status'] ?? '')); echo $ps!==''?('<span class="'.ord_chip_base().' '.ord_pay_status_chip($ps).'">'.htmlspecialchars($ps).'</span>'):'—'; ?></td>
+                                                <td class="p-3 whitespace-nowrap">
+                                                    <div class="flex items-center gap-2">
+                                                        <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50" title="Edit" aria-label="Edit" data-edit-order="<?= (int)$o['order_id'] ?>">
+                                                            <i class="fas fa-pen"></i>
+                                                        </button>
+                                                        <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50 text-green-700" title="Mark Paid" aria-label="Mark Paid" data-paid-order="<?= (int)$o['order_id'] ?>">
+                                                            <i class="fas fa-circle-check"></i>
+                                                        </button>
+                                                        <button type="button" class="p-2 rounded border border-red-200 text-red-700 hover:bg-red-50" title="Delete" aria-label="Delete" data-delete-order="<?= (int)$o['order_id'] ?>">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="11" class="p-6 text-center text-muted-foreground">No orders found.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php
+                        $opage = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+                        $olimit = 10;
+                        $ototalPages = (int)ceil(($ordersCount ?: 0)/$olimit);
+                        if ($ototalPages < 1) { $ototalPages = 1; }
+                        $baseQ = $_GET; $baseQ['section'] = 'orders'; unset($baseQ['page']);
+                        ?>
+                        <div class="p-3 flex items-center justify-between border-t border-gray-100 text-sm">
+                            <div>Total: <?= (int)$ordersCount ?> orders</div>
+                            <div class="flex items-center gap-1">
+                                <?php if ($opage > 1): $q=$baseQ; $q['page']=$opage-1; ?>
+                                    <a class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" href="?<?= http_build_query($q) ?>">Prev</a>
+                                <?php endif; ?>
+                                <span class="px-2 py-1">Page <?= $opage ?> / <?= $ototalPages ?></span>
+                                <?php if ($opage < $ototalPages): $q=$baseQ; $q['page']=$opage+1; ?>
+                                    <a class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" href="?<?= http_build_query($q) ?>">Next</a>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
                 </div>
 
+                <?php
+                // Bookings data and filters
+                $bkQ = isset($_GET['bk_q']) ? trim((string)$_GET['bk_q']) : '';
+                $bkType = isset($_GET['bk_type']) ? trim((string)$_GET['bk_type']) : '';
+                $bkOrder = isset($_GET['bk_order']) ? trim((string)$_GET['bk_order']) : '';
+                $bkStatus = isset($_GET['bk_status']) ? trim((string)$_GET['bk_status']) : '';
+                $bkDate = isset($_GET['bk_date']) ? trim((string)$_GET['bk_date']) : '';
+                $bkPage = max(1, (int)($_GET['bk_page'] ?? 1));
+                $bkLimit = 10; $bkOffset = ($bkPage - 1) * $bkLimit; $bkTotal = 0; $bookings = [];
+                $bkTypesList = [];
+                if ($section === 'bookings') {
+                    try {
+                        $pdo = $db->opencon();
+                        // Load distinct types for category filtering
+                        try { $bkTypesList = $pdo->query("SELECT DISTINCT eb_type FROM eventbookings WHERE eb_type IS NOT NULL AND eb_type<>'' ORDER BY eb_type ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) { $bkTypesList = []; }
+                        $w = []; $p = [];
+                        if ($bkQ !== '') { $w[] = "(eb.eb_name LIKE ? OR eb.eb_contact LIKE ? OR eb.eb_venue LIKE ?)"; $p[] = '%'.$bkQ.'%'; $p[] = '%'.$bkQ.'%'; $p[] = '%'.$bkQ.'%'; }
+                        if ($bkType !== '') { $w[] = "eb.eb_type = ?"; $p[] = $bkType; }
+                        if ($bkOrder !== '') { $w[] = "eb.eb_order = ?"; $p[] = $bkOrder; }
+                        if ($bkStatus !== '') { $w[] = "eb.eb_status = ?"; $p[] = $bkStatus; }
+                        if ($bkDate !== '') { $w[] = "DATE(eb.eb_date) = ?"; $p[] = $bkDate; }
+                        $where = $w ? ('WHERE ' . implode(' AND ', $w)) : '';
+                        $bkTotal = (int)$pdo->prepare("SELECT COUNT(*) FROM eventbookings eb $where")
+                                            ->execute($p) ? (int)$pdo->prepare("SELECT COUNT(*) FROM eventbookings eb $where")->execute($p) : 0;
+                        // Re-run properly: count separately to fetch scalar
+                        $stmtC = $pdo->prepare("SELECT COUNT(*) FROM eventbookings eb $where"); $stmtC->execute($p); $bkTotal = (int)$stmtC->fetchColumn();
+                        $sql = "SELECT eb.*, u.user_fn, u.user_ln,
+                                (SELECT pay_date FROM payments py WHERE py.user_id=eb.user_id AND py.order_id IS NULL AND py.cp_id IS NULL ORDER BY pay_date DESC, pay_id DESC LIMIT 1) AS last_pay_date,
+                                (SELECT pay_method FROM payments py WHERE py.user_id=eb.user_id AND py.order_id IS NULL AND py.cp_id IS NULL ORDER BY pay_date DESC, pay_id DESC LIMIT 1) AS last_pay_method,
+                                (SELECT pay_amount FROM payments py WHERE py.user_id=eb.user_id AND py.order_id IS NULL AND py.cp_id IS NULL ORDER BY pay_date DESC, pay_id DESC LIMIT 1) AS last_pay_amount
+                                FROM eventbookings eb LEFT JOIN users u ON u.user_id=eb.user_id $where
+                                ORDER BY eb.created_at DESC LIMIT $bkLimit OFFSET $bkOffset";
+                        $stmt = $pdo->prepare($sql); $stmt->execute($p); $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (Throwable $e) { $bookings = []; $bkTotal = 0; }
+                }
+                $bkPages = max(1, (int)ceil($bkTotal / $bkLimit));
+                ?>
                 <div id="bookings-content" class="section-content <?php echo ($section === 'bookings') ? '' : 'hidden '; ?>p-6">
-                    <div class="card max-w-2xl mx-auto p-8">
-                        <h2 class="text-2xl font-medium text-primary mb-2">Bookings Management</h2>
-                        <p class="text-muted-foreground mb-8">Manage catering event bookings and scheduling</p>
-                        <div class="text-center py-12">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <div class="w-8 h-8 bg-primary rounded-full"></div>
+                    <div class="bg-white border rounded-lg">
+                        <div class="p-4 border-b">
+                            <h2 class="text-xl font-semibold text-primary">Bookings Management</h2>
+                            <p class="text-sm text-muted-foreground">Manage event bookings with live filters</p>
+                        </div>
+                        <form id="bookings-filter" class="p-4 grid grid-cols-1 md:grid-cols-7 gap-3">
+                            <input type="hidden" name="section" value="bookings" />
+                            <div class="md:col-span-2">
+                                <label class="text-xs text-muted-foreground">Search</label>
+                                <input id="bk-q" name="bk_q" value="<?= htmlspecialchars($bkQ) ?>" type="text" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Name, contact, venue" />
                             </div>
-                            <p class="text-muted-foreground mb-4">Event calendar, booking requests, and scheduling tools will be available here.</p>
-                            <div class="inline-flex items-center gap-2 text-sm text-primary">
-                                <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                                Coming Soon
+                            <div>
+                                <label class="text-xs text-muted-foreground">Type</label>
+                                <select id="bk-type" name="bk_type" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                    <option value="">All</option>
+                                    <?php foreach ($bkTypesList as $t): ?>
+                                        <option value="<?= htmlspecialchars($t) ?>" <?= $bkType===$t?'selected':'' ?>><?= htmlspecialchars($t) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-muted-foreground">Order</label>
+                                <select id="bk-order" name="bk_order" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                    <option value="">All</option>
+                                    <option value="customize" <?= $bkOrder==='customize'?'selected':'' ?>>Customize</option>
+                                    <option value="party trays" <?= $bkOrder==='party trays'?'selected':'' ?>>Party trays</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-muted-foreground">Status</label>
+                                <select id="bk-status" name="bk_status" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                    <option value="">All</option>
+                                    <option value="Pending" <?= $bkStatus==='Pending'?'selected':'' ?>>Pending</option>
+                                    <option value="In Progress" <?= $bkStatus==='In Progress'?'selected':'' ?>>In Progress</option>
+                                    <option value="Completed" <?= $bkStatus==='Completed'?'selected':'' ?>>Completed</option>
+                                    <option value="Paid" <?= $bkStatus==='Paid'?'selected':'' ?>>Paid</option>
+                                    <option value="Canceled" <?= $bkStatus==='Canceled'?'selected':'' ?>>Canceled</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-muted-foreground">Event Date</label>
+                                <input id="bk-date" name="bk_date" type="date" value="<?= htmlspecialchars($bkDate) ?>" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                            </div>
+                            <div class="md:col-span-1 flex items-end justify-end">
+                                <button id="bookings-clear" type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50"><i class="fas fa-eraser"></i> Clear</button>
+                            </div>
+                        </form>
+                        <div id="bookings-list">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Venue</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Package Pax</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Add ons</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200" id="bookings-table">
+                                        <?php if ($bookings): foreach ($bookings as $b): ?>
+                                            <tr>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($b['eb_name']) ?></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($b['eb_contact']) ?></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><span class="<?= booking_chip_base_classes(); ?>" style="<?= booking_type_chip_style($b['eb_type']); ?>"><?= htmlspecialchars($b['eb_type']) ?></span></td>
+                                                <td class="px-3 py-2 text-sm"><span class="inline-block px-2 py-1 rounded border bg-violet-50 border-violet-300 text-violet-800 whitespace-normal break-words" title="<?= htmlspecialchars($b['eb_venue']) ?>"><?= htmlspecialchars($b['eb_venue']) ?></span></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= date('Y-m-d H:i', strtotime($b['eb_date'])) ?></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm capitalize"><span class="<?= booking_chip_base_classes().' '.booking_order_chip_classes($b['eb_order']); ?>"><?= htmlspecialchars($b['eb_order']) ?></span></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($b['eb_package_pax'] ?? '') ?></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars((string)$b['eb_addon_pax']) ?></td>
+                                                <td class="px-3 py-2 text-sm max-w-[240px] truncate" title="<?= htmlspecialchars((string)$b['eb_notes']) ?>"><?= htmlspecialchars((string)$b['eb_notes']) ?></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><span class="<?= booking_chip_base_classes().' '.booking_status_chip_classes($b['eb_status']); ?>"><?= htmlspecialchars((string)$b['eb_status']) ?></span></td>
+                                                <td class="px-3 py-2 whitespace-nowrap text-right text-sm">
+                                                    <button class="bk-edit inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50" title="Edit" data-bk-id="<?= (int)$b['eb_id'] ?>"><i class="fas fa-pen"></i></button>
+                                                    <button class="bk-paid inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50 ml-1" title="Mark Paid" data-bk-id="<?= (int)$b['eb_id'] ?>"><i class="fas fa-receipt"></i></button>
+                                                    <button class="bk-delete inline-flex items-center justify-center w-8 h-8 rounded border border-red-300 text-red-600 hover:bg-red-50 ml-1" title="Delete" data-bk-id="<?= (int)$b['eb_id'] ?>"><i class="fas fa-trash"></i></button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; else: ?>
+                                            <tr><td colspan="11" class="px-3 py-10 text-center text-sm text-muted-foreground">No bookings found</td></tr>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="p-3 flex items-center justify-between border-t border-gray-100 text-sm">
+                                <div>Total: <?= (int)$bkTotal ?> bookings</div>
+                                <div class="flex items-center gap-1">
+                                    <?php if ($bkPage > 1): $q=$_GET; $q['bk_page']=$bkPage-1; ?>
+                                        <a class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" href="?<?= http_build_query($q) ?>">Prev</a>
+                                    <?php endif; ?>
+                                    <span class="px-2 py-1">Page <?= $bkPage ?> / <?= $bkPages ?></span>
+                                    <?php if ($bkPage < $bkPages): $q=$_GET; $q['bk_page']=$bkPage+1; ?>
+                                        <a class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" href="?<?= http_build_query($q) ?>">Next</a>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
+                <?php
+                // Catering Packages data and filters (10 per page)
+                $cpPage = max(1, (int)($_GET['cp_page'] ?? 1));
+                $cpLimit = 10; $cpOffset = ($cpPage - 1) * $cpLimit; $cpTotal = 0; $packages = [];
+                if ($section === 'catering') {
+                    try {
+                        $pdo = $db->opencon();
+                        $cq = trim((string)($_GET['cp_q'] ?? ''));
+                        $cdate = trim((string)($_GET['cp_date'] ?? ''));
+                        $cmethod = trim((string)($_GET['cp_method'] ?? ''));
+                        $cstatus = trim((string)($_GET['cp_pay_status'] ?? ''));
+                        $w = []; $p = [];
+                        if ($cq !== '') { $w[] = "(cp.cp_name LIKE ? OR cp.cp_phone LIKE ? OR cp.cp_place LIKE ?)"; $p[] = "%$cq%"; $p[] = "%$cq%"; $p[] = "%$cq%"; }
+                        if ($cdate !== '') { $w[] = "cp.cp_date = ?"; $p[] = $cdate; }
+                        // Latest payment per cp via subquery
+                        $where = $w ? ('WHERE '.implode(' AND ', $w)) : '';
+                        $sqlBase = "FROM cateringpackages cp LEFT JOIN (
+                            SELECT t.* FROM payments t INNER JOIN (
+                                SELECT cp_id, MAX(CONCAT(pay_date,' ',LPAD(pay_id,10,'0'))) as mx
+                                FROM payments WHERE cp_id IS NOT NULL GROUP BY cp_id
+                            ) x ON x.cp_id=t.cp_id AND CONCAT(t.pay_date,' ',LPAD(t.pay_id,10,'0'))=x.mx
+                        ) pay ON pay.cp_id=cp.cp_id $where";
+                        // Filters on payment require having joined rows; apply after join
+                        $countBase = $sqlBase; $pCount = $p;
+                        // Ensure payment filters go into WHERE (not JOIN ON), so non-matching rows are excluded entirely
+                        $hasWhere = ($where !== '');
+                        // Payment Method filter
+                        if ($cmethod !== '') {
+                            $prefix = $hasWhere ? ' AND ' : ' WHERE ';
+                            $sqlBase  .= $prefix . "pay.pay_method = ?";
+                            $countBase .= $prefix . "pay.pay_method = ?";
+                            $p[] = $cmethod; $pCount[] = $cmethod;
+                            $hasWhere = true;
+                        }
+                        // Payment Status filter: treat NULL (no payment) as 'Pending'
+                        if ($cstatus !== '') {
+                            $prefix = $hasWhere ? ' AND ' : ' WHERE ';
+                            if (strcasecmp($cstatus, 'Pending') === 0) {
+                                $sqlBase  .= $prefix . "(pay.pay_status IS NULL OR pay.pay_status = 'Pending')";
+                                $countBase .= $prefix . "(pay.pay_status IS NULL OR pay.pay_status = 'Pending')";
+                            } else {
+                                $sqlBase  .= $prefix . "pay.pay_status = ?";
+                                $countBase .= $prefix . "pay.pay_status = ?";
+                                $p[] = $cstatus; $pCount[] = $cstatus;
+                            }
+                            $hasWhere = true;
+                        }
+                        // Count with payment filters applied
+                        $stmtC = $pdo->prepare("SELECT COUNT(*) $countBase"); $stmtC->execute($pCount); $cpTotal = (int)$stmtC->fetchColumn();
+                        // Order by event date (newest first), then id as tiebreaker
+                        $stmt = $pdo->prepare("SELECT cp.*, pay.pay_amount, pay.pay_method, pay.pay_status $sqlBase ORDER BY cp.cp_date DESC, cp.cp_id DESC LIMIT ? OFFSET ?");
+                        foreach ($p as $i=>$val) { $stmt->bindValue($i+1, $val); }
+                        $stmt->bindValue(count($p)+1, $cpLimit, PDO::PARAM_INT);
+                        $stmt->bindValue(count($p)+2, $cpOffset, PDO::PARAM_INT);
+                        $stmt->execute();
+                        $packages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (Throwable $e) { $packages = []; $cpTotal = 0; }
+                }
+                $cpPages = max(1, (int)ceil(($cpTotal ?: 0)/$cpLimit));
+                function cp_chip_base(){ return 'inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium'; }
+                function cp_place_chip(){ return 'bg-violet-50 border-violet-300 text-violet-800'; }
+                function cp_method_chip($m){ $n=strtolower(trim((string)$m)); if($n==='cash')return 'bg-amber-50 border-amber-300 text-amber-800'; if($n==='online')return 'bg-sky-50 border-sky-300 text-sky-800'; if($n==='credit')return 'bg-indigo-50 border-indigo-300 text-indigo-800'; return 'bg-stone-50 border-stone-300'; }
+                function cp_status_chip($s){ $n=strtolower(trim((string)$s)); if($n==='paid')return 'bg-emerald-50 border-emerald-300 text-emerald-800'; if($n==='partial')return 'bg-blue-50 border-blue-300 text-blue-800'; if($n==='pending')return 'bg-gray-50 border-gray-300 text-gray-800'; return 'bg-stone-50 border-stone-300'; }
+                ?>
                 <div id="catering-content" class="section-content <?php echo ($section === 'catering') ? '' : 'hidden '; ?>p-6">
-                    <div class="card max-w-2xl mx-auto p-8">
-                        <h2 class="text-2xl font-medium text-primary mb-2">Catering Packages</h2>
-                        <p class="text-muted-foreground mb-8">Create and manage catering service packages</p>
-                        <div class="text-center py-12">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <div class="w-8 h-8 bg-primary rounded-full"></div>
-                            </div>
-                            <p class="text-muted-foreground mb-4">Package builder, pricing tiers, and service customization options will be displayed here.</p>
-                            <div class="inline-flex items-center gap-2 text-sm text-primary">
-                                <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                                Coming Soon
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-xl font-semibold text-primary">Catering Packages</h2>
+                            <p class="text-sm text-muted-foreground">Manage catering bookings and payments</p>
+                        </div>
+                    </div>
+                    <form id="cp-filter" class="p-4 grid grid-cols-1 md:grid-cols-7 gap-3 card mb-4">
+                        <input type="hidden" name="section" value="catering" />
+                        <div class="md:col-span-2">
+                            <label class="text-xs text-muted-foreground">Search</label>
+                            <input id="cp-q" type="text" name="cp_q" value="<?= htmlspecialchars($_GET['cp_q'] ?? '') ?>" placeholder="Search name, phone, place..." class="w-full mt-1 px-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground">Date</label>
+                            <input id="cp-date" type="date" name="cp_date" value="<?= htmlspecialchars($_GET['cp_date'] ?? '') ?>" class="w-full mt-1 px-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground">Payment Method</label>
+                            <select id="cp-method" name="cp_method" class="w-full mt-1 px-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">All</option>
+                                <option value="Cash" <?= (($_GET['cp_method'] ?? '')==='Cash')?'selected':''; ?>>Cash</option>
+                                <option value="Online" <?= (($_GET['cp_method'] ?? '')==='Online')?'selected':''; ?>>Online</option>
+                                <option value="Credit" <?= (($_GET['cp_method'] ?? '')==='Credit')?'selected':''; ?>>Credit</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-muted-foreground">Payment Status</label>
+                            <select id="cp-status" name="cp_pay_status" class="w-full mt-1 px-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">All</option>
+                                <option value="Pending" <?= (($_GET['cp_pay_status'] ?? '')==='Pending')?'selected':''; ?>>Pending</option>
+                                <option value="Partial" <?= (($_GET['cp_pay_status'] ?? '')==='Partial')?'selected':''; ?>>Partial</option>
+                                <option value="Paid" <?= (($_GET['cp_pay_status'] ?? '')==='Paid')?'selected':''; ?>>Paid</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <button id="cp-clear" type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50"><i class="fas fa-eraser"></i> Clear</button>
+                        </div>
+                    </form>
+                    <div id="cp-list" class="card overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Place</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Add ons</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Amount</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cp-table" class="bg-white divide-y divide-gray-200">
+                                    <?php if ($packages): foreach ($packages as $cp): ?>
+                                        <tr>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($cp['cp_name']) ?></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($cp['cp_phone']) ?></td>
+                                            <td class="px-3 py-2 text-sm"><span class="<?= cp_chip_base().' '.cp_place_chip(); ?>" title="<?= htmlspecialchars($cp['cp_place']) ?>"><?= htmlspecialchars($cp['cp_place']) ?></span></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($cp['cp_date']) ?></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm">₱<?= number_format((float)$cp['cp_price'],2) ?></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars((string)$cp['cp_addon_pax']) ?></td>
+                                            <td class="px-3 py-2 text-sm max-w-[240px] truncate" title="<?= htmlspecialchars((string)$cp['cp_notes']) ?>"><?= htmlspecialchars((string)$cp['cp_notes']) ?></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= $cp['pay_amount']!==null ? ('₱'.number_format((float)$cp['pay_amount'],2)) : '' ?></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?php $m=$cp['pay_method']??''; if($m!==''){ ?><span class="<?= cp_chip_base().' '.cp_method_chip($m); ?>"><?= htmlspecialchars($m) ?></span><?php } ?></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?php $s=$cp['pay_status']??''; if($s!==''){ ?><span class="<?= cp_chip_base().' '.cp_status_chip($s); ?>"><?= htmlspecialchars($s) ?></span><?php } ?></td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-right text-sm">
+                                                <button class="cp-edit inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50" title="Edit" data-cp-id="<?= (int)$cp['cp_id'] ?>"><i class="fas fa-pen"></i></button>
+                                                <button class="cp-paid inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50 ml-1" title="Paid" data-cp-id="<?= (int)$cp['cp_id'] ?>"><i class="fa-solid fa-circle-check"></i></button>
+                                                <button class="cp-delete inline-flex items-center justify-center w-8 h-8 rounded border border-red-300 text-red-600 hover:bg-red-50 ml-1" title="Delete" data-cp-id="<?= (int)$cp['cp_id'] ?>"><i class="fas fa-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; else: ?>
+                                        <tr><td colspan="11" class="px-3 py-10 text-center text-sm text-muted-foreground">No catering packages found</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="p-3 flex items-center justify-between border-t border-gray-100 text-sm">
+                            <div>Total: <?= (int)$cpTotal ?> items</div>
+                            <div class="flex items-center gap-1">
+                                <?php if ($cpPage > 1): $q=$_GET; $q['cp_page']=$cpPage-1; ?>
+                                    <a class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" href="?<?= http_build_query($q) ?>">Prev</a>
+                                <?php endif; ?>
+                                <span class="px-2 py-1">Page <?= $cpPage ?> / <?= $cpPages ?></span>
+                                <?php if ($cpPage < $cpPages): $q=$_GET; $q['cp_page']=$cpPage+1; ?>
+                                    <a class="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50" href="?<?= http_build_query($q) ?>">Next</a>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
                 </div>
 
+                <?php
+                // Data for categories section with pagination (7 per page)
+                $categoriesList = [];
+                $catPage = 1; $catLimit = 7; $catTotalCount = 0; $catTotalPages = 1;
+                if ($section === 'categories') {
+                    try {
+                        $pdo = $db->opencon();
+                        $catPage = max(1, (int)($_GET['cat_page'] ?? 1));
+                        $catLimit = 7;
+                        $catOffset = ($catPage - 1) * $catLimit;
+                        $catTotalCount = (int)$pdo->query("SELECT COUNT(*) FROM category")->fetchColumn();
+                        $catTotalPages = max(1, (int)ceil($catTotalCount / $catLimit));
+                        $stmt = $pdo->prepare("SELECT category_id, category_name FROM category ORDER BY category_name ASC LIMIT :lim OFFSET :off");
+                        $stmt->bindValue(':lim', $catLimit, PDO::PARAM_INT);
+                        $stmt->bindValue(':off', $catOffset, PDO::PARAM_INT);
+                        $stmt->execute();
+                        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                        $categoriesList = [];
+                        if ($rows) {
+                            $ids = array_column($rows, 'category_id');
+                            if ($ids) {
+                                $in = implode(',', array_fill(0, count($ids), '?'));
+                                $m = $pdo->prepare("SELECT mc.category_id, m.menu_id, m.menu_name FROM menucategory mc JOIN menu m ON m.menu_id=mc.menu_id WHERE mc.category_id IN ($in) ORDER BY m.menu_name");
+                                $m->execute($ids);
+                                $menusByCat = [];
+                                while ($r = $m->fetch(PDO::FETCH_ASSOC)) {
+                                    $cid = (int)$r['category_id'];
+                                    if (!isset($menusByCat[$cid])) $menusByCat[$cid] = [];
+                                    $menusByCat[$cid][] = $r;
+                                }
+                                foreach ($rows as $r) {
+                                    $r['menus'] = $menusByCat[(int)$r['category_id']] ?? [];
+                                    $categoriesList[] = $r;
+                                }
+                            } else {
+                                $categoriesList = $rows;
+                            }
+                        }
+                    } catch (Throwable $e) { $categoriesList = []; $catTotalCount = 0; $catTotalPages = 1; }
+                }
+                ?>
                 <div id="categories-content" class="section-content <?php echo ($section === 'categories') ? '' : 'hidden '; ?>p-6">
-                    <div class="card max-w-2xl mx-auto p-8">
-                        <h2 class="text-2xl font-medium text-primary mb-2">Food Categories</h2>
-                        <p class="text-muted-foreground mb-8">Organize your menu items by categories</p>
-                        <div class="text-center py-12">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <div class="w-8 h-8 bg-primary rounded-full"></div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-medium text-primary">Food Categories</h2>
+                            <p class="text-muted-foreground">Group menu items by category</p>
+                        </div>
+                        <button type="button" id="open-add-category" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition">
+                            <i class="fas fa-plus"></i>
+                            Add Category
+                        </button>
+                    </div>
+                    <div id="categories-table" class="card overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead class="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th class="text-left p-3 w-28">Category</th>
+                                        <th class="text-left p-3">Menus</th>
+                                        <th class="text-left p-3 w-40">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($categoriesList)): ?>
+                                        <tr><td colspan="3" class="p-6 text-center text-muted-foreground">No categories yet.</td></tr>
+                                    <?php else: foreach ($categoriesList as $c): ?>
+                                        <tr class="border-t border-gray-100 hover:bg-gray-50 align-top">
+                                            <td class="p-3 font-medium text-primary"><?php echo htmlspecialchars($c['category_name']); ?></td>
+                                            <td class="p-3">
+                                                <?php if (!empty($c['menus'])): ?>
+                                                    <div class="flex flex-wrap gap-2">
+                                                        <?php
+                                                            $chipCls = category_chip_classes($c['category_name'] ?? '', $c['category_id'] ?? null);
+                                                            $chipStyle = category_chip_style($c['category_name'] ?? '', $c['category_id'] ?? null);
+                                                            foreach ($c['menus'] as $m): ?>
+                                                            <div class="border rounded-lg px-2 py-1 <?php echo $chipCls; ?>" style="<?php echo htmlspecialchars($chipStyle, ENT_QUOTES); ?>">
+                                                                <div class="text-sm"><?php echo htmlspecialchars($m['menu_name']); ?></div>
+                                                            </div>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <span class="text-muted-foreground">No menus</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="p-3">
+                                                <div class="flex items-center gap-2">
+                                                    <button type="button" title="Edit" class="h-9 w-9 grid place-items-center rounded border border-gray-200 text-gray-700 hover:bg-gray-50" data-edit-category="<?php echo (int)$c['category_id']; ?>">
+                                                        <i class="fas fa-pen"></i>
+                                                        <span class="sr-only">Edit</span>
+                                                    </button>
+                                                    <button type="button" title="Delete" class="h-9 w-9 grid place-items-center rounded border border-red-200 text-red-700 hover:bg-red-50" data-delete-category="<?php echo (int)$c['category_id']; ?>">
+                                                        <i class="fas fa-trash"></i>
+                                                        <span class="sr-only">Delete</span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php if ($section === 'categories' && $catTotalPages > 1): ?>
+                        <div class="flex items-center justify-between px-3 py-2 border-t text-sm">
+                            <div class="text-muted-foreground">Page <?php echo (int)$catPage; ?> of <?php echo (int)$catTotalPages; ?></div>
+                            <div class="flex items-center gap-2">
+                                <?php $prev = max(1, $catPage - 1); $next = min($catTotalPages, $catPage + 1); ?>
+                                <a class="px-2 py-1 rounded border hover:bg-gray-50 <?php echo $catPage <= 1 ? 'pointer-events-none opacity-50' : ''; ?>" href="?section=categories&cat_page=<?php echo (int)$prev; ?>">Prev</a>
+                                <?php for ($p = 1; $p <= $catTotalPages; $p++): ?>
+                                    <a class="px-2 py-1 rounded border <?php echo $p === (int)$catPage ? 'bg-primary text-white border-primary' : 'hover:bg-gray-50'; ?>" href="?section=categories&cat_page=<?php echo (int)$p; ?>"><?php echo (int)$p; ?></a>
+                                <?php endfor; ?>
+                                <a class="px-2 py-1 rounded border hover:bg-gray-50 <?php echo $catPage >= $catTotalPages ? 'pointer-events-none opacity-50' : ''; ?>" href="?section=categories&cat_page=<?php echo (int)$next; ?>">Next</a>
                             </div>
-                            <p class="text-muted-foreground mb-4">Category management, menu organization, and classification tools will be shown here.</p>
-                            <div class="inline-flex items-center gap-2 text-sm text-primary">
-                                <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                                Coming Soon
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Add/Edit Category Modal -->
+                <div id="cat-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+                <div id="cat-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+                    <div class="w-full max-w-xl mx-4 scale-95 transition-transform duration-200">
+                        <div class="bg-white rounded-lg shadow-xl">
+                            <div class="flex items-center justify-between px-4 py-3 border-b">
+                                <h3 id="cat-modal-title" class="text-lg font-medium">Add Category</h3>
+                                <button type="button" id="cat-close" class="h-8 w-8 grid place-items-center rounded hover:bg-gray-100"><i class="fas fa-times"></i></button>
                             </div>
+                            <form id="cat-form" class="p-4 space-y-4">
+                                <input type="hidden" name="section" value="categories" />
+                                <input type="hidden" name="ajax" value="1" />
+                                <input type="hidden" name="action" value="create" id="cat-action" />
+                                <input type="hidden" name="category_id" id="cat-id" />
+                                <div>
+                                    <label class="text-sm text-muted-foreground">Category Name</label>
+                                    <input type="text" name="category_name" id="cat-name" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" required />
+                                </div>
+                                <div>
+                                    <label class="text-sm text-muted-foreground">Search Menu</label>
+                                    <input type="text" id="cat-menu-search" placeholder="Type to search..." class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                                    <div id="cat-menu-results" class="mt-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg hidden"></div>
+                                    <div class="mt-3">
+                                        <div class="text-sm text-muted-foreground mb-1">All Menus</div>
+                                        <div id="cat-menu-all" class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-muted-foreground">Selected Menus</label>
+                                    <div id="cat-selected" class="mt-1 flex flex-wrap gap-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
+                                </div>
+                                <div class="flex justify-end gap-2 pt-2">
+                                    <button type="button" id="cat-cancel" class="px-3 py-2 rounded border border-gray-300">Cancel</button>
+                                    <button type="submit" class="px-4 py-2 rounded bg-primary text-white">Save</button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
 
+                <?php
+                // Employees data and filters (server-side)
+                $empQ = isset($_GET['emp_q']) ? trim((string)$_GET['emp_q']) : '';
+                $empRole = isset($_GET['emp_role']) ? trim((string)$_GET['emp_role']) : '';
+                $empSex = isset($_GET['emp_sex']) ? trim((string)$_GET['emp_sex']) : '';
+                $empAvail = isset($_GET['emp_avail']) && $_GET['emp_avail'] !== '' ? (string)$_GET['emp_avail'] : '';
+                $empPage = max(1, (int)($_GET['emp_page'] ?? 1));
+                $empLimit = 10; $empOffset = ($empPage - 1) * $empLimit; $empTotal = 0; $employees = [];
+                if ($section === 'employees') {
+                    try {
+                        $pdo = $db->opencon();
+                        $w = [];$p = [];
+                        if ($empQ !== '') { $w[] = "(emp_fn LIKE ? OR emp_ln LIKE ? OR emp_email LIKE ? OR emp_phone LIKE ?)"; $p[]="%$empQ%"; $p[]="%$empQ%"; $p[]="%$empQ%"; $p[]="%$empQ%"; }
+                        if ($empRole !== '') { $w[] = "emp_role = ?"; $p[] = $empRole; }
+                        if ($empSex !== '') { $w[] = "emp_sex = ?"; $p[] = $empSex; }
+                        if ($empAvail !== '') { $w[] = "emp_avail = ?"; $p[] = (int)$empAvail; }
+                        $where = $w ? ('WHERE ' . implode(' AND ', $w)) : '';
+                        $cnt = $pdo->prepare("SELECT COUNT(*) FROM employee $where");
+                        $cnt->execute($p); $empTotal = (int)$cnt->fetchColumn();
+                        $sql = $pdo->prepare("SELECT emp_id, emp_fn, emp_ln, emp_sex, emp_email, emp_phone, emp_role, emp_avail, emp_photo FROM employee $where ORDER BY created_at DESC LIMIT $empLimit OFFSET $empOffset");
+                        $sql->execute($p); $employees = $sql->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (Throwable $e) { $empTotal=0; $employees=[]; }
+                }
+                $empPages = max(1, (int)ceil($empTotal / $empLimit));
+                ?>
                 <div id="employees-content" class="section-content <?php echo ($section === 'employees') ? '' : 'hidden '; ?>p-6">
-                    <div class="card max-w-2xl mx-auto p-8">
-                        <h2 class="text-2xl font-medium text-primary mb-2">Employee Management</h2>
-                        <p class="text-muted-foreground mb-8">Manage staff, schedules, and permissions</p>
-                        <div class="text-center py-12">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <div class="w-8 h-8 bg-primary rounded-full"></div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-medium text-primary">Employees</h2>
+                            <p class="text-muted-foreground">Manage staff directory</p>
+                        </div>
+                        <button id="open-add-employee" type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition"><i class="fas fa-plus"></i>Add Employee</button>
+                    </div>
+                    <form id="employees-filter" class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+                        <input id="emp-q" name="emp_q" value="<?php echo htmlspecialchars($empQ); ?>" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Search name/email/phone">
+                        <select id="emp-role" name="emp_role" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="">All Roles</option>
+                            <?php
+                            try { $roles = $db->opencon()->query("SELECT DISTINCT emp_role FROM employee ORDER BY emp_role")->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) { $roles=[]; }
+                            foreach ($roles as $r) { $sel = ($empRole === $r) ? 'selected' : ''; echo '<option '.$sel.'>'.htmlspecialchars($r).'</option>'; }
+                            ?>
+                        </select>
+                        <select id="emp-sex" name="emp_sex" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="">All Sex</option>
+                            <option value="Male" <?php echo $empSex==='Male'?'selected':''; ?>>Male</option>
+                            <option value="Female" <?php echo $empSex==='Female'?'selected':''; ?>>Female</option>
+                        </select>
+                        <select id="emp-avail" name="emp_avail" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="">Availability</option>
+                            <option value="1" <?php echo $empAvail==='1'?'selected':''; ?>>Available</option>
+                            <option value="0" <?php echo $empAvail==='0'?'selected':''; ?>>Not Available</option>
+                        </select>
+                        <div class="flex gap-2">
+                            <button type="button" id="employees-clear" class="px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Clear</button>
+                        </div>
+                    </form>
+                    <div id="employees-list">
+                        <div class="card overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-sm">
+                                    <thead class="bg-gray-50 text-gray-600">
+                                        <tr>
+                                            <th class="text-left p-3 w-24">Image</th>
+                                            <th class="text-left p-3">Name</th>
+                                            <th class="text-left p-3">Sex</th>
+                                            <th class="text-left p-3">Email</th>
+                                            <th class="text-left p-3">Phone</th>
+                                            <th class="text-left p-3">Role</th>
+                                            <th class="text-left p-3">Availability</th>
+                                            <th class="text-left p-3 w-36">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="employees-table">
+                                        <?php if ($section === 'employees') { foreach ($employees as $emp) { ?>
+                                        <tr class="border-t border-gray-100 hover:bg-gray-50">
+                                            <td class="p-3">
+                                                <?php $src = $emp['emp_photo'] ?: '../images/logo.png'; ?>
+                                                <img src="<?php echo htmlspecialchars($src); ?>" alt="photo" class="h-10 w-10 rounded-full object-cover">
+                                            </td>
+                                            <td class="p-3 font-medium text-primary"><?php echo htmlspecialchars($emp['emp_fn'].' '.$emp['emp_ln']); ?></td>
+                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_sex']); ?></td>
+                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_email']); ?></td>
+                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_phone']); ?></td>
+                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_role']); ?></td>
+                                            <td class="p-3">
+                                                <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs <?php echo ((int)$emp['emp_avail']===1)?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'; ?>">
+                                                    <i class="fa-solid fa-circle text-[8px]"></i>
+                                                    <?php echo ((int)$emp['emp_avail']===1)?'Available':'Not Available'; ?>
+                                                </span>
+                                            </td>
+                                            <td class="p-3">
+                                                <div class="flex items-center gap-2">
+                                                    <button class="emp-edit h-9 w-9 grid place-items-center rounded border border-gray-200 text-gray-700 hover:bg-gray-50" title="Edit" data-emp-id="<?php echo (int)$emp['emp_id']; ?>"><i class="fa fa-pen"></i></button>
+                                                    <button class="emp-toggle h-9 w-9 grid place-items-center rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50" title="Toggle Availability" data-emp-id="<?php echo (int)$emp['emp_id']; ?>"><i class="fa fa-user-check"></i></button>
+                                                    <button class="emp-delete h-9 w-9 grid place-items-center rounded border border-red-200 text-red-700 hover:bg-red-50" title="Delete" data-emp-id="<?php echo (int)$emp['emp_id']; ?>"><i class="fa fa-trash"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <?php } if (empty($employees)) { ?>
+                                        <tr><td colspan="8" class="p-6 text-center text-muted-foreground">No employees found.</td></tr>
+                                        <?php }} ?>
+                                    </tbody>
+                                </table>
                             </div>
-                            <p class="text-muted-foreground mb-4">Staff directory, scheduling tools, and role management features will be available here.</p>
-                            <div class="inline-flex items-center gap-2 text-sm text-primary">
-                                <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                                Coming Soon
+                            <?php if ($section === 'employees' && $empPages > 1): ?>
+                            <div class="flex items-center justify-between px-3 py-2 border-t text-sm">
+                                <div class="text-muted-foreground">Page <?php echo (int)$empPage; ?> of <?php echo (int)$empPages; ?></div>
+                                <div class="flex items-center gap-2">
+                                    <?php for ($i=1;$i<=$empPages;$i++){ $params=$_GET; $params['section']='employees'; $params['emp_page']=$i; $url='?'.http_build_query($params); $cls=$i===$empPage?'bg-primary text-white border-primary':'hover:bg-gray-50'; echo '<a class="px-2 py-1 rounded border '.$cls.'" href="'.$url.'">'.$i.'</a>'; } ?>
+                                </div>
                             </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -1236,6 +2569,7 @@ if ($sectionEarly === 'products') {
                 const pax = document.getElementById('filter-pax');
                 const avail = document.getElementById('filter-avail');
                 const sort = document.getElementById('filter-sort');
+                const clearBtn = document.getElementById('products-clear');
                 const container = document.getElementById('products-results');
                 let seq = 0;
                 let controller = null;
@@ -1354,6 +2688,738 @@ if ($sectionEarly === 'products') {
                         }
                     });
                 }
+
+                // Clear filters
+                clearBtn && clearBtn.addEventListener('click', () => {
+                    if (!form) return;
+                    q && (q.value = '');
+                    cat && (cat.value = '');
+                    pax && (pax.value = '');
+                    avail && (avail.value = '');
+                    sort && (sort.value = '');
+                    submitNow();
+                });
+            }
+
+            // Real-time filtering in Orders
+            if (initialSection === 'orders') {
+                const form = document.getElementById('orders-filter');
+                const container = document.getElementById('orders-table');
+                const q = document.getElementById('orders-q');
+                const status = document.getElementById('orders-status');
+                const paym = document.getElementById('orders-paymethod');
+                const odate = document.getElementById('orders-ordered-date');
+                const ndate = document.getElementById('orders-needed-date');
+                const clearBtnO = document.getElementById('orders-clear');
+                let seqO = 0;
+                let controllerO = null;
+
+                const refresh = () => {
+                    const params = new URLSearchParams(new FormData(form));
+                    params.set('page', '1');
+                    const url = '?' + params.toString();
+                    if (!container) { window.location.href = url; return; }
+                    const mySeq = ++seqO;
+                    container.style.opacity = '0.6';
+                    try { controllerO && controllerO.abort(); } catch {}
+                    controllerO = new AbortController();
+                    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: controllerO.signal })
+                        .then(r => r.text())
+                        .then(html => {
+                            if (mySeq !== seqO) return;
+                            const temp = document.createElement('div');
+                            temp.innerHTML = html;
+                            const updated = temp.querySelector('#orders-table');
+                            if (updated) container.innerHTML = updated.innerHTML; else window.location.href = url;
+                        })
+                        .catch(err => { if (mySeq === seqO && (!err || err.name !== 'AbortError')) window.location.href = url; })
+                        .finally(() => { if (mySeq === seqO) container.style.opacity = '1'; });
+                };
+
+                // Debounce search
+                let tO = null;
+                q && q.addEventListener('input', () => { clearTimeout(tO); tO = setTimeout(refresh, 300); });
+                [status, paym, odate, ndate].forEach(el => el && el.addEventListener('change', refresh));
+
+                // Intercept pagination in orders table
+                container && container.addEventListener('click', (e) => {
+                    const a = e.target.closest('a');
+                    if (!a) return;
+                    const href = a.getAttribute('href') || '';
+                    if (href.includes('section=orders') && href.includes('page=')) {
+                        e.preventDefault();
+                        const url = a.href;
+                        const mySeq = ++seqO;
+                        container.style.opacity = '0.6';
+                        try { controllerO && controllerO.abort(); } catch {}
+                        controllerO = new AbortController();
+                        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: controllerO.signal })
+                            .then(r => r.text())
+                            .then(html => {
+                                if (mySeq !== seqO) return;
+                                const temp = document.createElement('div');
+                                temp.innerHTML = html;
+                                const updated = temp.querySelector('#orders-table');
+                                if (updated) container.innerHTML = updated.innerHTML; else window.location.href = url;
+                            })
+                            .catch(err => { if (mySeq === seqO && (!err || err.name !== 'AbortError')) window.location.href = url; })
+                            .finally(() => { if (mySeq === seqO) container.style.opacity = '1'; });
+                    }
+                });
+
+                // Clear orders filters
+                clearBtnO && clearBtnO.addEventListener('click', () => {
+                    if (!form) return;
+                    q && (q.value = '');
+                    status && (status.value = '');
+                    paym && (paym.value = '');
+                    odate && (odate.value = '');
+                    ndate && (ndate.value = '');
+                    refresh();
+                });
+            }
+
+            // Employees: filtering + CRUD
+            if (initialSection === 'employees') {
+                const eForm = document.getElementById('employees-filter');
+                const eQ = document.getElementById('emp-q');
+                const eRole = document.getElementById('emp-role');
+                const eSex = document.getElementById('emp-sex');
+                const eAvail = document.getElementById('emp-avail');
+                const eClear = document.getElementById('employees-clear');
+                const eTable = document.getElementById('employees-table');
+                const eList = document.getElementById('employees-list');
+                const openAddEmp = document.getElementById('open-add-employee');
+
+                // Role chip styling helpers
+                function baseRoleChipClasses(){ return 'inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border'; }
+                function roleChipInfo(role){
+                    const r=(role||'').toString().trim();
+                    const n=r.toLowerCase();
+                    const map=[
+                        {k:['manager','lead','supervisor'], cls:'bg-emerald-50 border-emerald-300 text-emerald-800'},
+                        {k:['chef','head cook','cook i'], cls:'bg-amber-50 border-amber-300 text-amber-800'},
+                        {k:['cook','kitchen'], cls:'bg-orange-50 border-orange-300 text-orange-800'},
+                        {k:['server','waiter','waitress'], cls:'bg-sky-50 border-sky-300 text-sky-800'},
+                        {k:['cashier'], cls:'bg-indigo-50 border-indigo-300 text-indigo-800'},
+                        {k:['driver','delivery'], cls:'bg-slate-50 border-slate-300 text-slate-800'},
+                        {k:['cleaner','utility','dishwasher'], cls:'bg-stone-50 border-stone-300 text-stone-800'},
+                        {k:['bartender','bar'], cls:'bg-purple-50 border-purple-300 text-purple-800'},
+                        {k:['planner','coordinator'], cls:'bg-pink-50 border-pink-300 text-pink-800'}
+                    ];
+                    for (const m of map){ if (m.k.some(s=>n.includes(s))) return {classes: baseRoleChipClasses()+' '+m.cls, style:''}; }
+                    // Deterministic fallback by role string
+                    let h=0; for (let i=0;i<n.length;i++){ h=(h*31+n.charCodeAt(i))>>>0; } h=h%360;
+                    const bg=`hsla(${h},85%,96%,1)`; const bd=`hsla(${h},55%,70%,1)`; const tx=`hsla(${h},40%,26%,1)`;
+                    return { classes: baseRoleChipClasses(), style:`background-color:${bg}; border-color:${bd}; color:${tx}` };
+                }
+                function styleEmployeeRoleChips(){
+                    const tbody = document.getElementById('employees-table');
+                    if (!tbody) return;
+                    tbody.querySelectorAll('tr').forEach(tr=>{
+                        const tds = tr.querySelectorAll('td');
+                        if (tds.length < 6) return; // Role expected at index 5
+                        const cell = tds[5];
+                        if (!cell) return;
+                        if (cell.querySelector('.role-chip')) return; // idempotent
+                        const txt = (cell.textContent||'').trim(); if (!txt) return;
+                        cell.textContent = '';
+                        const span = document.createElement('span');
+                        const info = roleChipInfo(txt);
+                        span.className = 'role-chip ' + info.classes; if (info.style) span.setAttribute('style', info.style);
+                        span.textContent = txt; cell.appendChild(span);
+                    });
+                }
+
+                // Guard against race conditions on rapid changes
+                let empSeq = 0;
+                let empController = null;
+                const empRefresh = () => {
+                    const params = new URLSearchParams(new FormData(eForm));
+                    params.set('section','employees');
+                    params.set('emp_page','1');
+                    const url = '?' + params.toString();
+                    const wrap = document.getElementById('employees-list');
+                    wrap && (wrap.style.opacity='0.6');
+                    const mySeq = ++empSeq;
+                    try { empController && empController.abort(); } catch {}
+                    empController = new AbortController();
+                    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: empController.signal })
+                      .then(r=>r.text())
+                      .then(html=>{
+                          if (mySeq !== empSeq) return; // stale
+                          const tmp=document.createElement('div'); tmp.innerHTML=html;
+                          const newList=tmp.querySelector('#employees-list');
+                          const current=document.getElementById('employees-list');
+                          if (newList && current) current.replaceWith(newList); else if (!newList) window.location.href = url;
+                      })
+                      .catch(err=>{ if (mySeq===empSeq && (!err || err.name !== 'AbortError')) { /* fallback to full load */ window.location.href = url; } })
+                      .finally(()=>{
+                          if (mySeq !== empSeq) return;
+                          const nl=document.getElementById('employees-list');
+                          if (nl) nl.style.opacity='1';
+                          styleEmployeeRoleChips();
+                          attachEmpHandlers();
+                      });
+                };
+                let te=null; eQ && eQ.addEventListener('input', ()=>{ clearTimeout(te); te=setTimeout(empRefresh, 300); });
+                [eRole,eSex,eAvail].forEach(el=> el && el.addEventListener('change', empRefresh));
+                // No Apply button needed; prevent form submission
+                eForm && eForm.addEventListener('submit', (e)=>{ e.preventDefault(); });
+                eClear && eClear.addEventListener('click', ()=>{ eQ&&(eQ.value=''); eRole&&(eRole.value=''); eSex&&(eSex.value=''); eAvail&&(eAvail.value=''); empRefresh(); });
+
+                // Initial pass on first render
+                styleEmployeeRoleChips();
+
+                // Modal
+                const empBack = document.getElementById('emp-backdrop');
+                const empModal = document.getElementById('emp-modal');
+                const empDialog = empModal ? empModal.querySelector('.dialog') : null;
+                const empTitle = document.getElementById('emp-modal-title');
+                const empForm = document.getElementById('emp-form');
+                const empAction = document.getElementById('emp-action');
+                const empId = document.getElementById('emp-id');
+                const ef = { fn: document.getElementById('emp-fn'), ln: document.getElementById('emp-ln'), sex: document.getElementById('emp-sex-input'), email: document.getElementById('emp-email'), phone: document.getElementById('emp-phone'), role: document.getElementById('emp-role-input'), avail: document.getElementById('emp-avail-input'), photo: document.getElementById('emp-photo'), preview: document.getElementById('emp-photo-preview'), clear: document.getElementById('emp-photo-clear') };
+                function showEmpModal(edit=false){ if(!empBack||!empModal) return; empBack.style.display='block'; empModal.style.display='flex'; empBack.setAttribute('aria-hidden','false'); empModal.setAttribute('aria-hidden','false'); empBack.classList.remove('pointer-events-none'); empModal.classList.remove('pointer-events-none'); requestAnimationFrame(()=>{ empBack.style.opacity='1'; empModal.style.opacity='1'; if(empDialog) empDialog.style.transform='scale(1)'; }); }
+                function hideEmpModal(){ if(!empBack||!empModal) return; empBack.style.opacity='0'; empModal.style.opacity='0'; if(empDialog) empDialog.style.transform='scale(0.95)'; setTimeout(()=>{ empBack.classList.add('pointer-events-none'); empModal.classList.add('pointer-events-none'); empBack.style.display='none'; empModal.style.display='none'; empBack.setAttribute('aria-hidden','true'); empModal.setAttribute('aria-hidden','true'); empForm && empForm.reset(); empId.value=''; ef.preview && (ef.preview.src=''); ef.preview && ef.preview.classList.add('hidden'); },180); }
+                document.getElementById('emp-close')?.addEventListener('click', hideEmpModal);
+                document.getElementById('emp-cancel')?.addEventListener('click', hideEmpModal);
+                empBack && empBack.addEventListener('click', hideEmpModal);
+                openAddEmp && openAddEmp.addEventListener('click', ()=>{ empTitle.textContent='Add Employee'; empAction.value='create'; empId.value=''; showEmpModal(false); });
+                // Numeric-only and max 11 for phone in modal
+                ef.phone && ef.phone.addEventListener('input', ()=>{ ef.phone.value = (ef.phone.value||'').replace(/\D+/g,'').slice(0,11); });
+                ef.photo && ef.photo.addEventListener('change', ()=>{ const f=ef.photo.files?.[0]; if(!f) return; const url=URL.createObjectURL(f); ef.preview.src=url; ef.preview.classList.remove('hidden'); });
+                ef.clear && ef.clear.addEventListener('click', ()=>{ if (!ef.photo) return; ef.photo.value=''; ef.preview.src=''; ef.preview.classList.add('hidden'); });
+
+                function attachEmpHandlers(){
+                    const table = document.getElementById('employees-table');
+                    if (table) table.addEventListener('click', async (e) => {
+                        const editBtn = e.target.closest('.emp-edit');
+                        const togBtn = e.target.closest('.emp-toggle');
+                        const delBtn = e.target.closest('.emp-delete');
+                        if (editBtn){
+                            const id = editBtn.getAttribute('data-emp-id');
+                            try { const r = await fetch(`?section=employees&action=get_employee&employee_id=${id}`, { headers:{'X-Requested-With':'XMLHttpRequest'} }); const j = await r.json(); if(!j.success) return alert(j.message||'Failed'); const d = j.data; empTitle.textContent='Edit Employee'; empAction.value='update'; empId.value=d.emp_id; ef.fn.value=d.emp_fn||''; ef.ln.value=d.emp_ln||''; ef.sex.value=d.emp_sex||''; ef.email.value=d.emp_email||''; ef.phone.value=d.emp_phone||''; ef.role.value=d.emp_role||''; ef.avail.checked = String(d.emp_avail)==='1'; if (d.emp_photo){ ef.preview.src=d.emp_photo; ef.preview.classList.remove('hidden'); } else { ef.preview.src=''; ef.preview.classList.add('hidden'); } showEmpModal(true); } catch (_) { alert('Network error'); }
+                            return;
+                        }
+                        if (togBtn){
+                            const id = togBtn.getAttribute('data-emp-id');
+                            await fetch(`?section=employees&action=toggle&employee_id=${id}&ajax=1`,{ headers:{'X-Requested-With':'XMLHttpRequest'} });
+                            empRefresh();
+                            return;
+                        }
+                        if (delBtn){
+                            const id = delBtn.getAttribute('data-emp-id');
+                            if (!confirm('Delete this employee?')) return; await fetch(`?section=employees&action=delete&employee_id=${id}&ajax=1`,{ headers:{'X-Requested-With':'XMLHttpRequest'} }); empRefresh(); return;
+                        }
+                    });
+                    const listWrap = document.getElementById('employees-list');
+                    if (listWrap) listWrap.addEventListener('click', (e)=>{
+                        const a = e.target.closest('a');
+                        if (!a) return;
+                        const href = a.getAttribute('href')||'';
+                        if (href.includes('section=employees') && href.includes('emp_page=')){
+                            e.preventDefault();
+                            const url = a.href;
+                            const wrap = document.getElementById('employees-list');
+                            wrap && (wrap.style.opacity='0.6');
+                            const mySeq = ++empSeq;
+                            try { empController && empController.abort(); } catch {}
+                            empController = new AbortController();
+                            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: empController.signal })
+                                .then(r=>r.text())
+                                .then(html=>{ if (mySeq !== empSeq) return; const tmp=document.createElement('div'); tmp.innerHTML=html; const newList=tmp.querySelector('#employees-list'); const current=document.getElementById('employees-list'); if (newList && current) current.replaceWith(newList); else if (!newList) window.location.href = url; })
+                                .catch(err=>{ if (mySeq===empSeq && (!err || err.name !== 'AbortError')) window.location.href = url; })
+                                .finally(()=>{ if (mySeq !== empSeq) return; const nl=document.getElementById('employees-list'); if (nl) nl.style.opacity='1'; styleEmployeeRoleChips(); attachEmpHandlers(); });
+                        }
+                    });
+                }
+                attachEmpHandlers();
+
+                empForm && empForm.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd = new FormData(empForm); try{ const r = await fetch('?section=employees', { method:'POST', body: fd, headers: { 'X-Requested-With':'XMLHttpRequest' }}); const j = await r.json(); if(!j.success){ alert(j.message||'Save failed'); return; } hideEmpModal(); empRefresh(); } catch (_){ alert('Network error'); } });
+            }
+
+            // Catering Packages: filtering + actions
+            if (initialSection === 'catering') {
+                const form = document.getElementById('cp-filter');
+                const q = document.getElementById('cp-q');
+                const date = document.getElementById('cp-date');
+                const method = document.getElementById('cp-method');
+                const status = document.getElementById('cp-status');
+                const clearBtn = document.getElementById('cp-clear');
+                const list = document.getElementById('cp-list');
+                let seq = 0; let ctrl = null;
+
+                const refresh = () => {
+                    const params = new URLSearchParams(new FormData(form));
+                    params.set('cp_page','1');
+                    const url = '?' + params.toString();
+                    if (!list) { window.location.href = url; return; }
+                    list.style.opacity = '0.6';
+                    const mySeq = ++seq; try { ctrl && ctrl.abort(); } catch {}
+                    ctrl = new AbortController();
+                    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: ctrl.signal })
+                        .then(r=>r.text())
+                        .then(html=>{ if (mySeq!==seq) return; const tmp=document.createElement('div'); tmp.innerHTML=html; const upd=tmp.querySelector('#cp-list'); if (upd) list.innerHTML=upd.innerHTML; else window.location.href=url; })
+                        .catch(err=>{ if (mySeq===seq && (!err || err.name!=='AbortError')) window.location.href=url; })
+                        .finally(()=>{ if (mySeq===seq) list.style.opacity='1'; });
+                };
+
+                let t=null; q && q.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(refresh,300); });
+                [date, method, status].forEach(el=>el && el.addEventListener('change', refresh));
+                clearBtn && clearBtn.addEventListener('click', ()=>{ if(!form) return; q&&(q.value=''); date&&(date.value=''); method&&(method.value=''); status&&(status.value=''); refresh(); });
+
+                // Intercept pagination
+                list && list.addEventListener('click', (e)=>{
+                    const a = e.target.closest('a');
+                    if (a) {
+                        const href = a.getAttribute('href')||'';
+                        if (href.includes('section=catering') && href.includes('cp_page=')) {
+                            e.preventDefault(); const url=a.href; const mySeq=++seq; list.style.opacity='0.6'; try{ctrl&&ctrl.abort();}catch{} ctrl=new AbortController();
+                            fetch(url, { headers:{'X-Requested-With':'XMLHttpRequest'}, signal: ctrl.signal })
+                                .then(r=>r.text()).then(html=>{ if (mySeq!==seq) return; const tmp=document.createElement('div'); tmp.innerHTML=html; const upd=tmp.querySelector('#cp-list'); if (upd) list.innerHTML=upd.innerHTML; else window.location.href=url; })
+                                .catch(err=>{ if (mySeq===seq && (!err || err.name!=='AbortError')) window.location.href=url; })
+                                .finally(()=>{ if (mySeq===seq) list.style.opacity='1'; });
+                            return;
+                        }
+                    }
+
+                    // Action buttons
+                    const editBtn = e.target.closest('.cp-edit');
+                    const paidBtn = e.target.closest('.cp-paid');
+                    const delBtn = e.target.closest('.cp-delete');
+                    if (editBtn) {
+                        e.preventDefault(); const id=editBtn.getAttribute('data-cp-id'); if(!id) return;
+                        const back=document.getElementById('cp-backdrop'); const modal=document.getElementById('cp-modal');
+                        const open=()=>{ back.style.display='block'; modal.style.display='flex'; setTimeout(()=>{ back.style.opacity='1'; modal.style.opacity='1'; modal.style.pointerEvents='auto'; }, 10); };
+                        fetch(`?section=catering&ajax=1&action=get_cp&cp_id=${encodeURIComponent(id)}`, { headers:{'X-Requested-With':'XMLHttpRequest'} })
+                                                    .then(r=>r.json()).then(j=>{ if(!j||!j.success) return alert('Failed to load');
+                            document.getElementById('cp-id').value=id;
+                            document.getElementById('cp-name').value=j.data.cp_name||'';
+                            document.getElementById('cp-phone').value=j.data.cp_phone||'';
+                            document.getElementById('cp-place').value=j.data.cp_place||'';
+                            document.getElementById('cp-date-input').value=j.data.cp_date||'';
+                            document.getElementById('cp-price').value=j.data.cp_price||'';
+                            document.getElementById('cp-addon').value=j.data.cp_addon_pax||'';
+                            document.getElementById('cp-notes').value=j.data.cp_notes||'';
+                                                        const pay=j.payment||{};
+                                                        const pm=document.getElementById('cp-pay-method');
+                                                        const pid=document.getElementById('cp-pay-id');
+                                                        const pa=document.getElementById('cp-pay-amount');
+                                                        const ps=document.getElementById('cp-pay-status');
+                                                        if (pid) pid.value = (pay.pay_id||'');
+                                                        if (pm) pm.value = (pay.pay_method||'');
+                                                        if (pa) pa.value = (pay.pay_amount!=null? pay.pay_amount : '');
+                                                        if (ps) ps.value = (pay.pay_status||'');
+                            open();
+                          }).catch(()=>alert('Failed to load'));
+                        return;
+                    }
+                    if (paidBtn) {
+                                                e.preventDefault(); const id=paidBtn.getAttribute('data-cp-id'); if(!id) return;
+                        // Auto-mark as fully paid: amount = cp_price and status to Paid
+                                                fetch(`?section=catering&ajax=1&action=get_cp&cp_id=${encodeURIComponent(id)}`, { headers:{'X-Requested-With':'XMLHttpRequest'} })
+                                                    .then(r=>r.json()).then(j=>{
+                                                        if (!j||!j.success||!j.data) { alert('Failed to load package'); return; }
+                                                        const price = parseFloat(j.data.cp_price||0) || 0;
+                                                        const fd = new FormData();
+                                                        fd.append('section','catering'); fd.append('ajax','1'); fd.append('action','mark_paid'); fd.append('cp_id', id);
+                                                        fd.append('pay_method','Cash'); // default method
+                            fd.append('pay_amount', String(price));
+                                                        fetch('?section=catering', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                                                            .then(r=>r.json()).then(()=>refresh()).catch(()=>alert('Mark paid failed'));
+                                                    }).catch(()=>alert('Failed to mark paid'));
+                                                return;
+                                        }
+                    if (delBtn) {
+                        e.preventDefault(); const id=delBtn.getAttribute('data-cp-id'); if(!id) return; if(!confirm('Delete this catering package?')) return;
+                        const fd=new FormData(); fd.append('section','catering'); fd.append('ajax','1'); fd.append('action','delete'); fd.append('cp_id', id);
+                        fetch('?section=catering', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                          .then(r=>r.json()).then(()=>refresh()).catch(()=>alert('Delete failed'));
+                        return;
+                    }
+                });
+
+                // Modal handlers
+                const cpBack=document.getElementById('cp-backdrop'); const cpModal=document.getElementById('cp-modal');
+                const cpClose=()=>{ cpBack.style.opacity='0'; cpModal.style.opacity='0'; cpModal.style.pointerEvents='none'; setTimeout(()=>{ cpBack.style.display='none'; cpModal.style.display='none'; }, 180); };
+                document.getElementById('cp-close')?.addEventListener('click', cpClose);
+                document.getElementById('cp-cancel')?.addEventListener('click', cpClose);
+                document.getElementById('cp-form')?.addEventListener('submit', (e)=>{
+                    e.preventDefault(); const fd=new FormData(e.currentTarget); fd.set('ajax','1'); fd.set('section','catering'); fd.set('action','update');
+                    fetch('?section=catering', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                      .then(r=>r.json()).then(j=>{ if(!j||!j.success){ alert(j&&j.message?j.message:'Save failed'); return; } cpClose(); refresh(); })
+                      .catch(()=>alert('Save failed'));
+                });
+
+                const cppBack=document.getElementById('cp-paid-backdrop'); const cppModal=document.getElementById('cp-paid-modal');
+                const cppClose=()=>{ cppBack.style.opacity='0'; cppModal.style.opacity='0'; cppModal.style.pointerEvents='none'; setTimeout(()=>{ cppBack.style.display='none'; cppModal.style.display='none'; }, 180); };
+                document.getElementById('cp-paid-close')?.addEventListener('click', cppClose);
+                document.getElementById('cp-paid-cancel')?.addEventListener('click', cppClose);
+                document.getElementById('cp-paid-form')?.addEventListener('submit', (e)=>{
+                    e.preventDefault(); const fd=new FormData(e.currentTarget); fd.set('ajax','1'); fd.set('section','catering'); fd.set('action','mark_paid');
+                    fetch('?section=catering', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                      .then(r=>r.json()).then(j=>{ if(!j||!j.success){ alert(j&&j.message?j.message:'Save failed'); return; } cppClose(); refresh(); })
+                      .catch(()=>alert('Save failed'));
+                });
+            }
+
+            // Bookings: filtering + CRUD
+            if (initialSection === 'bookings') {
+                const bForm = document.getElementById('bookings-filter');
+                const bQ = document.getElementById('bk-q');
+                const bType = document.getElementById('bk-type');
+                const bOrder = document.getElementById('bk-order');
+                const bStatus = document.getElementById('bk-status');
+                const bDate = document.getElementById('bk-date');
+                const bClear = document.getElementById('bookings-clear');
+                const bList = document.getElementById('bookings-list');
+
+                let bSeq = 0; let bController = null;
+                const refreshBookings = () => {
+                    const params = new URLSearchParams(new FormData(bForm));
+                    params.set('section','bookings'); params.set('bk_page','1');
+                    const url = '?' + params.toString();
+                    bList && (bList.style.opacity='0.6');
+                    const my = ++bSeq; try { bController && bController.abort(); } catch {}
+                    bController = new AbortController();
+                    fetch(url, { headers: { 'X-Requested-With':'XMLHttpRequest' }, signal: bController.signal })
+                        .then(r=>r.text())
+                        .then(html=>{ if (my!==bSeq) return; const tmp=document.createElement('div'); tmp.innerHTML=html; const updated = tmp.querySelector('#bookings-list'); const cur = document.getElementById('bookings-list'); if (updated && cur) cur.replaceWith(updated); else if (!updated) window.location.href = url; })
+                        .catch(err=>{ if (my===bSeq && (!err || err.name!=='AbortError')) window.location.href = url; })
+                        .finally(()=>{ if (my!==bSeq) return; const nl=document.getElementById('bookings-list'); if (nl) nl.style.opacity='1'; attachBookingsHandlers(); });
+                };
+                let tb=null; bQ && bQ.addEventListener('input', ()=>{ clearTimeout(tb); tb=setTimeout(refreshBookings, 300); });
+                [bType,bOrder,bStatus,bDate].forEach(el=> el && el.addEventListener('change', refreshBookings));
+                bForm && bForm.addEventListener('submit', (e)=>{ e.preventDefault(); });
+                bClear && bClear.addEventListener('click', ()=>{ bQ&&(bQ.value=''); bType&&(bType.value=''); bOrder&&(bOrder.value=''); bStatus&&(bStatus.value=''); bDate&&(bDate.value=''); refreshBookings(); });
+
+                function attachBookingsHandlers(){
+                    const list = document.getElementById('bookings-list'); if (!list) return;
+                    // Pagination
+                    list.addEventListener('click', (e)=>{
+                        const a = e.target.closest('a'); if (!a) return; const href = a.getAttribute('href')||'';
+                        if (href.includes('section=bookings') && href.includes('bk_page=')){
+                            e.preventDefault(); const url = a.href; const my=++bSeq; try { bController && bController.abort(); } catch {} bController = new AbortController();
+                            list.style.opacity='0.6'; fetch(url, { headers:{'X-Requested-With':'XMLHttpRequest'}, signal:bController.signal })
+                                .then(r=>r.text())
+                                .then(html=>{ if (my!==bSeq) return; const tmp=document.createElement('div'); tmp.innerHTML=html; const updated = tmp.querySelector('#bookings-list'); const cur = document.getElementById('bookings-list'); if (updated && cur) cur.replaceWith(updated); else if (!updated) window.location.href = url; })
+                                .catch(err=>{ if (my===bSeq && (!err || err.name!=='AbortError')) window.location.href = url; })
+                                .finally(()=>{ if (my!==bSeq) return; const nl=document.getElementById('bookings-list'); if (nl) nl.style.opacity='1'; attachBookingsHandlers(); });
+                        }
+                    });
+
+                    // Actions
+                    list.addEventListener('click', async (e)=>{
+                        const editBtn = e.target.closest('.bk-edit');
+                        const paidBtn = e.target.closest('.bk-paid');
+                        const delBtn = e.target.closest('.bk-delete');
+                        if (editBtn){
+                            const id = editBtn.getAttribute('data-bk-id');
+                            try { const r = await fetch(`?section=bookings&action=get_booking&booking_id=${id}`, { headers:{'X-Requested-With':'XMLHttpRequest'} }); const j = await r.json(); if(!j.success) return alert(j.message||'Failed'); const d=j.data; openEditBooking(d); } catch (_){ alert('Network error'); }
+                            return;
+                        }
+                        if (paidBtn){
+                            const id = paidBtn.getAttribute('data-bk-id'); openPaidBooking(id); return;
+                        }
+                        if (delBtn){
+                            const id = delBtn.getAttribute('data-bk-id'); if (!confirm('Delete this booking?')) return; await fetch(`?section=bookings&action=delete&booking_id=${id}&ajax=1`, { headers:{'X-Requested-With':'XMLHttpRequest'} }); refreshBookings(); return;
+                        }
+                    });
+                }
+                attachBookingsHandlers();
+
+                // Edit booking modal
+                const bkBack = document.getElementById('bk-backdrop');
+                const bkModal = document.getElementById('bk-modal');
+                const bkDialog = bkModal ? bkModal.querySelector('.dialog') : null;
+                const bkForm = document.getElementById('bk-form');
+                const bkId = document.getElementById('bk-id');
+                const bFields = { name:document.getElementById('bk-name'), contact:document.getElementById('bk-contact'), type:document.getElementById('bk-type-input'), venue:document.getElementById('bk-venue'), date:document.getElementById('bk-date-input'), order:document.getElementById('bk-order-input'), pax:document.getElementById('bk-pax'), addon:document.getElementById('bk-addon'), status:document.getElementById('bk-status-input'), notes:document.getElementById('bk-notes') };
+                function showBkModal(){ if(!bkBack||!bkModal) return; bkBack.style.display='block'; bkModal.style.display='flex'; bkBack.setAttribute('aria-hidden','false'); bkModal.setAttribute('aria-hidden','false'); bkBack.classList.remove('pointer-events-none'); bkModal.classList.remove('pointer-events-none'); requestAnimationFrame(()=>{ bkBack.style.opacity='1'; bkModal.style.opacity='1'; if(bkDialog) bkDialog.style.transform='scale(1)'; }); }
+                function hideBkModal(){ if(!bkBack||!bkModal) return; bkBack.style.opacity='0'; bkModal.style.opacity='0'; if(bkDialog) bkDialog.style.transform='scale(0.95)'; setTimeout(()=>{ bkBack.classList.add('pointer-events-none'); bkModal.classList.add('pointer-events-none'); bkBack.style.display='none'; bkModal.style.display='none'; bkBack.setAttribute('aria-hidden','true'); bkModal.setAttribute('aria-hidden','true'); },180); }
+                document.getElementById('bk-close')?.addEventListener('click', hideBkModal);
+                document.getElementById('bk-cancel')?.addEventListener('click', hideBkModal);
+                bkBack && bkBack.addEventListener('click', hideBkModal);
+
+                function openEditBooking(d){
+                    bkId.value = d.eb_id;
+                    bFields.name.value = d.eb_name||'';
+                    bFields.contact.value = d.eb_contact||'';
+                    bFields.type.value = d.eb_type||'';
+                    bFields.venue.value = d.eb_venue||'';
+                    // Convert timestamp to datetime-local
+                    const dt = new Date(d.eb_date.replace(' ','T'));
+                    const pad=(n)=> String(n).padStart(2,'0');
+                    const local = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                    bFields.date.value = local;
+                    bFields.order.value = d.eb_order||'';
+                    bFields.pax.value = d.eb_package_pax||'';
+                    bFields.addon.value = d.eb_addon_pax||'';
+                    bFields.status.value = d.eb_status||'Pending';
+                    bFields.notes.value = d.eb_notes||'';
+                    showBkModal();
+                }
+
+                bFields.contact && bFields.contact.addEventListener('input', ()=>{ bFields.contact.value = (bFields.contact.value||'').replace(/\D+/g,'').slice(0,11); });
+                bkForm && bkForm.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd = new FormData(bkForm); try { const r=await fetch('?section=bookings', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} }); const j=await r.json(); if(!j.success){ alert(j.message||'Save failed'); return; } hideBkModal(); refreshBookings(); } catch (_){ alert('Network error'); } });
+
+                // Paid modal
+                const pdBack = document.getElementById('bk-paid-backdrop');
+                const pdModal = document.getElementById('bk-paid-modal');
+                const pdDialog = pdModal ? pdModal.querySelector('.dialog') : null;
+                const pdForm = document.getElementById('bk-paid-form');
+                const pdId = document.getElementById('bk-paid-id');
+                function showPd(){ if(!pdBack||!pdModal) return; pdBack.style.display='block'; pdModal.style.display='flex'; pdBack.setAttribute('aria-hidden','false'); pdModal.setAttribute('aria-hidden','false'); pdBack.classList.remove('pointer-events-none'); pdModal.classList.remove('pointer-events-none'); requestAnimationFrame(()=>{ pdBack.style.opacity='1'; pdModal.style.opacity='1'; if(pdDialog) pdDialog.style.transform='scale(1)'; }); }
+                function hidePd(){ if(!pdBack||!pdModal) return; pdBack.style.opacity='0'; pdModal.style.opacity='0'; if(pdDialog) pdDialog.style.transform='scale(0.95)'; setTimeout(()=>{ pdBack.classList.add('pointer-events-none'); pdModal.classList.add('pointer-events-none'); pdBack.style.display='none'; pdModal.style.display='none'; pdBack.setAttribute('aria-hidden','true'); pdModal.setAttribute('aria-hidden','true'); },180); }
+                document.getElementById('bk-paid-close')?.addEventListener('click', hidePd);
+                document.getElementById('bk-paid-cancel')?.addEventListener('click', hidePd);
+                pdBack && pdBack.addEventListener('click', hidePd);
+                function openPaidBooking(id){ pdId.value = id; showPd(); }
+                pdForm && pdForm.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd = new FormData(pdForm); try { const r=await fetch('?section=bookings', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} }); const j=await r.json(); if(!j.success){ alert(j.message||'Failed to save'); return; } hidePd(); refreshBookings(); } catch (_){ alert('Network error'); } });
+            }
+            // Categories: modal + live menu search + CRUD
+            if (initialSection === 'categories') {
+                const openBtn = document.getElementById('open-add-category');
+                const backdrop = document.getElementById('cat-backdrop');
+                const modal = document.getElementById('cat-modal');
+                const title = document.getElementById('cat-modal-title');
+                const closeBtn = document.getElementById('cat-close');
+                const cancelBtn = document.getElementById('cat-cancel');
+                const form = document.getElementById('cat-form');
+                const actionEl = document.getElementById('cat-action');
+                const idEl = document.getElementById('cat-id');
+                const nameEl = document.getElementById('cat-name');
+                const searchEl = document.getElementById('cat-menu-search');
+                const resultsEl = document.getElementById('cat-menu-results');
+                const allEl = document.getElementById('cat-menu-all');
+                const selectedWrap = document.getElementById('cat-selected');
+                const table = document.getElementById('categories-table');
+
+                let chosen = new Map(); // menu_id => {id, name}
+                function chosenChipClasses() {
+                    const name = (nameEl.value || '').toLowerCase();
+                    // Map category name keywords to Tailwind color classes
+                    if (name.includes('beef')) return { wrap: 'bg-red-50 border-red-300', text: 'text-red-800', remove: 'text-red-600' };
+                    if (name.includes('pork')) return { wrap: 'bg-rose-50 border-rose-300', text: 'text-rose-800', remove: 'text-rose-600' };
+                    if (name.includes('chicken')) return { wrap: 'bg-amber-50 border-amber-300', text: 'text-amber-800', remove: 'text-amber-700' };
+                    if (name.includes('seafood') || name.includes('fish') || name.includes('shrimp')) return { wrap: 'bg-sky-50 border-sky-300', text: 'text-sky-800', remove: 'text-sky-700' };
+                    if (name.includes('vegetable') || name.includes('veggie') || name.includes('vegt')) return { wrap: 'bg-emerald-50 border-emerald-300', text: 'text-emerald-800', remove: 'text-emerald-700' };
+                    if (name.includes('pasta')) return { wrap: 'bg-yellow-50 border-yellow-300', text: 'text-yellow-800', remove: 'text-yellow-700' };
+                    if (name.includes('dessert') || name.includes('sweet')) return { wrap: 'bg-fuchsia-50 border-fuchsia-300', text: 'text-fuchsia-800', remove: 'text-fuchsia-700' };
+                    if (name.includes('best') || name.includes('bestseller') || name.includes('best seller')) return { wrap: 'bg-indigo-50 border-indigo-300', text: 'text-indigo-800', remove: 'text-indigo-700' };
+                    // default neutral styling
+                    return { wrap: 'bg-gray-50 border-gray-300', text: 'text-gray-800', remove: 'text-red-600' };
+                }
+                function renderChosen() {
+                    selectedWrap.innerHTML = '';
+                    if (chosen.size === 0) {
+                        const span = document.createElement('span');
+                        span.className = 'text-sm text-muted-foreground';
+                        span.textContent = 'None selected';
+                        selectedWrap.appendChild(span);
+                        return;
+                    }
+                    const cls = chosenChipClasses();
+                    chosen.forEach((v, k) => {
+                        const chip = document.createElement('div');
+                        chip.className = `inline-flex items-center gap-2 px-2 py-1 border rounded-lg ${cls.wrap} transition-colors duration-150 hover:brightness-95`;
+                        chip.innerHTML = `<span class="text-sm ${cls.text}">${v.name}</span><button type="button" class="${cls.remove} hover:underline" data-remove-menu="${k}">Remove</button>`;
+                        selectedWrap.appendChild(chip);
+                    });
+                }
+                function showModal(edit=false) {
+                    backdrop.style.display = 'block';
+                    modal.style.display = 'flex';
+                    backdrop.setAttribute('aria-hidden', 'false');
+                    modal.setAttribute('aria-hidden', 'false');
+                    backdrop.classList.remove('pointer-events-none');
+                    modal.classList.remove('pointer-events-none');
+                    requestAnimationFrame(()=>{ backdrop.style.opacity='1'; modal.style.opacity='1'; });
+                    title.textContent = edit ? 'Edit Category' : 'Add Category';
+                    // Load all menus (once per open)
+                    if (allEl && allEl.childElementCount === 0) {
+                        fetch('?section=categories&ajax=1&action=list_menu', { headers: { 'X-Requested-With': 'XMLHttpRequest' }})
+                            .then(r => r.json())
+                            .then(data => {
+                                allEl.innerHTML = '';
+                                if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+                                    const div = document.createElement('div');
+                                    div.className = 'p-2 text-sm text-muted-foreground';
+                                    div.textContent = 'No menus available';
+                                    allEl.appendChild(div);
+                                    return;
+                                }
+                                data.data.forEach(row => {
+                                    const item = document.createElement('div');
+                                    item.className = 'flex items-center justify-between px-2 py-1 hover:bg-gray-50 border-b last:border-b-0';
+                                    const name = document.createElement('div');
+                                    name.className = 'text-sm';
+                                    name.textContent = row.menu_name;
+                                    const btn = document.createElement('button');
+                                    btn.type = 'button';
+                                    btn.className = 'px-2 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50';
+                                    btn.textContent = 'Add';
+                                    btn.dataset.menuId = String(row.menu_id);
+                                    if (chosen.has(row.menu_id)) { btn.disabled = true; btn.classList.add('opacity-50','cursor-not-allowed'); }
+                                    btn.addEventListener('click', ()=>{
+                                        if (!chosen.has(row.menu_id)) {
+                                            chosen.set(row.menu_id, { id: row.menu_id, name: row.menu_name });
+                                            renderChosen();
+                                            btn.disabled = true; btn.classList.add('opacity-50','cursor-not-allowed');
+                                        }
+                                    });
+                                    item.appendChild(name); item.appendChild(btn);
+                                    allEl.appendChild(item);
+                                });
+                            })
+                            .catch(()=>{
+                                allEl.innerHTML = '<div class="p-2 text-sm text-red-600">Failed to load menus</div>';
+                            });
+                    }
+                }
+                function hideModal() {
+                    backdrop.style.opacity = '0';
+                    modal.style.opacity = '0';
+                    setTimeout(()=>{
+                        backdrop.classList.add('pointer-events-none');
+                        modal.classList.add('pointer-events-none');
+                        backdrop.style.display = 'none';
+                        modal.style.display = 'none';
+                        backdrop.setAttribute('aria-hidden','true');
+                        modal.setAttribute('aria-hidden','true');
+                        form.reset();
+                        resultsEl.innerHTML='';
+                        resultsEl.classList.add('hidden');
+                        if (allEl) allEl.innerHTML='';
+                        chosen.clear();
+                        renderChosen();
+                        actionEl.value = 'create';
+                        idEl.value = '';
+                    }, 180);
+                }
+                closeBtn && closeBtn.addEventListener('click', hideModal);
+                cancelBtn && cancelBtn.addEventListener('click', hideModal);
+                backdrop && backdrop.addEventListener('click', hideModal);
+                openBtn && openBtn.addEventListener('click', ()=> showModal(false));
+
+                // Live menu search
+                let st = null; let ctrl = null; let seq = 0;
+                searchEl && searchEl.addEventListener('input', ()=>{
+                    clearTimeout(st);
+                    const q = (searchEl.value||'').trim();
+                    if (q === '') { resultsEl.innerHTML=''; resultsEl.classList.add('hidden'); return; }
+                    st = setTimeout(async ()=>{
+                        try { ctrl && ctrl.abort(); } catch {}
+                        ctrl = new AbortController();
+                        const mySeq = ++seq;
+                        const res = await fetch(`?section=categories&ajax=1&action=search_menu&q=${encodeURIComponent(q)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: ctrl.signal });
+                        const data = await res.json();
+                        if (mySeq !== seq) return;
+                        resultsEl.innerHTML = '';
+                        if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
+                            resultsEl.classList.remove('hidden');
+                            const div = document.createElement('div');
+                            div.className = 'p-2 text-sm text-muted-foreground';
+                            div.textContent = 'No results';
+                            resultsEl.appendChild(div);
+                            return;
+                        }
+                        resultsEl.classList.remove('hidden');
+                        // filter out already-selected items
+                        const filtered = data.data.filter(row => !chosen.has(row.menu_id));
+                        filtered.forEach(row => {
+                            const item = document.createElement('div');
+                            item.className = 'flex items-center justify-between px-2 py-1 hover:bg-gray-50 border-b last:border-b-0';
+                            const name = document.createElement('div');
+                            name.className = 'text-sm';
+                            name.textContent = row.menu_name;
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'px-2 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50';
+                            btn.textContent = 'Add';
+                            btn.addEventListener('click', ()=>{
+                                if (!chosen.has(row.menu_id)) {
+                                    chosen.set(row.menu_id, { id: row.menu_id, name: row.menu_name });
+                                    renderChosen();
+                                }
+                            });
+                            item.appendChild(name); item.appendChild(btn);
+                            resultsEl.appendChild(item);
+                        });
+                        if (filtered.length === 0) {
+                            const div = document.createElement('div');
+                            div.className = 'p-2 text-sm text-muted-foreground';
+                            div.textContent = 'No results';
+                            resultsEl.appendChild(div);
+                        }
+                    }, 250);
+                });
+                selectedWrap && selectedWrap.addEventListener('click', (e)=>{
+                    const btn = e.target.closest('[data-remove-menu]');
+                    if (!btn) return;
+                    const id = parseInt(btn.getAttribute('data-remove-menu')||'0', 10);
+                    if (chosen.has(id)) {
+                        chosen.delete(id);
+                        renderChosen();
+                        // Re-enable any disabled Add button in All Menus for this id
+                        if (allEl) {
+                            const b = allEl.querySelector(`button[data-menu-id="${id}"]`);
+                            if (b) { b.disabled = false; b.classList.remove('opacity-50','cursor-not-allowed'); }
+                        }
+                    }
+                });
+                renderChosen();
+                // Re-render chosen chips on category name change to update color theme
+                nameEl && nameEl.addEventListener('input', renderChosen);
+
+                // Edit existing category: fetch and populate
+                table && table.addEventListener('click', async (e) => {
+                    const del = e.target.closest('[data-delete-category]');
+                    if (del) {
+                        const id = del.getAttribute('data-delete-category');
+                        if (id && confirm('Delete this category?')) {
+                            const params = new URLSearchParams({ section:'categories', ajax:'1', action:'delete', category_id:String(id) });
+                            await fetch('?'+params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+                            window.location.reload();
+                        }
+                        return;
+                    }
+                    const edit = e.target.closest('[data-edit-category]');
+                    if (edit) {
+                        const id = edit.getAttribute('data-edit-category');
+                        if (!id) return;
+                        try {
+                            const res = await fetch(`?section=categories&ajax=1&action=get_category&category_id=${encodeURIComponent(id)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+                            const data = await res.json();
+                            if (!data.success) { alert(data.message||'Failed to fetch category'); return; }
+                            const c = data.data.category; const menus = data.data.menus || [];
+                            actionEl.value = 'update';
+                            idEl.value = c.category_id;
+                            nameEl.value = c.category_name || '';
+                            chosen.clear();
+                            menus.forEach(m => chosen.set(m.menu_id, { id: m.menu_id, name: m.menu_name }));
+                            renderChosen();
+                            showModal(true);
+                        } catch (_) { alert('Network error'); }
+                    }
+                });
+
+                // Submit create/update
+                form && form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(form);
+                    // append menu_ids[]
+                    chosen.forEach((v) => { fd.append('menu_ids[]', String(v.id)); });
+                    try {
+                        const res = await fetch('?section=categories', { method:'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+                        const data = await res.json();
+                        if (!data.success) { alert(data.message || 'Save failed'); return; }
+                        const url = new URL(window.location.href);
+                        const cp = url.searchParams.get('cat_page');
+                        window.location.href = cp ? `?section=categories&cat_page=${encodeURIComponent(cp)}` : '?section=categories';
+                    } catch (_) { alert('Network error'); }
+                });
             }
 
             // Revenue Chart (guarded)
@@ -1424,6 +3490,118 @@ if ($sectionEarly === 'products') {
 
         // Add Menu modal + submit
         document.addEventListener('DOMContentLoaded', function() {
+            // Orders: edit, mark paid, delete
+            if ('<?php echo htmlspecialchars($section); ?>' === 'orders') {
+                const ordersTable = document.getElementById('orders-table');
+                const oback = document.getElementById('edit-order-backdrop');
+                const omodal = document.getElementById('edit-order-modal');
+                const oform = document.getElementById('edit-order-form');
+                const oidEl = document.getElementById('edit-order-id');
+                const ostatusEl = document.getElementById('edit-order-status');
+                const oneededEl = document.getElementById('edit-order-needed');
+                const ostreetEl = document.getElementById('edit-oa-street');
+                const ocityEl = document.getElementById('edit-oa-city');
+                const oprovEl = document.getElementById('edit-oa-province');
+                const ocancel = document.getElementById('edit-order-cancel');
+                const ocancel2 = document.getElementById('edit-order-cancel-2');
+
+                function showOModal() {
+                    if (!oback || !omodal) return;
+                    oback.style.display = 'block';
+                    omodal.style.display = 'flex';
+                    oback.setAttribute('aria-hidden','false');
+                    omodal.setAttribute('aria-hidden','false');
+                    oback.classList.remove('pointer-events-none');
+                    omodal.classList.remove('pointer-events-none');
+                    requestAnimationFrame(()=>{
+                        oback.style.opacity='1';
+                        omodal.style.opacity='1';
+                    });
+                }
+                function hideOModal() {
+                    if (!oback || !omodal) return;
+                    oback.style.opacity='0';
+                    omodal.style.opacity='0';
+                    setTimeout(()=>{
+                        oback.classList.add('pointer-events-none');
+                        omodal.classList.add('pointer-events-none');
+                        oback.style.display='none';
+                        omodal.style.display='none';
+                        oback.setAttribute('aria-hidden','true');
+                        omodal.setAttribute('aria-hidden','true');
+                        oform && oform.reset();
+                    }, 180);
+                }
+                ocancel && ocancel.addEventListener('click', hideOModal);
+                ocancel2 && ocancel2.addEventListener('click', hideOModal);
+                oback && oback.addEventListener('click', hideOModal);
+
+                ordersTable && ordersTable.addEventListener('click', async (e) => {
+                    const editBtn = e.target.closest('[data-edit-order]');
+                    const paidBtn = e.target.closest('[data-paid-order]');
+                    const delBtn = e.target.closest('[data-delete-order]');
+                    if (editBtn) {
+                        const id = editBtn.getAttribute('data-edit-order');
+                        try {
+                            const res = await fetch(`?section=orders&ajax=1&action=get_order&order_id=${encodeURIComponent(id)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+                            const data = await res.json();
+                            if (!data.success) { alert(data.message || 'Failed to fetch order'); return; }
+                            const o = data.data || {};
+                            if (oidEl) oidEl.value = o.order_id || id;
+                            if (ostatusEl) ostatusEl.value = o.order_status || 'pending';
+                            if (oneededEl) oneededEl.value = (o.order_needed || '').substring(0,10);
+                            if (ostreetEl) ostreetEl.value = o.oa_street || '';
+                            if (ocityEl) ocityEl.value = o.oa_city || '';
+                            if (oprovEl) oprovEl.value = o.oa_province || '';
+                            showOModal();
+                        } catch (_) {
+                            alert('Network error.');
+                        }
+                        return;
+                    }
+                    if (paidBtn) {
+                        const id = paidBtn.getAttribute('data-paid-order');
+                        if (!confirm('Mark this order as Paid?')) return;
+                        try {
+                            const fd = new FormData();
+                            fd.append('ajax','1');
+                            fd.append('action','mark_paid');
+                            fd.append('order_id', id);
+                            await fetch('?section=orders', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }}).then(r=>r.json());
+                            // Refresh the page to update payment column
+                            window.location.reload();
+                        } catch (_) { alert('Request failed.'); }
+                        return;
+                    }
+                    if (delBtn) {
+                        const id = delBtn.getAttribute('data-delete-order');
+                        if (!confirm('Delete this order? This will remove its items and address.')) return;
+                        try {
+                            const fd = new FormData();
+                            fd.append('ajax','1');
+                            fd.append('action','delete');
+                            fd.append('order_id', id);
+                            await fetch('?section=orders', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }}).then(r=>r.json());
+                            window.location.reload();
+                        } catch (_) { alert('Delete failed.'); }
+                        return;
+                    }
+                });
+
+                oform && oform.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    try {
+                        const fd = new FormData(oform);
+                        fd.append('ajax','1');
+                        fd.append('action','update_order');
+                        await fetch('?section=orders', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }}).then(r=>r.json());
+                        hideOModal();
+                        window.location.reload();
+                    } catch (_) {
+                        alert('Save failed.');
+                    }
+                });
+            }
             // EDIT modal elements
             const editBackdrop = document.getElementById('edit-menu-backdrop');
             const editModal = document.getElementById('edit-menu-modal');
@@ -1919,6 +4097,354 @@ if ($sectionEarly === 'products') {
                         <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700 disabled:opacity-60" id="edit-menu-submit">Save changes</button>
                     </div>
                     <p class="text-sm mt-2" id="edit-menu-message"></p>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Order Modal -->
+    <div id="edit-order-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+    <div id="edit-order-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+        <div class="w-full max-w-md mx-4 scale-95 transition-transform duration-200">
+            <div class="bg-white rounded-lg shadow-xl">
+                <div class="flex items-center justify-between px-4 py-3 border-b">
+                    <h3 class="text-lg font-semibold text-primary">Edit Order</h3>
+                    <button type="button" id="edit-order-cancel" class="p-2 hover:bg-gray-100 rounded">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="edit-order-form" class="p-4 space-y-4">
+                    <input type="hidden" name="order_id" id="edit-order-id" />
+                    <div class="grid grid-cols-1 gap-3">
+                        <div>
+                            <label class="text-sm text-muted-foreground">Order Status</label>
+                            <select name="order_status" id="edit-order-status" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="pending">Pending</option>
+                                <option value="in progress">In Progress</option>
+                                <option value="completed">Completed</option>
+                                <option value="canceled">Canceled</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Date Needed</label>
+                            <input type="date" name="order_needed" id="edit-order-needed" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Street</label>
+                            <input type="text" name="oa_street" id="edit-oa-street" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-sm text-muted-foreground">City</label>
+                                <input type="text" name="oa_city" id="edit-oa-city" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                            </div>
+                            <div>
+                                <label class="text-sm text-muted-foreground">Province</label>
+                                <input type="text" name="oa_province" id="edit-oa-province" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t">
+                        <button type="button" id="edit-order-cancel-2" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Booking Modal -->
+    <div id="bk-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+    <div id="bk-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+        <div class="w-full max-w-2xl mx-4 scale-95 transition-transform duration-200">
+            <div class="bg-white rounded-lg shadow-xl">
+                <div class="flex items-center justify-between px-4 py-3 border-b">
+                    <h3 id="bk-modal-title" class="text-lg font-semibold text-primary">Edit Booking</h3>
+                    <button type="button" id="bk-close" class="p-2 hover:bg-gray-100 rounded"><i class="fas fa-times"></i></button>
+                </div>
+                <form id="bk-form" class="p-4 space-y-4" method="POST">
+                    <input type="hidden" name="section" value="bookings" />
+                    <input type="hidden" name="ajax" value="1" />
+                    <input type="hidden" name="action" id="bk-action" value="update" />
+                    <input type="hidden" name="booking_id" id="bk-id" />
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm text-muted-foreground">Name</label>
+                            <input type="text" name="eb_name" id="bk-name" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Contact</label>
+                            <input type="text" name="eb_contact" id="bk-contact" required minlength="11" maxlength="11" pattern="\d{11}" inputmode="numeric" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Type</label>
+                            <input type="text" name="eb_type" id="bk-type-input" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Venue</label>
+                            <input type="text" name="eb_venue" id="bk-venue" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Date & Time</label>
+                            <input type="datetime-local" name="eb_date" id="bk-date-input" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Order</label>
+                            <select name="eb_order" id="bk-order-input" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="customize">Customize</option>
+                                <option value="party trays">Party trays</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Package Pax</label>
+                            <select name="eb_package_pax" id="bk-pax" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">None</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="150">150</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Add-on Pax</label>
+                            <input type="number" name="eb_addon_pax" id="bk-addon" min="0" step="1" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm text-muted-foreground">Status</label>
+                            <select name="eb_status" id="bk-status-input" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="Pending">Pending</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Paid">Paid</option>
+                                <option value="Canceled">Canceled</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm text-muted-foreground">Notes</label>
+                            <textarea name="eb_notes" id="bk-notes" rows="3" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary"></textarea>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t">
+                        <button type="button" id="bk-cancel" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mark Paid Booking Modal -->
+    <div id="bk-paid-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+    <div id="bk-paid-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+        <div class="w-full max-w-md mx-4 scale-95 transition-transform duration-200">
+            <div class="bg-white rounded-lg shadow-xl">
+                <div class="flex items-center justify-between px-4 py-3 border-b">
+                    <h3 class="text-lg font-semibold text-primary">Record Booking Payment</h3>
+                    <button type="button" id="bk-paid-close" class="p-2 hover:bg-gray-100 rounded"><i class="fas fa-times"></i></button>
+                </div>
+                <form id="bk-paid-form" class="p-4 space-y-4" method="POST">
+                    <input type="hidden" name="section" value="bookings" />
+                    <input type="hidden" name="ajax" value="1" />
+                    <input type="hidden" name="action" value="mark_paid" />
+                    <input type="hidden" name="booking_id" id="bk-paid-id" />
+                    <div>
+                        <label class="text-sm text-muted-foreground">Payment Method</label>
+                        <select name="pay_method" id="bk-paid-method" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="Cash">Cash</option>
+                            <option value="Online">Online</option>
+                            <option value="Credit">Credit</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm text-muted-foreground">Amount</label>
+                        <input type="number" name="pay_amount" id="bk-paid-amount" step="0.01" min="0" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                    </div>
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t">
+                        <button type="button" id="bk-paid-cancel" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Catering Package Modal -->
+    <div id="cp-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+    <div id="cp-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+        <div class="w-full max-w-2xl mx-4 scale-95 transition-transform duration-200">
+            <div class="bg-white rounded-lg shadow-xl">
+                <div class="flex items-center justify-between px-4 py-3 border-b">
+                    <h3 id="cp-modal-title" class="text-lg font-semibold text-primary">Edit Catering Package</h3>
+                    <button type="button" id="cp-close" class="p-2 hover:bg-gray-100 rounded"><i class="fas fa-times"></i></button>
+                </div>
+                <form id="cp-form" class="p-4 space-y-4" method="POST">
+                    <input type="hidden" name="section" value="catering" />
+                    <input type="hidden" name="ajax" value="1" />
+                    <input type="hidden" name="action" id="cp-action" value="update" />
+                    <input type="hidden" name="cp_id" id="cp-id" />
+                    <input type="hidden" name="cp_pay_id" id="cp-pay-id" />
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm text-muted-foreground">Name</label>
+                            <input type="text" name="cp_name" id="cp-name" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Phone</label>
+                            <input type="text" name="cp_phone" id="cp-phone" required minlength="11" maxlength="11" pattern="\d{11}" inputmode="numeric" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm text-muted-foreground">Place</label>
+                            <input type="text" name="cp_place" id="cp-place" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Date</label>
+                            <input type="date" name="cp_date" id="cp-date-input" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Price</label>
+                            <input type="number" name="cp_price" id="cp-price" step="0.01" min="0" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Add-on Pax</label>
+                            <input type="number" name="cp_addon_pax" id="cp-addon" min="0" step="1" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm text-muted-foreground">Notes</label>
+                            <textarea name="cp_notes" id="cp-notes" rows="3" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary"></textarea>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Payment Method</label>
+                            <select name="cp_pay_method" id="cp-pay-method" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">None</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Online">Online</option>
+                                <option value="Credit">Credit</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Payment Amount</label>
+                            <input type="number" name="cp_pay_amount" id="cp-pay-amount" step="0.01" min="0" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Payment Status</label>
+                            <select name="cp_pay_status" id="cp-pay-status" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">None</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Partial">Partial</option>
+                                <option value="Paid">Paid</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t">
+                        <button type="button" id="cp-cancel" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Record Catering Payment Modal -->
+    <div id="cp-paid-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+    <div id="cp-paid-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+        <div class="w-full max-w-md mx-4 scale-95 transition-transform duration-200">
+            <div class="bg-white rounded-lg shadow-xl">
+                <div class="flex items-center justify-between px-4 py-3 border-b">
+                    <h3 class="text-lg font-semibold text-primary">Mark Paid</h3>
+                    <button type="button" id="cp-paid-close" class="p-2 hover:bg-gray-100 rounded"><i class="fas fa-times"></i></button>
+                </div>
+                <form id="cp-paid-form" class="p-4 space-y-4" method="POST">
+                    <input type="hidden" name="section" value="catering" />
+                    <input type="hidden" name="ajax" value="1" />
+                    <input type="hidden" name="action" value="mark_paid" />
+                    <input type="hidden" name="cp_id" id="cp-paid-id" />
+                    <div>
+                        <label class="text-sm text-muted-foreground">Payment Method</label>
+                        <select name="pay_method" id="cp-paid-method" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="Cash">Cash</option>
+                            <option value="Online">Online</option>
+                            <option value="Credit">Credit</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm text-muted-foreground">Amount</label>
+                        <input type="number" name="pay_amount" id="cp-paid-amount" step="0.01" min="0" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                    </div>
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t">
+                        <button type="button" id="cp-paid-cancel" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- Add/Edit Employee Modal -->
+    <div id="emp-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+    <div id="emp-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+        <div class="dialog w-full max-w-xl mx-4 scale-95 transition-transform duration-200">
+            <div class="bg-white rounded-lg shadow-xl">
+                <div class="flex items-center justify-between px-4 py-3 border-b">
+                    <h3 id="emp-modal-title" class="text-lg font-semibold text-primary">Add Employee</h3>
+                    <button type="button" id="emp-close" class="p-2 hover:bg-gray-100 rounded"><i class="fas fa-times"></i></button>
+                </div>
+                <form id="emp-form" class="p-4 space-y-4" enctype="multipart/form-data" method="POST">
+                    <input type="hidden" name="section" value="employees" />
+                    <input type="hidden" name="ajax" value="1" />
+                    <input type="hidden" name="action" id="emp-action" value="create" />
+                    <input type="hidden" name="employee_id" id="emp-id" />
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm text-muted-foreground">First Name</label>
+                            <input type="text" name="emp_fn" id="emp-fn" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Last Name</label>
+                            <input type="text" name="emp_ln" id="emp-ln" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Sex</label>
+                            <select name="emp_sex" id="emp-sex-input" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Email</label>
+                            <input type="email" name="emp_email" id="emp-email" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Phone</label>
+                            <input type="text" name="emp_phone" id="emp-phone" required minlength="11" maxlength="11" pattern="\d{11}" inputmode="numeric" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Role</label>
+                            <input type="text" name="emp_role" id="emp-role-input" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                                <input type="checkbox" name="emp_avail" id="emp-avail-input" class="rounded border-gray-300" checked />
+                                Available
+                            </label>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm text-muted-foreground">Photo</label>
+                            <input id="emp-photo" name="emp_photo" type="file" accept="image/*" class="block w-full mt-1 text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-green-700" />
+                            <div class="mt-3 flex items-start gap-3">
+                                <img id="emp-photo-preview" src="" alt="Preview" class="hidden w-24 h-24 object-cover rounded border" />
+                                <div class="flex flex-col gap-2">
+                                    <p class="text-xs text-muted-foreground">Optional. Square image 512x512+ recommended.</p>
+                                    <button type="button" id="emp-photo-clear" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-gray-200 text-xs hover:bg-gray-50">
+                                        <i class="fas fa-eraser fa-xs"></i>
+                                        Clear photo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t">
+                        <button type="button" id="emp-cancel" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700">Save</button>
+                    </div>
                 </form>
             </div>
         </div>
