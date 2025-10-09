@@ -45,7 +45,6 @@ if ($sectionEarly === 'products') {
             try {
                 $row = $db->viewMenuID($mid);
                 if (!$row) { echo json_encode(['success'=>false,'message'=>'Menu not found']); exit; }
-                // Return only fields needed for editing
                 echo json_encode([
                     'success' => true,
                     'data' => [
@@ -89,16 +88,13 @@ if ($sectionEarly === 'products') {
                         echo json_encode(['success'=>false,'message'=>'Failed to save uploaded image']); exit;
                     }
                 }
-                // Try to use database layer update method; fall back to partial updates if not available
                 $ok = false;
                 if (method_exists($db, 'updateMenu')) {
                     try {
-                        // Common signature guess: (id, name, desc, pax, price, avail, pic|null)
                         $ok = $db->updateMenu($mid, $name, $desc, $paxVal, $price, $availInt, $newPicName);
                     } catch (Throwable $e) { $ok = false; }
                 }
                 if (!$ok) {
-                    // Try more granular updates if available
                     $ok = true;
                     try { if (method_exists($db, 'updateMenuName')) $db->updateMenuName($mid, $name); } catch (Throwable $e) { $ok = false; }
                     try { if (method_exists($db, 'updateMenuDesc')) $db->updateMenuDesc($mid, $desc); } catch (Throwable $e) {}
@@ -158,6 +154,11 @@ if ($sectionEarly === 'orders') {
                 $stmt->execute([$oid]);
                 $row = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$row) { echo json_encode(['success'=>false,'message'=>'Order not found']); exit; }
+                // Fetch items for this order
+                $sti = $pdo->prepare("SELECT oi.oi_quantity, oi.oi_price, m.menu_name FROM orderitems oi LEFT JOIN menu m ON m.menu_id=oi.menu_id WHERE oi.order_id=? ORDER BY oi.oi_id ASC");
+                $sti->execute([$oid]);
+                $items = $sti->fetchAll(PDO::FETCH_ASSOC);
+                $row['items'] = $items;
                 echo json_encode(['success'=>true,'data'=>$row]);
             } catch (Throwable $e) {
                 echo json_encode(['success'=>false,'message'=>'Error fetching order']);
@@ -426,6 +427,144 @@ if ($sectionEarly === 'catering') {
     }
 }
 
+// Packages early actions (AJAX endpoints)
+if ($sectionEarly === 'packages') {
+    $action = $_GET['action'] ?? '';
+    $pkgId = isset($_GET['package_id']) ? (int)$_GET['package_id'] : 0;
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    if ($pkgId <= 0 && isset($_POST['package_id'])) { $pkgId = (int)$_POST['package_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    $pdo = $db->opencon();
+
+    if ($action === 'get_package' && $pkgId > 0) {
+        header('Content-Type: application/json');
+        try {
+            $p = $pdo->prepare("SELECT * FROM packages WHERE package_id=?");
+            $p->execute([$pkgId]);
+            $pkg = $p->fetch(PDO::FETCH_ASSOC);
+            if (!$pkg) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            $it = $pdo->prepare("SELECT item_id, item_label, qty, unit, is_optional, sort_order FROM package_items WHERE package_id=? ORDER BY sort_order ASC, item_id ASC");
+            $it->execute([$pkgId]);
+            $items = $it->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['success'=>true,'data'=>$pkg,'items'=>$items]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Fetch failed']); }
+        exit;
+    }
+
+    if ($action === 'create') {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $pax = trim((string)($_POST['pax'] ?? ''));
+            $price = isset($_POST['base_price']) && $_POST['base_price'] !== '' ? (float)$_POST['base_price'] : null;
+            $isActive = isset($_POST['is_active']) ? (int)($_POST['is_active'] ? 1 : 0) : 1;
+            $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
+            if ($name === '' || $pax === '') { echo json_encode(['success'=>false,'message'=>'Name and Pax are required']); exit; }
+            $pdo->beginTransaction();
+            $ins = $pdo->prepare("INSERT INTO packages (name, pax, base_price, is_active, notes) VALUES (?, ?, ?, ?, ?)");
+            $ins->execute([$name, $pax, $price, $isActive, $notes]);
+            $newId = (int)$pdo->lastInsertId();
+            // Items arrays
+            $labels = isset($_POST['item_label']) ? (array)$_POST['item_label'] : [];
+            $qtys = isset($_POST['qty']) ? (array)$_POST['qty'] : [];
+            $units = isset($_POST['unit']) ? (array)$_POST['unit'] : [];
+            $opts = isset($_POST['is_optional']) ? (array)$_POST['is_optional'] : [];
+            $orders = isset($_POST['sort_order']) ? (array)$_POST['sort_order'] : [];
+            if ($labels) {
+                $insI = $pdo->prepare("INSERT INTO package_items (package_id, item_label, qty, unit, is_optional, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
+                $n = count($labels);
+                for ($i=0; $i<$n; $i++) {
+                    $lbl = trim((string)($labels[$i] ?? '')); if ($lbl==='') continue;
+                    $qv = ($qtys[$i] ?? '') !== '' ? (int)$qtys[$i] : null;
+                    $uv = trim((string)($units[$i] ?? 'other'));
+                    $ov = isset($opts[$i]) && ($opts[$i] === '1' || $opts[$i] === 1 || $opts[$i] === 'true') ? 1 : 0;
+                    $sv = ($orders[$i] ?? '') !== '' ? (int)$orders[$i] : $i;
+                    try { $insI->execute([$newId, $lbl, $qv, $uv, $ov, $sv]); } catch (Throwable $e) {}
+                }
+            }
+            // Handle optional photo upload; saved as uploads/packages/package_{id}.<ext>
+            if (!empty($_FILES['photo']) && is_uploaded_file($_FILES['photo']['tmp_name'])) {
+                $orig = $_FILES['photo']['name'];
+                $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                $allowed = ['jpg','jpeg','png','webp','gif','avif'];
+                if (in_array($ext, $allowed)) {
+                    $destDir = realpath(__DIR__ . '/../uploads/packages');
+                    if ($destDir === false) { $destDir = __DIR__ . '/../uploads/packages'; }
+                    @mkdir($destDir, 0775, true);
+                    $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $newId . '.' . $ext;
+                    @array_map(function($f){ @unlink($f); }, glob(rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $newId . '.*'));
+                    move_uploaded_file($_FILES['photo']['tmp_name'], $destPath);
+                }
+            }
+            $pdo->commit();
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) {
+            try { $pdo->rollBack(); } catch (Throwable $e2) {}
+            echo json_encode(['success'=>false,'message'=>'Create failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'update' && $pkgId > 0) {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $pax = trim((string)($_POST['pax'] ?? ''));
+            $price = isset($_POST['base_price']) && $_POST['base_price'] !== '' ? (float)$_POST['base_price'] : null;
+            $isActive = isset($_POST['is_active']) ? (int)($_POST['is_active'] ? 1 : 0) : 1;
+            $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
+            if ($name === '' || $pax === '') { echo json_encode(['success'=>false,'message'=>'Name and Pax are required']); exit; }
+            $pdo->beginTransaction();
+            $pdo->prepare("UPDATE packages SET name=?, pax=?, base_price=?, is_active=?, notes=? WHERE package_id=?")
+                ->execute([$name, $pax, $price, $isActive, $notes, $pkgId]);
+            // Replace items
+            $pdo->prepare("DELETE FROM package_items WHERE package_id=?")->execute([$pkgId]);
+            $labels = isset($_POST['item_label']) ? (array)$_POST['item_label'] : [];
+            $qtys = isset($_POST['qty']) ? (array)$_POST['qty'] : [];
+            $units = isset($_POST['unit']) ? (array)$_POST['unit'] : [];
+            $opts = isset($_POST['is_optional']) ? (array)$_POST['is_optional'] : [];
+            $orders = isset($_POST['sort_order']) ? (array)$_POST['sort_order'] : [];
+            if ($labels) {
+                $insI = $pdo->prepare("INSERT INTO package_items (package_id, item_label, qty, unit, is_optional, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
+                $n = count($labels);
+                for ($i=0; $i<$n; $i++) {
+                    $lbl = trim((string)($labels[$i] ?? '')); if ($lbl==='') continue;
+                    $qv = ($qtys[$i] ?? '') !== '' ? (int)$qtys[$i] : null;
+                    $uv = trim((string)($units[$i] ?? 'other'));
+                    $ov = isset($opts[$i]) && ($opts[$i] === '1' || $opts[$i] === 1 || $opts[$i] === 'true') ? 1 : 0;
+                    $sv = ($orders[$i] ?? '') !== '' ? (int)$orders[$i] : $i;
+                    try { $insI->execute([$pkgId, $lbl, $qv, $uv, $ov, $sv]); } catch (Throwable $e) {}
+                }
+            }
+            // Optional photo upload replace
+            if (!empty($_FILES['photo']) && is_uploaded_file($_FILES['photo']['tmp_name'])) {
+                $orig = $_FILES['photo']['name'];
+                $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                $allowed = ['jpg','jpeg','png','webp','gif','avif'];
+                if (in_array($ext, $allowed)) {
+                    $destDir = realpath(__DIR__ . '/../uploads/packages');
+                    if ($destDir === false) { $destDir = __DIR__ . '/../uploads/packages'; }
+                    @mkdir($destDir, 0775, true);
+                    $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $pkgId . '.' . $ext;
+                    @array_map(function($f){ @unlink($f); }, glob(rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $pkgId . '.*'));
+                    move_uploaded_file($_FILES['photo']['tmp_name'], $destPath);
+                }
+            }
+            $pdo->commit();
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} echo json_encode(['success'=>false,'message'=>'Update failed']); }
+        exit;
+    }
+
+    if ($action === 'delete' && $pkgId > 0) {
+        try { $pdo->prepare("DELETE FROM packages WHERE package_id=?")->execute([$pkgId]); } catch (Throwable $e) {}
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=packages'); exit;
+    }
+}
+
 // Categories early actions (AJAX endpoints)
 if ($sectionEarly === 'categories') {
     $action = $_GET['action'] ?? '';
@@ -534,7 +673,7 @@ if ($sectionEarly === 'categories') {
     }
 }
 
-// Employees early actions (AJAX endpoints)
+// Employees early actions (AJAX endpoints) — removed from UI/navigation
 if ($sectionEarly === 'employees') {
     $action = $_GET['action'] ?? '';
     $eid = isset($_GET['employee_id']) ? (int)$_GET['employee_id'] : 0;
@@ -771,20 +910,25 @@ if ($sectionEarly === 'employees') {
                 $totalCount = 0; $menus = [];
             }
             $totalPages = max(1, (int)ceil($totalCount / $limit));
-        } elseif ($section === 'projects') {
-            $projPage = max(1, (int)($_GET['proj_page'] ?? 1));
-            $projLimit = 10;
-            $projOffset = ($projPage - 1) * $projLimit;
-            try {
-                // Updated signatures: countFilteredMenu(category_id, avail, q) and getFilteredMenuPaged(category_id, avail, sort, limit, offset, q)
-                $projTotalCount = $db->countFilteredMenu(null, null, null);
-                $projMenus = $db->getFilteredMenuPaged(null, null, null, $projLimit, $projOffset, null);
-            } catch (Throwable $e) {
-                $projTotalCount = 0; $projMenus = [];
-            }
-            $projTotalPages = max(1, (int)ceil($projTotalCount / $projLimit));
-        }
-        // Helper to build query preserving filters
+                }
+                // Packages list data (paginate) when viewing Packages section
+                $pkgPage = max(1, (int)($_GET['pkg_page'] ?? 1));
+                $pkgLimit = 8;
+                $pkgOffset = ($pkgPage - 1) * $pkgLimit;
+                $pkgRows = []; $pkgTotal = 0; $pkgPages = 1;
+                if ($section === 'packages') {
+                    try {
+                        $pdo = $db->opencon();
+                        $pkgTotal = (int)$pdo->query("SELECT COUNT(*) FROM packages")->fetchColumn();
+                        $stmt = $pdo->prepare("SELECT package_id, name, pax, base_price, is_active, notes, updated_at FROM packages ORDER BY updated_at DESC, package_id DESC LIMIT :lim OFFSET :off");
+                        $stmt->bindValue(':lim', $pkgLimit, PDO::PARAM_INT);
+                        $stmt->bindValue(':off', $pkgOffset, PDO::PARAM_INT);
+                        $stmt->execute();
+                        $pkgRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                        $pkgPages = max(1, (int)ceil($pkgTotal / $pkgLimit));
+                    } catch (Throwable $e) { $pkgRows = []; $pkgTotal = 0; $pkgPages = 1; }
+                }
+                // Helper to build query preserving filters
         function build_query($overrides = []) {
             $params = $_GET;
             $params['section'] = 'products';
@@ -802,6 +946,17 @@ if ($sectionEarly === 'employees') {
             if ($menu_pic === '') return null;
             if (str_starts_with($menu_pic, 'http') || str_contains($menu_pic, '/')) return $menu_pic;
             return '../menu/' . $menu_pic;
+        }
+        // Package image helper: return relative URL for uploaded package image or logo fallback
+        function pkg_img_src($package_id) {
+            $id = (int)$package_id; if ($id <= 0) return '../images/logo.png';
+            $dir = __DIR__ . '/../uploads/packages';
+            $candidates = ['jpg','jpeg','png','webp','gif','avif'];
+            foreach ($candidates as $ext) {
+                $path = $dir . '/package_' . $id . '.' . $ext;
+                if (file_exists($path)) return '../uploads/packages/package_' . $id . '.' . $ext;
+            }
+            return '../images/logo.png';
         }
         // Category chip classes (bg + border) used in Categories table chips
         function category_chip_classes($name, $id) {
@@ -1110,8 +1265,9 @@ if ($sectionEarly === 'employees') {
                         <div class="text-xs opacity-80">Admin Panel</div>
                     </div>
                 </div>
-                <button id="sidebar-toggle" class="text-sidebar-foreground hover:bg-sidebar-accent p-1 h-8 w-8 rounded transition-colors">
-                    <i id="sidebar-icon" class="fas fa-times text-sm"></i>
+                <!-- Sidebar is locked: toggle hidden -->
+                <button id="sidebar-toggle" class="hidden">
+                    <i id="sidebar-icon" class="fas fa-bars text-sm"></i>
                 </button>
             </div>
 
@@ -1161,25 +1317,11 @@ if ($sectionEarly === 'employees') {
                     </div>
                 </a>
 
-                <a class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'employees') ? 'active' : ''; ?>" href="?section=employees">
-                    <i class="fas fa-users flex-shrink-0 w-5 h-5"></i>
+                <!-- New: Packages section -->
+                <a class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'packages') ? 'active' : ''; ?>" href="?section=packages">
+                    <i class="fas fa-boxes-stacked flex-shrink-0 w-5 h-5"></i>
                     <div class="sidebar-text text-left">
-                        <div class="font-medium text-sm">Employees</div>
-                    </div>
-                </a>
-
-                <a id="nav-projects" class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'projects') ? 'active' : ''; ?>" href="?section=projects">
-                    <i class="fas fa-diagram-project flex-shrink-0 w-5 h-5"></i>
-                    <div class="sidebar-text text-left">
-                        <div class="font-medium text-sm">Projects</div>
-                    </div>
-                </a>
-
-                <!-- New sections -->
-                <a class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'lock-sidebar') ? 'active' : ''; ?>" href="?section=lock-sidebar">
-                    <i class="fas fa-lock flex-shrink-0 w-5 h-5"></i>
-                    <div class="sidebar-text text-left">
-                        <div class="font-medium text-sm">Lock Sidebar</div>
+                        <div class="font-medium text-sm">Packages</div>
                     </div>
                 </a>
 
@@ -1227,9 +1369,7 @@ if ($sectionEarly === 'employees') {
                                         'bookings' => 'Bookings Management',
                                         'catering' => 'Catering Packages',
                                         'categories' => 'Food Categories',
-                                        'employees' => 'Employee Management',
-                                        'projects' => 'Project Management',
-                                        'lock-sidebar' => 'Lock Sidebar',
+                                        'packages' => 'Packages',
                                         'settings' => 'Settings'
                                     ];
                                     echo $titleMap[$section] ?? 'Dashboard';
@@ -1796,12 +1936,9 @@ if ($sectionEarly === 'employees') {
                             <table class="min-w-full text-sm">
                                 <thead class="bg-gray-50 text-gray-600">
                                     <tr>
-                                        <th class="text-left p-3">Order #</th>
-                                        <th class="text-left p-3">User</th>
-                                        <th class="text-left p-3">Items</th>
-                                        <th class="text-left p-3">Total</th>
-                                        <th class="text-left p-3">Ordered</th>
-                                        <th class="text-left p-3">Needed</th>
+                                        <th class="text-left p-3">Customer</th>
+                                        <th class="text-left p-3">Total Amount</th>
+                                        <th class="text-left p-3">Date Needed</th>
                                         <th class="text-left p-3">Address</th>
                                         <th class="text-left p-3">Status</th>
                                         <th class="text-left p-3">Payment Method</th>
@@ -1831,11 +1968,8 @@ if ($sectionEarly === 'employees') {
                                                 $pay = ($o['pay_method'] ? '<span class="'.ord_chip_base().' '.ord_method_chip($o['pay_method']).'">'.htmlspecialchars($o['pay_method']).'</span>' : '—');
                                             ?>
                                             <tr class="border-t border-gray-100 hover:bg-gray-50 align-top">
-                                                <td class="p-3">#<?= (int)$o['order_id'] ?></td>
                                                 <td class="p-3"><?= htmlspecialchars($fullname ?: '—') ?></td>
-                                                <td class="p-3"><?= $itemsHtml ?></td>
                                                 <td class="p-3">₱<?= number_format((float)($o['order_amount'] ?? 0), 2) ?></td>
-                                                <td class="p-3"><?= htmlspecialchars($o['order_date'] ?? '') ?></td>
                                                 <td class="p-3"><?= htmlspecialchars($o['order_needed'] ?? '') ?></td>
                                                 <td class="p-3"><?php if($addr && $addr!=='—'){ ?><span class="<?= ord_chip_base().' '.ord_addr_chip(); ?>" title="<?= htmlspecialchars($addr) ?>"><?= htmlspecialchars($addr) ?></span><?php } else { echo '—'; } ?></td>
                                                 <td class="p-3">
@@ -1847,6 +1981,9 @@ if ($sectionEarly === 'employees') {
                                                     <div class="flex items-center gap-2">
                                                         <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50" title="Edit" aria-label="Edit" data-edit-order="<?= (int)$o['order_id'] ?>">
                                                             <i class="fas fa-pen"></i>
+                                                        </button>
+                                                        <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50" title="View Order" aria-label="View Order" data-view-order="<?= (int)$o['order_id'] ?>">
+                                                            <i class="fas fa-eye"></i>
                                                         </button>
                                                         <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50 text-green-700" title="Mark Paid" aria-label="Mark Paid" data-paid-order="<?= (int)$o['order_id'] ?>">
                                                             <i class="fas fa-circle-check"></i>
@@ -1860,7 +1997,7 @@ if ($sectionEarly === 'employees') {
                                         <?php endforeach; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="11" class="p-6 text-center text-muted-foreground">No orders found.</td>
+                                            <td colspan="8" class="p-6 text-center text-muted-foreground">No orders found.</td>
                                         </tr>
                                     <?php endif; ?>
                                 </tbody>
@@ -2375,96 +2512,7 @@ if ($sectionEarly === 'employees') {
                 }
                 $empPages = max(1, (int)ceil($empTotal / $empLimit));
                 ?>
-                <div id="employees-content" class="section-content <?php echo ($section === 'employees') ? '' : 'hidden '; ?>p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <h2 class="text-2xl font-medium text-primary">Employees</h2>
-                            <p class="text-muted-foreground">Manage staff directory</p>
-                        </div>
-                        <button id="open-add-employee" type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition"><i class="fas fa-plus"></i>Add Employee</button>
-                    </div>
-                    <form id="employees-filter" class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
-                        <input id="emp-q" name="emp_q" value="<?php echo htmlspecialchars($empQ); ?>" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Search name/email/phone">
-                        <select id="emp-role" name="emp_role" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
-                            <option value="">All Roles</option>
-                            <?php
-                            try { $roles = $db->opencon()->query("SELECT DISTINCT emp_role FROM employee ORDER BY emp_role")->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) { $roles=[]; }
-                            foreach ($roles as $r) { $sel = ($empRole === $r) ? 'selected' : ''; echo '<option '.$sel.'>'.htmlspecialchars($r).'</option>'; }
-                            ?>
-                        </select>
-                        <select id="emp-sex" name="emp_sex" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
-                            <option value="">All Sex</option>
-                            <option value="Male" <?php echo $empSex==='Male'?'selected':''; ?>>Male</option>
-                            <option value="Female" <?php echo $empSex==='Female'?'selected':''; ?>>Female</option>
-                        </select>
-                        <select id="emp-avail" name="emp_avail" class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
-                            <option value="">Availability</option>
-                            <option value="1" <?php echo $empAvail==='1'?'selected':''; ?>>Available</option>
-                            <option value="0" <?php echo $empAvail==='0'?'selected':''; ?>>Not Available</option>
-                        </select>
-                        <div class="flex gap-2">
-                            <button type="button" id="employees-clear" class="px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Clear</button>
-                        </div>
-                    </form>
-                    <div id="employees-list">
-                        <div class="card overflow-hidden">
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full text-sm">
-                                    <thead class="bg-gray-50 text-gray-600">
-                                        <tr>
-                                            <th class="text-left p-3 w-24">Image</th>
-                                            <th class="text-left p-3">Name</th>
-                                            <th class="text-left p-3">Sex</th>
-                                            <th class="text-left p-3">Email</th>
-                                            <th class="text-left p-3">Phone</th>
-                                            <th class="text-left p-3">Role</th>
-                                            <th class="text-left p-3">Availability</th>
-                                            <th class="text-left p-3 w-36">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="employees-table">
-                                        <?php if ($section === 'employees') { foreach ($employees as $emp) { ?>
-                                        <tr class="border-t border-gray-100 hover:bg-gray-50">
-                                            <td class="p-3">
-                                                <?php $src = $emp['emp_photo'] ?: '../images/logo.png'; ?>
-                                                <img src="<?php echo htmlspecialchars($src); ?>" alt="photo" class="h-10 w-10 rounded-full object-cover">
-                                            </td>
-                                            <td class="p-3 font-medium text-primary"><?php echo htmlspecialchars($emp['emp_fn'].' '.$emp['emp_ln']); ?></td>
-                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_sex']); ?></td>
-                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_email']); ?></td>
-                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_phone']); ?></td>
-                                            <td class="p-3"><?php echo htmlspecialchars($emp['emp_role']); ?></td>
-                                            <td class="p-3">
-                                                <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs <?php echo ((int)$emp['emp_avail']===1)?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'; ?>">
-                                                    <i class="fa-solid fa-circle text-[8px]"></i>
-                                                    <?php echo ((int)$emp['emp_avail']===1)?'Available':'Not Available'; ?>
-                                                </span>
-                                            </td>
-                                            <td class="p-3">
-                                                <div class="flex items-center gap-2">
-                                                    <button class="emp-edit h-9 w-9 grid place-items-center rounded border border-gray-200 text-gray-700 hover:bg-gray-50" title="Edit" data-emp-id="<?php echo (int)$emp['emp_id']; ?>"><i class="fa fa-pen"></i></button>
-                                                    <button class="emp-toggle h-9 w-9 grid place-items-center rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50" title="Toggle Availability" data-emp-id="<?php echo (int)$emp['emp_id']; ?>"><i class="fa fa-user-check"></i></button>
-                                                    <button class="emp-delete h-9 w-9 grid place-items-center rounded border border-red-200 text-red-700 hover:bg-red-50" title="Delete" data-emp-id="<?php echo (int)$emp['emp_id']; ?>"><i class="fa fa-trash"></i></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <?php } if (empty($employees)) { ?>
-                                        <tr><td colspan="8" class="p-6 text-center text-muted-foreground">No employees found.</td></tr>
-                                        <?php }} ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <?php if ($section === 'employees' && $empPages > 1): ?>
-                            <div class="flex items-center justify-between px-3 py-2 border-t text-sm">
-                                <div class="text-muted-foreground">Page <?php echo (int)$empPage; ?> of <?php echo (int)$empPages; ?></div>
-                                <div class="flex items-center gap-2">
-                                    <?php for ($i=1;$i<=$empPages;$i++){ $params=$_GET; $params['section']='employees'; $params['emp_page']=$i; $url='?'.http_build_query($params); $cls=$i===$empPage?'bg-primary text-white border-primary':'hover:bg-gray-50'; echo '<a class="px-2 py-1 rounded border '.$cls.'" href="'.$url.'">'.$i.'</a>'; } ?>
-                                </div>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
+                
 
                 <div id="lock-sidebar-content" class="section-content <?php echo ($section === 'lock-sidebar') ? '' : 'hidden '; ?>p-6">
                     <div class="card max-w-2xl mx-auto p-8">
@@ -2499,64 +2547,310 @@ if ($sectionEarly === 'employees') {
                         </div>
                     </div>
                 </div>
+
+                <!-- Packages Section -->
+                <div id="packages-content" class="section-content <?php echo ($section === 'packages') ? '' : 'hidden '; ?>p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-medium text-primary">Packages</h2>
+                        <button id="add-package-btn" class="px-3 py-2 rounded-lg bg-primary text-white hover:bg-green-700">
+                            <i class="fas fa-plus mr-2"></i>Add Package
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <?php if ($section === 'packages' && !empty($pkgRows)): foreach ($pkgRows as $pr): ?>
+                        <div data-package-card class="group relative rounded-2xl border border-gray-200 bg-white/90 backdrop-blur overflow-hidden shadow-sm transition-all duration-200 hover:shadow-xl hover:-translate-y-1">
+                            <div class="relative h-56 w-full bg-gray-100 overflow-hidden">
+                                <img src="<?php echo htmlspecialchars(pkg_img_src($pr['package_id'])); ?>" alt="Package Image" class="w-full h-full object-cover transform transition-transform duration-300 group-hover:scale-105"/>
+                                <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent pointer-events-none"></div>
+                            </div>
+                            <div class="p-5 space-y-3">
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <div class="font-semibold text-primary text-base"><?php echo htmlspecialchars($pr['name']); ?></div>
+                                        <div class="text-sm text-muted-foreground">Pax: <?php echo htmlspecialchars($pr['pax']); ?><?php if ($pr['base_price'] !== null): ?> • ₱<?php echo number_format((float)$pr['base_price'],2); ?><?php endif; ?></div>
+                                    </div>
+                                    <span class="inline-block px-2 py-0.5 rounded-full text-[11px] border <?php echo ((int)$pr['is_active']===1) ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-gray-50 border-gray-300 text-gray-800'; ?> group-hover:shadow-sm"><?php echo ((int)$pr['is_active']===1) ? 'Active' : 'Inactive'; ?></span>
+                                </div>
+                                <?php
+                                // Items preview (first 6)
+                                try { $pdoPrev = $db->opencon(); $stmtPrev = $pdoPrev->prepare("SELECT item_label, qty, unit, is_optional FROM package_items WHERE package_id=? ORDER BY sort_order ASC, item_id ASC"); $stmtPrev->execute([(int)$pr['package_id']]); $preview = $stmtPrev->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { $preview = []; }
+                                ?>
+                                <ul class="text-sm list-disc pl-5">
+                                    <?php if (!empty($preview)): foreach ($preview as $it): ?>
+                                        <li class="mb-1">
+                                            <?php echo htmlspecialchars($it['item_label']); ?>
+                                            <?php if ($it['qty'] !== null && $it['qty'] !== ''): ?>
+                                                <span class="text-muted-foreground">(<?php echo (int)$it['qty']; ?> <?php echo htmlspecialchars($it['unit'] ?: ''); ?>)</span>
+                                            <?php endif; ?>
+                                            <?php if ((int)$it['is_optional']===1): ?><span class="ml-1 text-[10px] px-1 rounded bg-amber-50 border border-amber-300 text-amber-800">optional</span><?php endif; ?>
+                                        </li>
+                                    <?php endforeach; else: ?>
+                                        <li class="text-muted-foreground">No items</li>
+                                    <?php endif; ?>
+                                </ul>
+                                <div class="flex items-center justify-end gap-2 pt-2">
+                                    <button data-edit-package="<?php echo (int)$pr['package_id']; ?>" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50 text-sm transition-colors"><i class="fas fa-pen me-1"></i>Edit</button>
+                                    <button data-delete-package="<?php echo (int)$pr['package_id']; ?>" class="px-3 py-1.5 border rounded-lg hover:bg-rose-50 text-sm text-rose-700 border-rose-300 transition-colors"><i class="fas fa-trash me-1"></i>Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; else: ?>
+                            <div class="text-muted-foreground">No packages yet.</div>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($section === 'packages' && $pkgPages > 1): $pPrev=max(1,$pkgPage-1); $pNext=min($pkgPages,$pkgPage+1); ?>
+                    <div class="flex items-center gap-2 mt-4">
+                        <a class="px-2 py-1 rounded border border-gray-300 text-sm <?php echo $pkgPage<=1?'opacity-50 pointer-events-none':'hover:bg-gray-50'; ?>" href="?section=packages&pkg_page=<?php echo (int)$pPrev; ?>">Prev</a>
+                        <?php for($i=1;$i<=$pkgPages;$i++): $cls=$i===$pkgPage?'bg-primary text-white border-primary':'hover:bg-gray-50 border'; ?>
+                            <a class="px-2 py-1 rounded text-sm <?php echo $cls; ?>" href="?section=packages&pkg_page=<?php echo (int)$i; ?>"><?php echo (int)$i; ?></a>
+                        <?php endfor; ?>
+                        <a class="px-2 py-1 rounded border border-gray-300 text-sm <?php echo $pkgPage>=$pkgPages?'opacity-50 pointer-events-none':'hover:bg-gray-50'; ?>" href="?section=packages&pkg_page=<?php echo (int)$pNext; ?>">Next</a>
+                    </div>
+                    <?php endif; ?>
+                </div>
             </main>
         </div>
     </div>
 
     <script>
-        // Sidebar functionality with persisted state
-        let sidebarCollapsed = false;
+    // Sidebar locked expanded
+    let sidebarCollapsed = false;
         const sidebar = document.getElementById('sidebar');
         const sidebarToggle = document.getElementById('sidebar-toggle');
         const sidebarIcon = document.getElementById('sidebar-icon');
         const sidebarTexts = document.querySelectorAll('.sidebar-text');
 
         // Initialize from persisted preference
-        try {
-            const persisted = localStorage.getItem('sidebarCollapsed');
-            if (persisted === 'true') {
-                sidebarCollapsed = true;
-                sidebar.classList.remove('sidebar-expanded');
-                sidebar.classList.add('sidebar-collapsed');
-                sidebarIcon.className = 'fas fa-bars text-sm';
-                sidebarTexts.forEach(text => text.style.display = 'none');
-                const headerEl = document.getElementById('sidebar-header');
-                headerEl && headerEl.classList.add('justify-center');
-            }
-        } catch (_) {}
+        try { localStorage.setItem('sidebarCollapsed', 'false'); } catch (_) {}
+        sidebar.classList.add('sidebar-expanded');
+        sidebar.classList.remove('sidebar-collapsed');
+        if (sidebarIcon) sidebarIcon.className = 'fas fa-bars text-sm';
+        sidebarTexts.forEach(text => text.style.display = 'block');
 
-        sidebarToggle.addEventListener('click', function() {
-            sidebarCollapsed = !sidebarCollapsed;
-            try { localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? 'true' : 'false'); } catch (_) {}
-
-            if (sidebarCollapsed) {
-                sidebar.classList.remove('sidebar-expanded');
-                sidebar.classList.add('sidebar-collapsed');
-                sidebarIcon.className = 'fas fa-bars text-sm';
-                sidebarTexts.forEach(text => text.style.display = 'none');
-                const headerEl = document.getElementById('sidebar-header');
-                headerEl && headerEl.classList.add('justify-center');
-            } else {
-                sidebar.classList.remove('sidebar-collapsed');
-                sidebar.classList.add('sidebar-expanded');
-                sidebarIcon.className = 'fas fa-times text-sm';
-                sidebarTexts.forEach(text => text.style.display = 'block');
-                const headerEl = document.getElementById('sidebar-header');
-                headerEl && headerEl.classList.remove('justify-center');
-            }
-        });
+        if (sidebarToggle) { sidebarToggle.style.display='none'; }
 
         // Clicking empty space inside the sidebar toggles expand/collapse.
         // Ignore clicks on interactive elements (nav items, buttons, links, inputs).
-        sidebar.addEventListener('click', function(e) {
-            const interactive = e.target.closest('.nav-item, #sidebar-toggle, button, a, input, select, textarea');
-            if (interactive) return;
-            sidebarToggle.click();
-        });
+        // Disable click-to-toggle
+        sidebar.addEventListener('click', function(e) { /* locked */ });
 
         // Initialize charts when page loads
         document.addEventListener('DOMContentLoaded', function() {
             const initialSection = '<?php echo htmlspecialchars($section); ?>';
+            // Packages: open modal to add/edit and handle delete
+            if (initialSection === 'packages') {
+                // Build simple modal dynamically to keep patch small
+                const modalBack = document.createElement('div');
+                modalBack.id = 'pkg-backdrop';
+                modalBack.className = 'fixed inset-0 bg-black/30 z-40 hidden';
+                const modal = document.createElement('div');
+                modal.id = 'pkg-modal';
+                modal.className = 'fixed inset-0 z-50 hidden items-center justify-center';
+                const dialog = document.createElement('div');
+                dialog.className = 'bg-white rounded-lg shadow-xl w-full max-w-2xl p-4';
+                dialog.innerHTML = `
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 id="pkg-title" class="text-lg font-semibold text-primary">Add Package</h3>
+                        <button id="pkg-close" class="h-8 w-8 grid place-items-center rounded hover:bg-gray-50"><i class="fa fa-times"></i></button>
+                    </div>
+                    <form id="pkg-form" class="space-y-3" enctype="multipart/form-data">
+                        <input type="hidden" name="section" value="packages"/>
+                        <input type="hidden" name="action" value="create"/>
+                        <input type="hidden" name="package_id" value=""/>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-sm text-muted-foreground">Name</label>
+                                <input name="name" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg" required />
+                            </div>
+                            <div>
+                                <label class="text-sm text-muted-foreground">Pax</label>
+                                <select name="pax" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg" required>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                    <option value="150">150</option>
+                                    <option value="200">200</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-sm text-muted-foreground">Base Price (₱)</label>
+                                <input type="number" step="0.01" min="0" name="base_price" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg" />
+                            </div>
+                            <div class="flex items-center gap-2 mt-7">
+                                <input type="checkbox" name="is_active" value="1" checked />
+                                <span class="text-sm">Active</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Notes</label>
+                            <textarea name="notes" rows="2" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg"></textarea>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Image</label>
+                            <div class="mt-1 grid grid-cols-3 gap-3 items-start">
+                                <div class="col-span-1">
+                                    <div class="aspect-square w-full rounded-lg border bg-gray-50 overflow-hidden flex items-center justify-center">
+                                        <img id="pkg-photo-preview" alt="Preview" class="w-full h-full object-cover hidden" />
+                                        <div id="pkg-photo-ph" class="text-xs text-gray-400">No image</div>
+                                    </div>
+                                </div>
+                                <div class="col-span-2 space-y-2">
+                                    <input type="file" id="pkg-photo" name="photo" accept="image/*" class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-green-700" />
+                                    <div class="flex gap-2">
+                                        <button type="button" id="pkg-photo-clear" class="px-2 py-1 border rounded text-sm">Clear</button>
+                                        <span class="text-xs text-muted-foreground">Supported: JPG, PNG, WEBP, AVIF, GIF</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-sm text-muted-foreground">Items</label>
+                            <div id="pkg-items" class="space-y-2"></div>
+                            <button type="button" id="pkg-add-item" class="mt-1 px-2 py-1 rounded border hover:bg-gray-50 text-sm"><i class="fa fa-plus mr-1"></i>Add Item</button>
+                        </div>
+                        <div class="flex items-center justify-end gap-2">
+                            <button type="button" id="pkg-cancel" class="px-3 py-2 rounded border">Cancel</button>
+                            <button type="submit" class="px-3 py-2 rounded bg-primary text-white">Save</button>
+                        </div>
+                    </form>
+                `;
+                modal.appendChild(dialog);
+                document.body.appendChild(modalBack);
+                document.body.appendChild(modal);
+
+                // Toggle scroll on items container when >= 5 rows are present
+                const updateItemsScroll = () => {
+                    const wrap = document.getElementById('pkg-items');
+                    if (!wrap) return;
+                    const count = wrap.children ? wrap.children.length : 0;
+                    if (count >= 5) {
+                        wrap.classList.add('max-h-60','overflow-y-auto','pr-1');
+                    } else {
+                        wrap.classList.remove('max-h-60','overflow-y-auto','pr-1');
+                    }
+                };
+
+                const openModal = ()=>{ modalBack.classList.remove('hidden'); modal.classList.remove('hidden'); modal.classList.add('flex'); };
+                const closeModal = ()=>{ modalBack.classList.add('hidden'); modal.classList.add('hidden'); modal.classList.remove('flex'); };
+                document.getElementById('add-package-btn')?.addEventListener('click', ()=>{
+                    const form = document.getElementById('pkg-form'); form.reset();
+                    form.action.value='create'; form.package_id.value='';
+                    document.getElementById('pkg-title').textContent='Add Package';
+                    document.getElementById('pkg-items').innerHTML='';
+                    setPreviewSrc('');
+                    updateItemsScroll();
+                    openModal();
+                });
+                document.getElementById('pkg-close')?.addEventListener('click', closeModal);
+                document.getElementById('pkg-cancel')?.addEventListener('click', closeModal);
+                // Image preview handlers
+                const photoInput = () => document.getElementById('pkg-photo');
+                const photoPreview = () => document.getElementById('pkg-photo-preview');
+                const photoPh = () => document.getElementById('pkg-photo-ph');
+                const setPreviewSrc = (src) => {
+                    const img = photoPreview(); const ph = photoPh();
+                    if (!img || !ph) return;
+                    if (src) {
+                        img.src = src; img.classList.remove('hidden'); ph.classList.add('hidden');
+                    } else {
+                        img.src = ''; img.classList.add('hidden'); ph.classList.remove('hidden');
+                    }
+                };
+                photoInput()?.addEventListener('change', (e) => {
+                    const f = e.target.files && e.target.files[0];
+                    if (!f) { setPreviewSrc(''); return; }
+                    const reader = new FileReader();
+                    reader.onload = (ev) => setPreviewSrc(ev.target.result);
+                    reader.readAsDataURL(f);
+                });
+                document.getElementById('pkg-photo-clear')?.addEventListener('click', () => {
+                    const inp = photoInput(); if (inp) { inp.value = ''; }
+                    setPreviewSrc('');
+                });
+                document.getElementById('pkg-add-item')?.addEventListener('click', ()=>{
+                    const wrap = document.getElementById('pkg-items');
+                    const row = document.createElement('div');
+                    row.className='grid grid-cols-12 gap-2';
+                    row.innerHTML = `
+                        <input name="item_label[]" class="col-span-6 px-2 py-1 bg-gray-50 border rounded" placeholder="Item label" required />
+                        <input name="qty[]" type="number" min="0" class="col-span-2 px-2 py-1 bg-gray-50 border rounded" placeholder="Qty" />
+                        <select name="unit[]" class="col-span-2 px-2 py-1 bg-gray-50 border rounded">
+                            <option value="other">unit</option>
+                            <option value="pax">pax</option>
+                            <option value="pcs">pcs</option>
+                            <option value="cups">cups</option>
+                            <option value="attendants">attendants</option>
+                            <option value="dish">dish</option>
+                        </select>
+                        <label class="col-span-1 inline-flex items-center gap-1 text-xs"><input type="checkbox" name="is_optional[]" value="1"/> optional</label>
+                        <input name="sort_order[]" type="number" class="col-span-1 px-2 py-1 bg-gray-50 border rounded" placeholder="#" />
+                    `;
+                    wrap.appendChild(row);
+                    updateItemsScroll();
+                });
+                // Attach edit/delete handlers
+                document.querySelectorAll('[data-edit-package]')?.forEach(btn=>{
+                    btn.addEventListener('click', async ()=>{
+                        const id = btn.getAttribute('data-edit-package');
+                        // Try to get current image src from the card to show quick preview
+                        try {
+                            const card = btn.closest('[data-package-card]');
+                            const img = card ? card.querySelector('img') : null;
+                            if (img && img.getAttribute('src')) setPreviewSrc(img.getAttribute('src'));
+                        } catch(_) {}
+                        try {
+                            const r = await fetch(`?section=packages&action=get_package&package_id=${id}`, { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                            const j = await r.json(); if (!j.success) return alert(j.message||'Failed');
+                            const form = document.getElementById('pkg-form');
+                            form.action.value='update'; form.package_id.value = id;
+                            // clear file input to allow re-uploading same file name
+                            const finp = photoInput(); if (finp) finp.value = '';
+                            document.getElementById('pkg-title').textContent='Edit Package';
+                            form.name.value = j.data.name||'';
+                            form.pax.value = j.data.pax||'50';
+                            form.base_price.value = j.data.base_price||'';
+                            form.is_active.checked = String(j.data.is_active) === '1';
+                            form.notes.value = j.data.notes||'';
+                            const wrap = document.getElementById('pkg-items'); wrap.innerHTML='';
+                            (j.items||[]).forEach(it=>{
+                                const row = document.createElement('div'); row.className='grid grid-cols-12 gap-2';
+                                row.innerHTML = `
+                                    <input name="item_label[]" class="col-span-6 px-2 py-1 bg-gray-50 border rounded" placeholder="Item label" required value="${it.item_label?.replace(/"/g,'&quot;')||''}" />
+                                    <input name="qty[]" type="number" min="0" class="col-span-2 px-2 py-1 bg-gray-50 border rounded" placeholder="Qty" value="${it.qty??''}" />
+                                    <select name="unit[]" class="col-span-2 px-2 py-1 bg-gray-50 border rounded">
+                                        <option value="other" ${it.unit==='other'?'selected':''}>unit</option>
+                                        <option value="pax" ${it.unit==='pax'?'selected':''}>pax</option>
+                                        <option value="pcs" ${it.unit==='pcs'?'selected':''}>pcs</option>
+                                        <option value="cups" ${it.unit==='cups'?'selected':''}>cups</option>
+                                        <option value="attendants" ${it.unit==='attendants'?'selected':''}>attendants</option>
+                                        <option value="dish" ${it.unit==='dish'?'selected':''}>dish</option>
+                                    </select>
+                                    <label class="col-span-1 inline-flex items-center gap-1 text-xs"><input type="checkbox" name="is_optional[]" value="1" ${String(it.is_optional)==='1'?'checked':''}/> optional</label>
+                                    <input name="sort_order[]" type="number" class="col-span-1 px-2 py-1 bg-gray-50 border rounded" placeholder="#" value="${it.sort_order??''}" />
+                                `; wrap.appendChild(row);
+                            });
+                            updateItemsScroll();
+                            openModal();
+                        } catch (_) { alert('Network error'); }
+                    });
+                });
+                document.querySelectorAll('[data-delete-package]')?.forEach(btn=>{
+                    btn.addEventListener('click', async ()=>{
+                        const id = btn.getAttribute('data-delete-package');
+                        if (!confirm('Delete this package?')) return;
+                        try { await fetch(`?section=packages&action=delete&package_id=${id}&ajax=1`, { headers:{'X-Requested-With':'XMLHttpRequest'} }); location.reload(); } catch (_) { alert('Delete failed'); }
+                    });
+                });
+                document.getElementById('pkg-form')?.addEventListener('submit', async (e)=>{
+                    e.preventDefault();
+                    const form = e.target;
+                    const fd = new FormData(form);
+                    try {
+                        const r = await fetch('?section=packages', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} });
+                        const j = await r.json(); if (!j.success) { alert(j.message||'Save failed'); return; }
+                        closeModal(); location.reload();
+                    } catch (_) { alert('Network error'); }
+                });
+            }
             // Sections visibility already handled server-side via PHP classes above
 
             // Let navigation links work normally to avoid section switching glitches
@@ -3538,8 +3832,57 @@ if ($sectionEarly === 'employees') {
 
                 ordersTable && ordersTable.addEventListener('click', async (e) => {
                     const editBtn = e.target.closest('[data-edit-order]');
+                    const viewBtn = e.target.closest('[data-view-order]');
                     const paidBtn = e.target.closest('[data-paid-order]');
                     const delBtn = e.target.closest('[data-delete-order]');
+                    if (viewBtn) {
+                        const id = viewBtn.getAttribute('data-view-order');
+                        try {
+                            const res = await fetch(`?section=orders&ajax=1&action=get_order&order_id=${encodeURIComponent(id)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+                            const data = await res.json();
+                            if (!data.success) { alert(data.message || 'Failed to fetch order'); return; }
+                            const itemsWrap = document.getElementById('view-order-items');
+                            const vback = document.getElementById('view-order-backdrop');
+                            const vmodal = document.getElementById('view-order-modal');
+                            const vclose = document.getElementById('view-order-close');
+                            if (itemsWrap) {
+                                const items = Array.isArray(data.data?.items) ? data.data.items : [];
+                                if (items.length === 0) {
+                                    itemsWrap.innerHTML = '<div class="text-sm text-muted-foreground">No items for this order.</div>';
+                                } else {
+                                    itemsWrap.innerHTML = items.map(it => {
+                                        const nm = (it.menu_name || 'Item');
+                                        const qty = parseFloat(it.oi_quantity || 0);
+                                        const price = parseFloat(it.oi_price || 0);
+                                        return `<div class="flex items-center justify-between rounded border px-2 py-1 text-sm"><span>${nm}</span><span class="text-gray-700">x${qty} · ₱${price.toFixed(2)}</span></div>`;
+                                    }).join('');
+                                }
+                            }
+                            if (vback && vmodal) {
+                                vback.style.display='block';
+                                vmodal.style.display='flex';
+                                vback.setAttribute('aria-hidden','false');
+                                vmodal.setAttribute('aria-hidden','false');
+                                vback.classList.remove('pointer-events-none');
+                                vmodal.classList.remove('pointer-events-none');
+                                requestAnimationFrame(()=>{ vback.style.opacity='1'; vmodal.style.opacity='1'; });
+                                const hideView = ()=>{
+                                    vback.style.opacity='0'; vmodal.style.opacity='0';
+                                    setTimeout(()=>{
+                                        vback.classList.add('pointer-events-none');
+                                        vmodal.classList.add('pointer-events-none');
+                                        vback.style.display='none'; vmodal.style.display='none';
+                                        vback.setAttribute('aria-hidden','true'); vmodal.setAttribute('aria-hidden','true');
+                                    }, 180);
+                                };
+                                vback.addEventListener('click', hideView, { once: true });
+                                vclose && vclose.addEventListener('click', hideView, { once: true });
+                            }
+                        } catch (_) {
+                            alert('Network error.');
+                        }
+                        return;
+                    }
                     if (editBtn) {
                         const id = editBtn.getAttribute('data-edit-order');
                         try {
@@ -4229,6 +4572,24 @@ if ($sectionEarly === 'employees') {
                         <button type="submit" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-green-700">Save</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Order Items Modal -->
+    <div id="view-order-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+    <div id="view-order-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+        <div class="w-full max-w-md mx-4 scale-95 transition-transform duration-200">
+            <div class="bg-white rounded-lg shadow-xl">
+                <div class="p-4 border-b">
+                    <h3 class="text-lg font-medium">Order Items</h3>
+                </div>
+                <div class="p-4">
+                    <div id="view-order-items" class="space-y-2"></div>
+                </div>
+                <div class="p-4 border-t flex justify-end gap-2">
+                    <button id="view-order-close" type="button" class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50">Close</button>
+                </div>
             </div>
         </div>
     </div>
