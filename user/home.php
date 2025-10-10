@@ -314,58 +314,7 @@ $duplicatedCollections = array_merge($collections, $collections, $collections);
 </head>
 <body class="min-h-screen bg-gradient-to-b from-green-800 via-green-900 to-green-950">
     <!-- Header -->
-    <header class="nav-root nav-clear fixed top-0 left-0 right-0 z-50">
-        <div class="container mx-auto px-6 py-4">
-            <nav class="flex items-center justify-between">
-                <!-- Logo -->
-                <div class="flex items-center space-x-3">
-                    <div class="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
-                        <span class="text-white font-bold text-lg">S</span>
-                    </div>
-                    <div>
-                        <h1 class="text-yellow-400 text-lg font-semibold">Sandok ni Binggay</h1>
-                        <p class="text-yellow-300 text-xs tracking-wider">CATERING SERVICES</p>
-                    </div>
-                </div>
-
-                <!-- Desktop Navigation -->
-                <div class="hidden md:flex items-center space-x-8">
-                    <a href="#home" class="nav-link transition-colors duration-300 relative group">
-                        Home
-                        <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
-                    </a>
-                    <a href="#menu" class="nav-link transition-colors duration-300 relative group">
-                        Menu
-                        <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
-                    </a>
-                    <a href="#booking" class="nav-link transition-colors duration-300 relative group">
-                        Booking
-                        <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
-                    </a>
-                </div>
-
-                <!-- Mobile Menu Button -->
-                <button id="mobile-menu-btn" class="md:hidden text-white hover:text-yellow-400 transition-colors duration-300">
-                    <i data-lucide="menu" class="w-6 h-6"></i>
-                </button>
-            </nav>
-
-            <!-- Mobile Navigation -->
-            <div id="mobile-menu" class="md:hidden absolute top-full left-0 right-0 bg-green-900/95 backdrop-blur-sm border-t border-green-700 hidden">
-                <div class="container mx-auto px-6 py-4 space-y-4">
-                    <a href="#home" class="block nav-link transition-colors duration-300">
-                        Home
-                    </a>
-                    <a href="#menu" class="block nav-link transition-colors duration-300">
-                        Menu
-                    </a>
-                    <a href="#booking" class="block nav-link transition-colors duration-300">
-                        Booking
-                    </a>
-                </div>
-            </div>
-        </div>
-    </header>
+    <?php include __DIR__ . '/partials/navbar.php'; ?>
 
     <!-- Hero Section -->
     <section id="home" class="min-h-screen flex items-center relative overflow-hidden">
@@ -457,7 +406,7 @@ $duplicatedCollections = array_merge($collections, $collections, $collections);
                         
                         <!-- Main Circle (Real Logo, Larger) -->
                         <div class="relative w-96 h-96 lg:w-[28rem] lg:h-[28rem] rounded-full overflow-hidden border-4 border-yellow-400/30 shadow-2xl hover-scale bg-white/5">
-                            <img src="images/logo.png" alt="Sandok ni Binggay Logo" class="w-full h-full object-contain" />
+                            <img src="../images/logo.png" alt="Sandok ni Binggay Logo" class="w-full h-full object-contain" />
                         </div>
                     </div>
                 </div>

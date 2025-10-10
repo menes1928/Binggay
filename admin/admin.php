@@ -459,7 +459,7 @@ if ($sectionEarly === 'packages') {
             $name = trim((string)($_POST['name'] ?? ''));
             $pax = trim((string)($_POST['pax'] ?? ''));
             $price = isset($_POST['base_price']) && $_POST['base_price'] !== '' ? (float)$_POST['base_price'] : null;
-            $isActive = isset($_POST['is_active']) ? (int)($_POST['is_active'] ? 1 : 0) : 1;
+            $isActive = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 0;
             $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
             if ($name === '' || $pax === '') { echo json_encode(['success'=>false,'message'=>'Name and Pax are required']); exit; }
             $pdo->beginTransaction();
@@ -513,7 +513,8 @@ if ($sectionEarly === 'packages') {
             $name = trim((string)($_POST['name'] ?? ''));
             $pax = trim((string)($_POST['pax'] ?? ''));
             $price = isset($_POST['base_price']) && $_POST['base_price'] !== '' ? (float)$_POST['base_price'] : null;
-            $isActive = isset($_POST['is_active']) ? (int)($_POST['is_active'] ? 1 : 0) : 1;
+            // Treat missing checkbox as 0 (inactive)
+            $isActive = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 0;
             $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
             if ($name === '' || $pax === '') { echo json_encode(['success'=>false,'message'=>'Name and Pax are required']); exit; }
             $pdo->beginTransaction();
@@ -2676,6 +2677,8 @@ if ($sectionEarly === 'employees') {
                                 <input type="number" step="0.01" min="0" name="base_price" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg" />
                             </div>
                             <div class="flex items-center gap-2 mt-7">
+                                <!-- Hidden default 0 to ensure unchecked sends 0 -->
+                                <input type="hidden" name="is_active" value="0" />
                                 <input type="checkbox" name="is_active" value="1" checked />
                                 <span class="text-sm">Active</span>
                             </div>
