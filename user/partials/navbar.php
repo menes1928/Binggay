@@ -1,26 +1,64 @@
 <?php
+// Ensure session is active so navbar can read login state everywhere
+// Start session only if headers are not sent to avoid warnings when included after output
+if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
+    session_start();
+}
 
-// Helper: resolve profile image
-function current_user_avatar() {
+// DB access for fetching user photo if not in session
+require_once __DIR__ . '/../../classes/database.php';
+
+// Normalize a stored DB path to a web path usable from /user/* pages; verify file exists if local
+function normalize_user_photo_path(?string $raw): ?string {
+    if ($raw === null) return null;
+    $raw = trim((string)$raw);
+    if ($raw === '') return null;
+    $raw = str_replace('\\', '/', $raw);
+    // External URLs are used as-is
+    if (preg_match('~^https?://~i', $raw)) return $raw;
+
+    // Build filesystem path from project root
+    $root = realpath(__DIR__ . '/../../');
+    // Strip leading ./, ../, or / for FS existence check
+    $rel = preg_replace('~^(\./|\.\./|/)+~', '', $raw);
+    $fs = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
+    if (is_file($fs)) {
+        // Web path relative to /user pages
+        return '../' . $rel;
+    }
+    // If not found, try original form assuming it's already relative to /user
+    return null;
+}
+
+// Helper: resolve profile image (DB -> session -> default)
+function current_user_avatar(): string {
     $default = '../images/logo.png';
     $id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     if ($id <= 0) return $default;
-    // Prefer explicit session photo if present and exists
+
+    // 1) Session photo first
     if (!empty($_SESSION['user_photo'])) {
-        $p = (string)$_SESSION['user_photo'];
-        $path = __DIR__ . '/../../' . ltrim($p, '/');
-        if (file_exists($path)) {
-            // Make it relative from /user/* pages
-            return (strpos($p, '../') === 0 || strpos($p, './') === 0) ? $p : '../' . ltrim($p, '/');
+        $web = normalize_user_photo_path((string)$_SESSION['user_photo']);
+        if ($web !== null) return $web;
+    }
+
+    // 2) Fetch from DB and cache in session
+    try {
+        $db = new database();
+        $pdo = $db->opencon();
+        $stmt = $pdo->prepare('SELECT user_photo FROM users WHERE user_id = ? LIMIT 1');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row && !empty($row['user_photo'])) {
+            $_SESSION['user_photo'] = (string)$row['user_photo'];
+            $web = normalize_user_photo_path((string)$row['user_photo']);
+            if ($web !== null) return $web;
         }
+    } catch (Throwable $e) {
+        // ignore and fallback
     }
-    // Fallback: find latest profile image in /profiles
-    $glob = glob(__DIR__ . '/../../profiles/user_' . $id . '_*.{png,jpg,jpeg,webp}', GLOB_BRACE);
-    if ($glob && count($glob) > 0) {
-        usort($glob, function($a, $b){ return filemtime($b) <=> filemtime($a); });
-        $fname = basename($glob[0]);
-        return '../profiles/' . $fname;
-    }
+
+    // 3) Default logo
     return $default;
 }
 
@@ -81,9 +119,7 @@ function current_user_display_name() {
                     <div class="relative" id="nav-profile">
                         <button id="profile-btn" class="flex items-center gap-2 text-white hover:text-yellow-400 transition-colors">
                             <img src="<?php echo htmlspecialchars(current_user_avatar()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" />
-                            <span class="max-w-[160px] truncate">
-                                <?php echo htmlspecialchars(current_user_display_name()); ?>
-                            </span>
+                            <span class="max-w-[200px] truncate">Welcome, <?php echo htmlspecialchars(current_user_display_name()); ?></span>
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd"/></svg>
                         </button>
                         <div id="profile-menu" class="absolute right-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/5 py-1 hidden">
@@ -92,7 +128,7 @@ function current_user_display_name() {
                         </div>
                     </div>
                 <?php else: ?>
-                    <a id="login-btn-nav" href="./login" class="px-4 py-2 rounded border-2 border-white text-white hover:bg-white hover:text-green-900 transition-colors">Login</a>
+                    <a id="login-btn-nav" href="../login" class="px-4 py-2 rounded border-2 border-white text-white hover:bg-white hover:text-green-900 transition-colors">Login</a>
                     <a href="../registration" class="px-4 py-2 rounded bg-yellow-400 text-green-900 hover:bg-yellow-300 transition">Sign up</a>
                 <?php endif; ?>
             </div>

@@ -1,4 +1,8 @@
 <?php
+// Start session early (before any output) so included navbar can use $_SESSION safely
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 // Collections data
 $collections = [
     [

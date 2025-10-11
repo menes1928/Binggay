@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         try {
             $db = new database();
             $pdo = $db->opencon();
-            $stmt = $pdo->prepare('SELECT user_id, user_fn, user_ln, user_email, user_password, user_type FROM users WHERE user_email = ? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT user_id, user_fn, user_ln, user_username, user_email, user_password, user_type, user_photo FROM users WHERE user_email = ? LIMIT 1');
             $stmt->execute([$email]);
             $user = $stmt->fetch();
             $isValid = false;
@@ -50,15 +50,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     // Harden session
                     session_regenerate_id(true);
                     $_SESSION['user_id'] = (int)$user['user_id'];
-                    $_SESSION['user_name'] = trim(($user['user_fn'] ?? '') . ' ' . ($user['user_ln'] ?? ''));
+                    // Store separate name parts and username for display in navbar
+                    $_SESSION['user_fn'] = (string)($user['user_fn'] ?? '');
+                    $_SESSION['user_ln'] = (string)($user['user_ln'] ?? '');
+                    $_SESSION['user_username'] = (string)($user['user_username'] ?? '');
+                    $_SESSION['user_name'] = trim(($_SESSION['user_fn'] ?? '') . ' ' . ($_SESSION['user_ln'] ?? ''));
                     $_SESSION['user_email'] = $user['user_email'];
                     $_SESSION['user_type'] = (int)$user['user_type'];
+                    $_SESSION['user_photo'] = isset($user['user_photo']) ? (string)$user['user_photo'] : null;
 
                     // Simple role-based redirect: 1 = admin per sample data
                     if ((int)$user['user_type'] === 1) {
                         header('Location: admin/admin_homepage.php');
                     } else {
-                        header('Location: user/homepage.php');
+                        header('Location: user/home.php');
                     }
                     exit;
                 }
