@@ -14,25 +14,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         try {
             $db = new database();
             $pdo = $db->opencon();
-            $stmt = $pdo->prepare('SELECT user_id, user_fn, user_ln, user_email, user_password, user_type FROM users WHERE user_email = ? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT user_id, user_fn, user_ln, user_username, user_email, user_password, user_type, user_photo FROM users WHERE user_email = ? LIMIT 1');
             $stmt->execute([$email]);
             $user = $stmt->fetch();
-            if ($user && password_verify($password, $user['user_password'])) {
-                $_SESSION['user_id'] = (int)$user['user_id'];
-                $_SESSION['user_name'] = $user['user_fn'] . ' ' . $user['user_ln'];
-                $_SESSION['user_email'] = $user['user_email'];
-                $_SESSION['user_type'] = (int)$user['user_type'];
-
-                // Simple role-based redirect: 1 = admin per sample data
-                if ((int)$user['user_type'] === 1) {
-                    header('Location: admin/admin_homepage.php');
+            $isValid = false;
+            $needsRehash = false;
+            if ($user) {
+                $stored = (string)$user['user_password'];
+                // Primary: verify bcrypt/argon hash
+                if (preg_match('/^\$2y\$/', $stored) || preg_match('/^\$argon2/', $stored)) {
+                    $isValid = password_verify($password, $stored);
+                    if ($isValid && password_needs_rehash($stored, PASSWORD_BCRYPT)) {
+                        $needsRehash = true;
+                    }
                 } else {
-                    header('Location: user/homepage.php');
+                    // Legacy plaintext fallback: if stored equals provided password, accept and mark for rehash
+                    if ($stored !== '' && hash_equals($stored, $password)) {
+                        $isValid = true;
+                        $needsRehash = true;
+                    }
                 }
-                exit;
-            } else {
-                $error = 'Invalid email or password';
+
+                if ($isValid) {
+                    // Optionally rehash to bcrypt for legacy/plaintext or weaker hashes
+                    if ($needsRehash) {
+                        try {
+                            $newHash = password_hash($password, PASSWORD_BCRYPT);
+                            $up = $pdo->prepare('UPDATE users SET user_password = ?, updated_at = NOW() WHERE user_id = ?');
+                            $up->execute([$newHash, (int)$user['user_id']]);
+                        } catch (Throwable $rehashErr) {
+                            // Do not block login if rehash fails; optionally log
+                        }
+                    }
+
+                    // Harden session
+                    session_regenerate_id(true);
+                    $_SESSION['user_id'] = (int)$user['user_id'];
+                    // Store separate name parts and username for display in navbar
+                    $_SESSION['user_fn'] = (string)($user['user_fn'] ?? '');
+                    $_SESSION['user_ln'] = (string)($user['user_ln'] ?? '');
+                    $_SESSION['user_username'] = (string)($user['user_username'] ?? '');
+                    $_SESSION['user_name'] = trim(($_SESSION['user_fn'] ?? '') . ' ' . ($_SESSION['user_ln'] ?? ''));
+                    $_SESSION['user_email'] = $user['user_email'];
+                    $_SESSION['user_type'] = (int)$user['user_type'];
+                    $_SESSION['user_photo'] = isset($user['user_photo']) ? (string)$user['user_photo'] : null;
+
+                    // Simple role-based redirect: 1 = admin per sample data
+                    if ((int)$user['user_type'] === 1) {
+                        header('Location: admin/admin_homepage.php');
+                    } else {
+                        header('Location: user/home.php');
+                    }
+                    exit;
+                }
             }
+            $error = 'Invalid email or password';
         } catch (Throwable $e) {
             $error = 'Login failed: ' . $e->getMessage();
         }
@@ -364,6 +400,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                         <h2 class="text-3xl font-bold text-primary mb-2">Welcome Back!</h2>
                         <p class="text-gray-600">Sign in to access your account</p>
                     </div>
+
+                    <?php if (!empty($_SESSION['registration_success'])): ?>
+                    <div class="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center gap-2 animate-fade-in-up">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Registration successful. Please sign in.</span>
+                    </div>
+                    <?php unset($_SESSION['registration_success']); endif; ?>
 
                     <?php if (isset($error)): ?>
                     <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-2 animate-fade-in-up">

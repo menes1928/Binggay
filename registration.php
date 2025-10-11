@@ -43,7 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Valid email is required';
     if ($phone === '') $errors[] = 'Phone number is required';
     if ($username === '' || strlen($username) < 4) $errors[] = 'Username must be at least 4 characters';
-    if ($password === '' || strlen($password) < 8) $errors[] = 'Password must be at least 8 characters';
+    // Password complexity: min 8, uppercase, lowercase, number, special char
+    if (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/', $password)) {
+        $errors[] = 'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character';
+    }
     if ($password !== $confirmPassword) $errors[] = 'Passwords do not match';
 
     if (empty($errors)) {
@@ -649,6 +652,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                                        class="input-field w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent pr-12"
                                        placeholder="Create a strong password"
                                        minlength="8"
+                                       pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}"
+                                       title="Must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character"
                                        oninput="checkPasswordStrength()"
                                        required>
                                 <button type="button" 
@@ -668,12 +673,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                                 <i class="fas fa-lock mr-2 text-primary"></i>Confirm Password *
                             </label>
                             <div class="relative">
-                                <input type="password" 
+                    <input type="password" 
                                        id="confirm_password" 
                                        name="confirm_password" 
                                        class="input-field w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent pr-12"
                                        placeholder="Confirm your password"
-                                       minlength="8"
+                        minlength="8"
+                        pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}"
+                        title="Must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character"
                                        required>
                                 <button type="button" 
                                         onclick="togglePassword('confirm_password', 'eye-icon-2')" 
