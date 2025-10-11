@@ -301,7 +301,30 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
     </script>
 </head>
 <body class="min-h-screen">
+<<<<<<< HEAD
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-md border-b border-gray-200">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+                <!-- Logo -->
+                <div class="flex items-center gap-3 animate-fade-in-up">
+                    <img src="../images/logo.png" 
+                         alt="Sandok ni Binggay" 
+                         class="w-16 h-16 rounded-full border-4 border-primary shadow-lg object-cover">
+                    <div class="hidden md:block">
+                        <h1 class="text-2xl font-medium text-primary">Sandok ni Binggay</h1>
+                        <p class="text-sm text-muted-foreground">Nothing Beats Home-Cooked Meals</p>
+                    </div>
+                </div>
+
+    <!-- Floating Cart Button (keeps cart accessible and preserves cartBadge) -->
+    <button onclick="toggleCart()" class="fixed bottom-6 right-6 z-50 bg-primary text-white rounded-full w-14 h-14 shadow-lg hover:bg-green-800 transition-colors flex items-center justify-center relative">
+        <i class="fas fa-shopping-cart text-xl"></i>
+        <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold"></span>
+    </button>
+=======
     <?php include __DIR__ . '/partials/navbar.php'; ?>
+>>>>>>> 7994b21a8d2f53cfae29130b938c9729ab5910fd
 
     <!-- Hero Banner -->
     <div class="bg-gradient-to-r from-primary to-green-800 text-white pt-32 pb-12 md:pt-36 animate-fade-in" data-nav-contrast="dark">

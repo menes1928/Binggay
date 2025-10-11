@@ -1,22 +1,41 @@
 <?php
 session_start();
+require_once __DIR__ . '/classes/database.php';
 
 // Handle login form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
-    $email = $_POST['email'] ?? '';
+    $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $remember = isset($_POST['remember']);
-    
-    // TODO: Add actual authentication logic here
-    // For now, this is a placeholder
-    
-    if ($email === 'admin@sandok.com' && $password === 'admin123') {
-        $_SESSION['user_id'] = 1;
-        $_SESSION['user_name'] = 'Admin User';
-        header('Location: admin.php');
-        exit;
+
+    if ($email === '' || $password === '') {
+        $error = 'Email and password are required';
     } else {
-        $error = 'Invalid email or password';
+        try {
+            $db = new database();
+            $pdo = $db->opencon();
+            $stmt = $pdo->prepare('SELECT user_id, user_fn, user_ln, user_email, user_password, user_type FROM users WHERE user_email = ? LIMIT 1');
+            $stmt->execute([$email]);
+            $user = $stmt->fetch();
+            if ($user && password_verify($password, $user['user_password'])) {
+                $_SESSION['user_id'] = (int)$user['user_id'];
+                $_SESSION['user_name'] = $user['user_fn'] . ' ' . $user['user_ln'];
+                $_SESSION['user_email'] = $user['user_email'];
+                $_SESSION['user_type'] = (int)$user['user_type'];
+
+                // Simple role-based redirect: 1 = admin per sample data
+                if ((int)$user['user_type'] === 1) {
+                    header('Location: admin/admin_homepage.php');
+                } else {
+                    header('Location: user/homepage.php');
+                }
+                exit;
+            } else {
+                $error = 'Invalid email or password';
+            }
+        } catch (Throwable $e) {
+            $error = 'Login failed: ' . $e->getMessage();
+        }
     }
 }
 ?>
