@@ -47,6 +47,67 @@ $collections = [
 
 // Triple the collections for seamless infinite scroll
 $duplicatedCollections = array_merge($collections, $collections, $collections);
+
+// Load packages + items from DB for "Our Packages" section
+require_once __DIR__ . '/../classes/database.php';
+$db = new database();
+$packages = [];
+try {
+    $pdo = $db->opencon();
+    // Include package_image so we can use the admin-uploaded image as the card cover
+    // Include both active and inactive packages; we'll visually indicate inactive and disable booking
+    $stmt = $pdo->prepare("SELECT package_id, name, pax, base_price, is_active, package_image FROM packages ORDER BY CAST(pax AS UNSIGNED), name");
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $itemsStmt = $pdo->prepare("SELECT item_label, qty, unit, is_optional, item_pic FROM package_items WHERE package_id = ? ORDER BY sort_order, item_id");
+    foreach ($rows as $row) {
+        $pid = (int)$row['package_id'];
+        $itemsStmt->execute([$pid]);
+        $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        // Normalize package_image from packages table (admin-uploaded) first
+        $pkgImg = '';
+        if (isset($row['package_image'])) {
+            $pkgImg = trim((string)$row['package_image']);
+            $pkgImg = str_replace('\\', '/', $pkgImg);
+            if ($pkgImg !== '' && !preg_match('~^https?://~i', $pkgImg)) {
+                $pkgImg = '../' . ltrim($pkgImg, '/');
+            }
+        }
+
+        // Normalize image paths for items; pick first non-empty as fallback cover
+        $firstItemImg = '';
+        $seen = [];
+        $dedup = [];
+        foreach ($items as &$it) {
+            $p = isset($it['item_pic']) ? trim((string)$it['item_pic']) : '';
+            $p = str_replace('\\', '/', $p);
+            if ($p !== '' && !preg_match('~^https?://~i', $p)) {
+                // Make relative to /user/* pages
+                $p = '../' . ltrim($p, '/');
+            }
+            $it['item_pic'] = $p;
+            if ($firstItemImg === '' && $p !== '') { $firstItemImg = $p; }
+            // Deduplicate items (label+qty+unit+optional+pic) to avoid repeated last item bug
+            $key = strtolower(trim((string)($it['item_label'] ?? ''))) . '|' . (string)($it['qty'] ?? '') . '|' . strtolower((string)($it['unit'] ?? '')) . '|' . (string)(int)($it['is_optional'] ?? 0) . '|' . $it['item_pic'];
+            if (!isset($seen[$key])) { $seen[$key] = true; $dedup[] = $it; }
+        }
+        unset($it);
+        $items = $dedup;
+        // Decide final cover: package image > first item image > logo
+        $cover = $pkgImg !== '' ? $pkgImg : ($firstItemImg !== '' ? $firstItemImg : '');
+        $packages[] = [
+            'id' => $pid,
+            'name' => (string)$row['name'],
+            'pax' => (string)$row['pax'],
+            'price' => isset($row['base_price']) ? (float)$row['base_price'] : null,
+            'items' => $items,
+            'active' => ((int)($row['is_active'] ?? 0) === 1),
+            'cover' => $cover,
+        ];
+    }
+} catch (Throwable $e) {
+    $packages = [];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -423,6 +484,8 @@ $duplicatedCollections = array_merge($collections, $collections, $collections);
         </div>
     </section>
 
+    
+
     <!-- Our Legacy Section -->
     <section class="py-20 bg-gray-50">
         <div class="container mx-auto px-6">
@@ -672,6 +735,132 @@ $duplicatedCollections = array_merge($collections, $collections, $collections);
                         <span class="absolute inset-0 bg-green-700 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left -z-10"></span>
                     </span>
                 </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Our Packages Section (below Our Menu) -->
+    <section class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <!-- Header -->
+            <div class="text-center mb-16 fade-in-element">
+                <div class="inline-flex items-center space-x-2 mb-4">
+                    <div class="w-8 h-px bg-yellow-600"></div>
+                    <div class="w-2 h-2 bg-yellow-600 rotate-45"></div>
+                    <div class="w-8 h-px bg-yellow-600"></div>
+                </div>
+                <h2 class="text-5xl lg:text-6xl text-green-800 font-serif mb-6 fade-in-element" data-delay="200">
+                    Our Packages
+                </h2>
+                <p class="text-gray-600 text-lg max-w-3xl mx-auto leading-relaxed fade-in-element" data-delay="400">
+                    Thoughtfully curated packages to match your event size, taste, and style—crafted with authentic flavors and warm service.
+                </p>
+            </div>
+
+            <?php if (!empty($packages)): ?>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <?php foreach ($packages as $pkg): ?>
+                <?php
+                    $title = htmlspecialchars($pkg['name']) . ' (' . htmlspecialchars($pkg['pax']) . ' pax)';
+                    $price = $pkg['price'] !== null ? '₱' . number_format($pkg['price']) : '';
+                    $cover = $pkg['cover'] !== '' ? $pkg['cover'] : '../images/logo.png';
+                    // Cache-bust local images to reflect admin edits immediately
+                    $coverUrl = $cover;
+                    if ($coverUrl !== '' && !preg_match('~^https?://~i', $coverUrl)) {
+                        $abs = realpath(__DIR__ . '/' . $coverUrl);
+                        if ($abs && file_exists($abs)) {
+                            $ver = @filemtime($abs);
+                            if ($ver) { $coverUrl .= (strpos($coverUrl, '?') !== false ? '&' : '?') . 'v=' . $ver; }
+                        }
+                    }
+                    // Active state (we show inactive too but disable booking)
+                    $isActive = !empty($pkg['active']);
+                ?>
+                <div class="group bg-white rounded-xl border border-green-100 overflow-hidden shadow-sm hover:shadow-xl transition duration-300 flex flex-col">
+                    <div class="relative h-44 overflow-hidden">
+                        <img src="<?php echo htmlspecialchars($coverUrl); ?>"
+                             alt="<?php echo htmlspecialchars($pkg['name']); ?>"
+                             onerror="this.onerror=null;this.src='../images/logo.png';"
+                             class="w-full h-full object-cover transform group-hover:scale-105 transition duration-500" />
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-70"></div>
+                        <div class="absolute top-3 left-3">
+                            <span class="inline-flex items-center gap-1 bg-emerald-600/90 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">
+                                <i class="fas fa-users text-[10px]"></i>
+                                <?php echo htmlspecialchars($pkg['pax']); ?> pax
+                            </span>
+                        </div>
+                        <?php if (!$isActive): ?>
+                        <div class="absolute top-3 right-3">
+                            <span class="inline-flex items-center gap-1 bg-gray-800/90 text-white text-xs font-semibold px-3 py-1 rounded-full shadow border border-gray-600">
+                                <i class="fas fa-ban text-[10px]"></i>
+                                Inactive
+                            </span>
+                        </div>
+                        <?php endif; ?>
+                        <?php if ($price): ?>
+                        <div class="absolute bottom-3 right-3">
+                            <span class="inline-flex items-center bg-white/95 text-green-800 text-sm font-semibold px-3 py-1 rounded-full shadow border border-green-100">
+                                <?php echo $price; ?>
+                            </span>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="p-5 flex-1">
+                        <h3 class="text-xl font-semibold text-green-800 mb-3 group-hover:text-green-700 transition-colors">
+                            <?php echo $title; ?>
+                        </h3>
+                        <?php if (!empty($pkg['items'])): ?>
+                        <ul class="space-y-2 text-sm text-gray-700">
+                            <?php foreach ($pkg['items'] as $it): ?>
+                                <li class="flex items-start gap-2">
+                                    <span class="mt-1 inline-flex w-5 h-5 items-center justify-center rounded-full bg-green-100 text-green-700">
+                                        <i class="fas fa-check text-[10px]"></i>
+                                    </span>
+                                    <span>
+                                        <?php echo htmlspecialchars($it['item_label']); ?>
+                                        <?php if (!empty($it['qty'])): ?>
+                                            <span class="text-gray-500">— <?php echo htmlspecialchars((string)$it['qty']); ?> <?php echo htmlspecialchars((string)$it['unit']); ?></span>
+                                        <?php endif; ?>
+                                        <?php if (!empty($it['is_optional'])): ?>
+                                            <span class="ml-1 text-[10px] px-1 rounded bg-amber-50 border border-amber-300 text-amber-800">optional</span>
+                                        <?php endif; ?>
+                                    </span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                        <?php else: ?>
+                            <p class="text-gray-500 text-sm">Items coming soon.</p>
+                        <?php endif; ?>
+                    </div>
+                    <div class="px-5 pb-5">
+                        <?php if ($isActive): ?>
+                        <a href="cateringpackages.php" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-green-800 text-white hover:bg-green-700 transition">
+                            <i class="fas fa-calendar-check"></i>
+                            Book Now
+                        </a>
+                        <?php else: ?>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600 inline-flex items-center gap-2"><i class="fas fa-triangle-exclamation text-gray-500"></i> Inactive • Cannot be booked</span>
+                            <button class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gray-300 text-gray-600 cursor-not-allowed" disabled>
+                                <i class="fas fa-ban"></i>
+                                Book Now
+                            </button>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php else: ?>
+                <div class="text-center text-gray-500">No active packages yet.</div>
+            <?php endif; ?>
+
+            <!-- Section CTA -->
+            <div class="text-center mt-16 fade-in-element" data-delay="400">
+                <a href="cateringpackages.php" class="inline-flex items-center gap-3 bg-green-800 text-white px-10 py-4 font-semibold tracking-wider hover:bg-green-700 transition-all duration-300 transform hover:scale-105 hover:shadow-xl group">
+                    <i class="fas fa-calendar-check"></i>
+                    Book Now
+                </a>
             </div>
         </div>
     </section>

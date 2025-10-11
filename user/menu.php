@@ -1,89 +1,82 @@
 <?php
 require_once __DIR__ . '/../classes/database.php';
-
-// Build menu items and categories from DB
 $db = new database();
-$pdo = $db->opencon();
 
-// Categories list for filter
-$categories = ['All'];
-$availableCategories = [];
-try {
-    $catStmt = $pdo->query("SELECT category_name FROM category ORDER BY category_name ASC");
-    $availableCategories = array_map(fn($r) => $r['category_name'], $catStmt->fetchAll());
-    $categories = array_merge($categories, $availableCategories);
-} catch (Throwable $e) {
-    // keep just 'All' on failure
+
+function normalize_menu_pic($raw) {
+    $raw = trim((string)$raw);
+    if ($raw === '') {
+        return 'https://placehold.co/800x600?text=Menu+Photo';
+    }
+ 
+    $raw = str_replace('\\', '/', $raw);
+
+   
+    if (preg_match('~^https?://~i', $raw)) {
+        return $raw;
+    }
+
+ 
+    if (strpos($raw, '/') === false) {
+        return '/Binggay/menu/' . $raw;
+    }
+
+  
+    if (preg_match('~^(menu|images|uploads)(/|$)~i', $raw)) {
+        return '/Binggay/' . ltrim($raw, '/');
+    }
+
+
+    if (preg_match('~(?:^|/)Binggay/(.+)$~i', $raw, $m)) {
+        return '/Binggay/' . ltrim($m[1], '/');
+    }
+
+    return '/Binggay/' . ltrim($raw, '/');
 }
 
-// Helper: derive category from menu_name using keywords; only return if in DB categories
-function derive_category_name(string $name, array $validCats): ?string {
-    $n = strtolower($name);
-    $map = [
-        'Beef' => ['beef', 'bulalo', 'steak'],
-        'Pork' => ['pork', 'liempo', 'humba', 'binagoongan', 'menudo', 'dinuguan', 'pochero', 'estofado', 'kare-kare (pork)', 'tokwa\'t baboy', 'spare ribs', 'bbq spare ribs', 'baby back ribs', 'bicol express', 'bicol'],
-        'Chicken' => ['chicken', 'manok', 'cordon bleu', 'lollipop'],
-        'Seafood' => ['seafood', 'shrimp', 'tahong', 'bangus', 'fish', 'salvatore', 'tuna'],
-        'Pasta' => ['pasta', 'spaghetti', 'carbonara', 'pesto', 'pansit', 'pancit'],
-        'Vegetables' => ['vegg', 'vegetable', 'vegies', 'veggies', 'laing', 'chopsuey', 'pakbet', 'tokwa', 'lumpiang'],
-        'Best Sellers' => ['best seller']
+// Categories from DB with an 'All' pseudo-category
+$dbCategories = $db->viewCategories();
+$categories = [ [ 'category_id' => 0, 'category_name' => 'All' ] ];
+foreach ($dbCategories as $row) {
+    $categories[] = [
+        'category_id' => (int)$row['category_id'],
+        'category_name' => (string)$row['category_name'],
     ];
-    foreach ($map as $cat => $keywords) {
-        if (!in_array($cat, $validCats, true)) continue;
-        foreach ($keywords as $kw) {
-            if (strpos($n, $kw) !== false) return $cat;
-        }
-    }
-    return null;
 }
 
-// Fetch menu items
-$menuItems = [];
-try {
-    $sql = "
-        SELECT m.menu_id, m.menu_name, m.menu_desc, m.menu_pax, m.menu_price, m.menu_pic, m.menu_avail,
-               (
-                   SELECT c.category_name
-                   FROM menucategory mc2
-                   JOIN category c ON c.category_id = mc2.category_id
-                   WHERE mc2.menu_id = m.menu_id
-                   ORDER BY c.category_name ASC
-                   LIMIT 1
-               ) AS category_name
-        FROM menu m
-        ORDER BY m.created_at DESC, m.menu_id DESC
-    ";
-    $rows = $pdo->query($sql)->fetchAll();
-    foreach ($rows as $r) {
-        // Resolve image or fallback
-        $pic = trim((string)($r['menu_pic'] ?? ''));
-        $imgRel = '../menu/' . ($pic !== '' ? $pic : '');
-        $imgFs = __DIR__ . '/../menu/' . ($pic !== '' ? $pic : '');
-        if ($pic === '' || !file_exists($imgFs)) {
-            $imgRel = '../images/logo.png';
-        }
+// Selected category via query string (?cat=ID), 0 means All
+$selectedCategoryId = isset($_GET['cat']) ? max(0, (int)$_GET['cat']) : 0;
+$selectedCategoryName = 'All';
+foreach ($categories as $c) { if ((int)$c['category_id'] === $selectedCategoryId) { $selectedCategoryName = $c['category_name']; break; } }
 
-        // Determine category
-        $derived = derive_category_name((string)$r['menu_name'], $availableCategories);
-        $categoryName = $derived ?? ($r['category_name'] ?? 'Uncategorized');
-        $isBest = ((string)($r['category_name'] ?? '') === 'Best Sellers');
+// Fetch menus (include both available and unavailable). If All, pass null to avoid join
+$menuRows = $db->getFilteredMenuOOP($selectedCategoryId ?: null, null, 'alpha_asc');
 
-        $menuItems[] = [
-            'id' => (int)$r['menu_id'],
-            'name' => (string)$r['menu_name'],
-            'description' => (string)($r['menu_desc'] ?? ''),
-            'price' => (float)$r['menu_price'],
-            'image' => $imgRel,
-            'category' => $categoryName,
-            'servings' => (string)($r['menu_pax'] ?? ''),
-            'prepTime' => '—',
-            'popular' => $isBest,
-            'rating' => 5.0,
-            'reviews' => 0
-        ];
-    }
-} catch (Throwable $e) {
-    // On failure, leave empty; UI will show no items when searching
+// Map to UI-friendly array expected by the JS/template
+$menuItems = array_map(function($m){
+    $pic = isset($m['menu_pic']) ? $m['menu_pic'] : '';
+    $avail = isset($m['menu_avail']) ? (int)$m['menu_avail'] : 1;
+    return [
+        'id' => (int)$m['menu_id'],
+        'name' => (string)$m['menu_name'],
+        'description' => (string)$m['menu_desc'],
+        'price' => (float)$m['menu_price'],
+        'image' => normalize_menu_pic($pic),
+        'category' => '',
+        'servings' => isset($m['menu_pax']) ? (string)$m['menu_pax'] : '',
+        'prepTime' => '',
+        'popular' => false,
+        'rating' => 0,
+        'reviews' => 0,
+        'available' => ($avail === 1),
+    ];
+}, $menuRows);
+
+// If requested as AJAX for menu items, return JSON and exit early
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
+    header('Content-Type: application/json');
+    echo json_encode($menuItems);
+    exit;
 }
 ?>
 
@@ -308,6 +301,7 @@ try {
     </script>
 </head>
 <body class="min-h-screen">
+<<<<<<< HEAD
     <!-- Header -->
     <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-md border-b border-gray-200">
         <div class="container mx-auto px-4 py-4">
@@ -328,9 +322,12 @@ try {
         <i class="fas fa-shopping-cart text-xl"></i>
         <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold"></span>
     </button>
+=======
+    <?php include __DIR__ . '/partials/navbar.php'; ?>
+>>>>>>> 7994b21a8d2f53cfae29130b938c9729ab5910fd
 
     <!-- Hero Banner -->
-    <div class="bg-gradient-to-r from-primary to-green-800 text-white py-12 animate-fade-in">
+    <div class="bg-gradient-to-r from-primary to-green-800 text-white pt-32 pb-12 md:pt-36 animate-fade-in" data-nav-contrast="dark">
         <div class="container mx-auto px-4 text-center">
             <h2 class="text-3xl font-medium text-white mb-3">Delicious Home-Cooked Catering</h2>
             <p class="text-white/90 max-w-2xl mx-auto mb-6">
@@ -349,8 +346,8 @@ try {
         </div>
     </div>
 
-    <!-- Search Bar (moved here from header to keep search working) -->
-    <div class="bg-white/90 backdrop-blur-sm border-b border-gray-200">
+    <!-- Search Bar on green background -->
+    <div id="searchSection" class="bg-gradient-to-r from-primary to-green-800 border-b border-green-900/10" data-nav-contrast="dark">
         <div class="container mx-auto px-4 py-4">
             <div class="relative max-w-2xl mx-auto">
                 <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
@@ -367,42 +364,33 @@ try {
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 <i class="fas fa-filter text-gray-400 flex-shrink-0"></i>
-                <?php foreach($categories as $category): ?>
-                <button onclick="filterCategory('<?php echo $category; ?>')" 
-                        class="category-btn px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 <?php echo $category === 'All' ? 'bg-primary text-white shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'; ?>"
-                        data-category="<?php echo $category; ?>">
-                    <?php echo $category; ?>
-                </button>
+                <?php foreach($categories as $cat): ?>
+                    <?php $isActive = ((int)$cat['category_id'] === $selectedCategoryId); ?>
+                    <a href="<?php echo (int)$cat['category_id'] === 0 ? 'menu.php' : ('menu.php?cat='.(int)$cat['category_id']); ?>"
+                       class="category-chip px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 <?php echo $isActive ? 'bg-primary text-white shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'; ?>"
+                       data-cat-id="<?php echo (int)$cat['category_id']; ?>">
+                       <?php echo htmlspecialchars($cat['category_name']); ?>
+                    </a>
                 <?php endforeach; ?>
             </div>
         </div>
     </div>
 
+    <!-- Green spacer above first content section -->
+    <div class="bg-gradient-to-r from-primary to-green-800 h-4 w-full" data-nav-contrast="dark"></div>
+
     <!-- Menu Grid -->
     <div class="container mx-auto px-4 py-8">
-        <!-- Popular Items -->
-        <div id="popularSection" class="mb-12 animate-fade-in-up">
-            <div class="flex items-center gap-2 mb-6">
-                <i class="fas fa-star text-amber-500"></i>
-                <h3 class="text-2xl font-medium text-primary">Popular Items</h3>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <?php foreach($menuItems as $item): ?>
-                    <?php if($item['popular']): ?>
-                        <?php menu_card_template(); ?>
-                    <?php endif; ?>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-        <!-- All Items -->
+        <!-- Items -->
         <div class="animate-fade-in-up">
-            <h3 id="sectionTitle" class="text-2xl font-medium text-primary mb-6">All Menu Items</h3>
+            <h3 id="sectionTitle" class="text-2xl font-medium text-primary mb-6"><?php echo htmlspecialchars($selectedCategoryName === 'All' ? 'All Menu Items' : $selectedCategoryName); ?></h3>
             <div id="menuGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <?php foreach($menuItems as $item): ?>
                     <?php menu_card_template(); ?>
                 <?php endforeach; ?>
             </div>
+            <!-- Pagination -->
+            <div id="pagination" class="mt-8 flex items-center justify-center gap-2 flex-wrap"></div>
         </div>
 
         <div id="noResults" class="hidden text-center py-16">
@@ -443,220 +431,9 @@ try {
                     <span class="font-medium">Total:</span>
                     <span id="cartTotal" class="text-2xl font-bold text-primary">₱0</span>
                 </div>
-                <button onclick="openCheckout()" class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
+                <button class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
                     Proceed to Checkout
                 </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Checkout Modal -->
-    <div id="checkoutModal" class="modal">
-        <div class="modal-content bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div class="p-6">
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-2xl font-medium text-primary">Checkout</h2>
-                    <button onclick="closeCheckout()" class="text-gray-400 hover:text-gray-600 transition-colors">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-
-                <form id="checkoutForm" onsubmit="processOrder(event)">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <!-- Left Column: Customer Information -->
-                        <div class="space-y-6">
-                            <div>
-                                <h3 class="text-lg font-medium text-primary mb-4">Customer Information</h3>
-                                
-                                <div class="space-y-4">
-                                    <div>
-                                        <label class="block text-sm font-medium mb-2">Full Name <span class="text-red-500">*</span></label>
-                                        <input type="text" id="customerName" required 
-                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                               placeholder="Juan Dela Cruz">
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-medium mb-2">Phone Number <span class="text-red-500">*</span></label>
-                                        <input type="tel" id="customerPhone" required 
-                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                               placeholder="0919-123-4567">
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-medium mb-2">Email Address <span class="text-red-500">*</span></label>
-                                        <input type="email" id="customerEmail" required 
-                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                               placeholder="juan@example.com">
-                                    </div>
-
-                                    <div>
-                                        <h4 class="text-sm font-medium mb-2">Delivery Address <span class="text-red-500">*</span></h4>
-                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                            <div>
-                                                <label class="block text-xs text-gray-600 mb-1">Street</label>
-                                                <input type="text" id="oa_street" required
-                                                       class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                                                       placeholder="House No. / Street / Barangay">
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs text-gray-600 mb-1">City</label>
-                                                <select id="oa_city" required
-                                                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none bg-white">
-                                                    <option value="Lipa City">Lipa City</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs text-gray-600 mb-1">Province</label>
-                                                <select id="oa_province" required
-                                                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none bg-white">
-                                                    <option value="Batangas">Batangas</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-medium mb-2">Event Date & Time <span class="text-red-500">*</span></label>
-                                        <input type="datetime-local" id="eventDate" required 
-                                               class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none">
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-medium mb-2">Special Instructions (Optional)</label>
-                                        <textarea id="specialInstructions" rows="3"
-                                                  class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none resize-none"
-                                                  placeholder="Any dietary restrictions, allergies, or special requests..."></textarea>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Payment Method -->
-                            <div>
-                                <h3 class="text-lg font-medium text-primary mb-4">Payment Method</h3>
-                                <div class="space-y-3">
-                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
-                                        <input type="radio" name="paymentMethod" value="cod" checked class="w-4 h-4 text-primary">
-                                        <div class="ml-3 flex-1">
-                                            <div class="flex items-center gap-2">
-                                                <i class="fas fa-money-bill-wave text-primary"></i>
-                                                <span class="font-medium">Cash on Delivery</span>
-                                            </div>
-                                            <p class="text-sm text-gray-500 mt-1">Pay when your order is delivered</p>
-                                        </div>
-                                    </label>
-
-                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
-                                        <input type="radio" name="paymentMethod" value="gcash" class="w-4 h-4 text-primary">
-                                        <div class="ml-3 flex-1">
-                                            <div class="flex items-center gap-2">
-                                                <i class="fas fa-mobile-alt text-primary"></i>
-                                                <span class="font-medium">GCash</span>
-                                            </div>
-                                            <p class="text-sm text-gray-500 mt-1">Send payment via GCash</p>
-                                        </div>
-                                    </label>
-
-                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
-                                        <input type="radio" name="paymentMethod" value="bank" class="w-4 h-4 text-primary">
-                                        <div class="ml-3 flex-1">
-                                            <div class="flex items-center gap-2">
-                                                <i class="fas fa-university text-primary"></i>
-                                                <span class="font-medium">Bank Transfer</span>
-                                            </div>
-                                            <p class="text-sm text-gray-500 mt-1">Transfer to our bank account</p>
-                                        </div>
-                                    </label>
-
-                                    <label class="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
-                                        <input type="radio" name="paymentMethod" value="card" class="w-4 h-4 text-primary">
-                                        <div class="ml-3 flex-1">
-                                            <div class="flex items-center gap-2">
-                                                <i class="fas fa-credit-card text-primary"></i>
-                                                <span class="font-medium">Credit/Debit Card</span>
-                                            </div>
-                                            <p class="text-sm text-gray-500 mt-1">Pay securely with your card</p>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Right Column: Order Summary -->
-                        <div>
-                            <h3 class="text-lg font-medium text-primary mb-4">Order Summary</h3>
-                            
-                            <div class="bg-gray-50 rounded-lg p-4 mb-4 max-h-96 overflow-y-auto">
-                                <div id="checkoutItems" class="space-y-3"></div>
-                            </div>
-
-                            <div class="space-y-3 border-t border-gray-200 pt-4">
-                                <div class="flex justify-between text-sm">
-                                    <span class="text-gray-600">Subtotal:</span>
-                                    <span id="checkoutSubtotal" class="font-medium">₱0</span>
-                                </div>
-                                <div class="flex justify-between text-sm">
-                                    <span class="text-gray-600">Delivery Fee:</span>
-                                    <span id="checkoutDelivery" class="font-medium">₱200</span>
-                                </div>
-                                <div class="flex justify-between text-lg font-bold text-primary border-t border-gray-200 pt-3">
-                                    <span>Total:</span>
-                                    <span id="checkoutTotal">₱0</span>
-                                </div>
-                            </div>
-
-                            <!-- Important Notes -->
-                            <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <div class="flex gap-2">
-                                    <i class="fas fa-info-circle text-yellow-600 mt-1"></i>
-                                    <div class="text-sm text-yellow-800">
-                                        <p class="font-medium mb-2">Important Notes:</p>
-                                        <ul class="list-disc list-inside space-y-1 text-xs">
-                                            <li>Orders must be placed at least 24 hours in advance</li>
-                                            <li>A 50% deposit may be required for large orders</li>
-                                            <li>We only deliver through Grab</li>
-                                            <li>Delivery fee is shouldered by the customer</li>
-                                            <li>We'll contact you to confirm your order details</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Submit Button -->
-                            <button type="submit" class="w-full mt-6 bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
-                                <i class="fas fa-check-circle mr-2"></i>
-                                Place Order
-                            </button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Success Modal -->
-    <div id="successModal" class="modal">
-        <div class="modal-content bg-white rounded-lg max-w-md w-full mx-4">
-            <div class="p-8 text-center">
-                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-check text-3xl text-green-600"></i>
-                </div>
-                <h2 class="text-2xl font-medium text-primary mb-2">Order Placed Successfully!</h2>
-                <p class="text-gray-600 mb-6">Thank you for your order. We'll contact you shortly to confirm the details.</p>
-                
-                <div class="bg-gray-50 rounded-lg p-4 mb-6 text-left">
-                    <p class="text-sm text-gray-600 mb-2">Order Reference:</p>
-                    <p id="orderReference" class="text-lg font-bold text-primary"></p>
-                </div>
-
-                <div class="space-y-3">
-                    <button onclick="closeSuccess()" class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
-                        Continue Shopping
-                    </button>
-                    <button onclick="window.print()" class="w-full border-2 border-gray-300 hover:border-primary text-gray-700 hover:text-primary py-3 rounded-lg transition-colors font-medium">
-                        <i class="fas fa-print mr-2"></i>Print Receipt
-                    </button>
-                </div>
             </div>
         </div>
     </div>
@@ -677,58 +454,174 @@ try {
 
     <script>
         // Menu items data as JavaScript
-        const menuItems = <?php echo json_encode($menuItems); ?>;
+        let menuItems = <?php echo json_encode($menuItems); ?>;
         let cart = [];
-        let selectedCategory = 'All';
+        let selectedCategoryId = <?php echo (int)$selectedCategoryId; ?>;
+        let selectedCategory = '<?php echo addslashes($selectedCategoryName); ?>';
+        let currentPage = 1;
+        const pageSize = 20;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             renderMenu();
             setupSearch();
+            setupCategoryChips();
+            // If navigated with #cart, open the cart sidebar
+            if (window.location.hash === '#cart' && typeof toggleCart === 'function') {
+                toggleCart();
+            }
         });
 
         // Filter by category
-        function filterCategory(category) {
-            selectedCategory = category;
-            
-            // Update active button
-            document.querySelectorAll('.category-btn').forEach(btn => {
-                if(btn.dataset.category === category) {
-                    btn.className = 'category-btn px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 bg-primary text-white shadow-md';
-                } else {
-                    btn.className = 'category-btn px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 bg-gray-100 hover:bg-gray-200 text-gray-700';
-                }
-            });
-
-            // Update section title
-            document.getElementById('sectionTitle').textContent = category === 'All' ? 'All Menu Items' : category;
-            
-            // Show/hide popular section
-            document.getElementById('popularSection').style.display = category === 'All' ? 'block' : 'none';
-            
-            renderMenu();
-        }
+        // Category is now server-driven via links; no JS switching required
 
         // Render menu items
         function renderMenu() {
             const searchQuery = document.getElementById('searchInput').value.toLowerCase();
-            const filteredItems = menuItems.filter(item => {
-                const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-                const matchesSearch = item.name.toLowerCase().includes(searchQuery) || 
-                                     item.description.toLowerCase().includes(searchQuery);
-                return matchesCategory && matchesSearch;
-            });
+            const filteredItems = menuItems.filter(item => item.name.toLowerCase().includes(searchQuery) || item.description.toLowerCase().includes(searchQuery));
 
             const menuGrid = document.getElementById('menuGrid');
             const noResults = document.getElementById('noResults');
+            const pagination = document.getElementById('pagination');
 
             if(filteredItems.length === 0) {
                 menuGrid.innerHTML = '';
                 noResults.classList.remove('hidden');
+                if (pagination) pagination.innerHTML = '';
             } else {
                 noResults.classList.add('hidden');
-                menuGrid.innerHTML = filteredItems.map(item => createMenuCard(item)).join('');
+                // Pagination math
+                const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+                if (currentPage > totalPages) currentPage = totalPages;
+                const start = (currentPage - 1) * pageSize;
+                const pageItems = filteredItems.slice(start, start + pageSize);
+                // Render current page
+                menuGrid.innerHTML = pageItems.map(item => createMenuCard(item)).join('');
+                // Render pagination controls
+                renderPagination(totalPages);
             }
+        }
+
+        function renderPagination(totalPages) {
+            const el = document.getElementById('pagination');
+            if (!el) return;
+            if (totalPages <= 1) {
+                el.innerHTML = '';
+                return;
+            }
+
+            // Helper to build page button
+            const btn = (label, page, disabled = false, active = false) => {
+                const base = 'px-3 py-2 rounded-md text-sm border transition-all';
+                const styles = active
+                    ? ' bg-primary text-white border-primary shadow-sm'
+                    : (disabled ? ' text-gray-400 border-gray-200 cursor-not-allowed'
+                                : ' bg-white text-gray-700 hover:bg-gray-50 border-gray-200');
+                const data = disabled ? '' : ` data-page="${page}"`;
+                const aria = active ? ' aria-current="page"' : '';
+                return `<a href="#" class="${base}${styles ? ' ' + styles : ''}"${data}${aria}>${label}</a>`;
+            };
+
+            // Determine range of pages to show (use window around current)
+            const pages = [];
+            const maxButtons = 7; // including first/last when collapsed
+            let start = 1;
+            let end = totalPages;
+            if (totalPages > maxButtons) {
+                start = Math.max(1, currentPage - 2);
+                end = Math.min(totalPages, currentPage + 2);
+                if (start <= 2) { start = 1; end = Math.min(totalPages, start + 4); }
+                if (end >= totalPages - 1) { end = totalPages; start = Math.max(1, end - 4); }
+            }
+
+            // Build HTML
+            let html = '';
+            // Prev
+            html += btn('Prev', currentPage - 1, currentPage === 1, false);
+            // First page and ellipsis
+            if (start > 1) {
+                html += btn('1', 1, false, currentPage === 1);
+                if (start > 2) html += `<span class="px-2 text-gray-400">…</span>`;
+            }
+            // Middle pages
+            for (let p = start; p <= end; p++) {
+                html += btn(String(p), p, false, p === currentPage);
+            }
+            // Last page and ellipsis
+            if (end < totalPages) {
+                if (end < totalPages - 1) html += `<span class="px-2 text-gray-400">…</span>`;
+                html += btn(String(totalPages), totalPages, false, currentPage === totalPages);
+            }
+            // Next
+            html += btn('Next', currentPage + 1, currentPage === totalPages, false);
+
+            el.innerHTML = html;
+
+            // Wire up clicks
+            el.querySelectorAll('a[data-page]').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const target = parseInt(a.getAttribute('data-page') || '1', 10);
+                    if (!Number.isNaN(target) && target >= 1 && target <= totalPages && target !== currentPage) {
+                        currentPage = target;
+                        renderMenu();
+                        // Scroll to the search bar so it sits at the top
+                        scrollToSearch();
+                    }
+                });
+            });
+        }
+
+        // Smoothly scroll to the search bar with an offset for the navbar
+        function scrollToSearch() {
+            const target = document.getElementById('searchSection') || document.getElementById('searchInput');
+            if (!target) return;
+            const navEl = document.querySelector('nav, header[role="banner"], header');
+            const navH = navEl ? Math.ceil(navEl.getBoundingClientRect().height) : 80;
+            const extra = 8; // small breathing space
+            const top = target.getBoundingClientRect().top + window.pageYOffset - navH - extra;
+            window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        }
+
+        // Fetch menus by category (AJAX)
+        async function fetchMenus(catId) {
+            try {
+                const resp = await fetch(`menu.php?ajax=menu&cat=${encodeURIComponent(catId)}`, { headers: { 'Accept': 'application/json' } });
+                if (!resp.ok) throw new Error('Failed to fetch');
+                const data = await resp.json();
+                menuItems = Array.isArray(data) ? data : [];
+                currentPage = 1;
+                renderMenu();
+            } catch (e) {
+                console.error('Fetch menus error:', e);
+            }
+        }
+
+        // Initialize category chips to filter without page reload
+        function setupCategoryChips() {
+            const chips = document.querySelectorAll('.category-chip');
+            chips.forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const catId = parseInt(chip.dataset.catId || '0', 10) || 0;
+                    selectedCategoryId = catId;
+                    selectedCategory = chip.textContent.trim() || 'All';
+                    // Update active styles
+                    chips.forEach(c => {
+                        const active = (parseInt(c.dataset.catId || '0',10) === selectedCategoryId);
+                        c.className = `category-chip px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 ${active ? 'bg-primary text-white shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`;
+                    });
+                    // Update section title
+                    const titleEl = document.getElementById('sectionTitle');
+                    if (titleEl) titleEl.textContent = (selectedCategory.toLowerCase() === 'all') ? 'All Menu Items' : selectedCategory;
+                    // Clear search on category change for clarity
+                    const s = document.getElementById('searchInput');
+                    if (s) { s.value = ''; }
+                    currentPage = 1;
+                    // Fetch and render
+                    fetchMenus(selectedCategoryId);
+                });
+            });
         }
 
         // Create menu card HTML
@@ -736,10 +629,10 @@ try {
             return `
                 <div class="menu-card bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
                     <div class="relative overflow-hidden h-48" onclick="openItemModal(${item.id})">
-                        <img src="${item.image}" alt="${item.name}" class="menu-image w-full h-full object-cover">
+                        <img src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="menu-image w-full h-full object-cover">
                         <div class="menu-overlay absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                        ${item.popular ? '<span class="absolute top-3 left-3 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg"><i class="fas fa-star mr-1"></i>Popular</span>' : ''}
-                        <button onclick="event.stopPropagation(); addToCart(${item.id})" class="add-btn absolute bottom-3 right-3 bg-white text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
+                        ${item.available ? '<span class="absolute top-3 left-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Available</span>' : '<span class="absolute top-3 left-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Unavailable</span>'}
+                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="event.stopPropagation(); ${item.available ? `addToCart(${item.id})` : ''}" class="add-btn absolute bottom-3 right-3 ${item.available ? 'bg-white text-primary hover:bg-primary hover:text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
                             <i class="fas fa-plus mr-1"></i>Add
                         </button>
                     </div>
@@ -747,11 +640,7 @@ try {
                         <h4 class="font-medium text-primary mb-2 hover:text-amber-500 transition-colors">${item.name}</h4>
                         <p class="text-sm text-gray-600 mb-3 line-clamp-2">${item.description}</p>
                         <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-1 text-sm text-gray-500">
-                                <i class="fas fa-star text-amber-500"></i>
-                                <span class="font-medium text-gray-700">${item.rating}</span>
-                                <span class="text-xs">(${item.reviews})</span>
-                            </div>
+                            <span class="text-xs font-medium ${item.available ? 'text-emerald-700' : 'text-red-700'}">${item.available ? 'Available' : 'Unavailable'}</span>
                             <p class="text-xl font-bold text-primary">₱${item.price.toLocaleString()}</p>
                         </div>
                         <div class="flex items-center gap-2 text-xs text-gray-500">
@@ -772,7 +661,10 @@ try {
 
         // Setup search
         function setupSearch() {
-            document.getElementById('searchInput').addEventListener('input', renderMenu);
+            document.getElementById('searchInput').addEventListener('input', () => {
+                currentPage = 1;
+                renderMenu();
+            });
         }
 
         // Open item modal
@@ -782,16 +674,14 @@ try {
 
             const modalContent = `
                 <div class="relative h-64 md:h-96">
-                    <img src="${item.image}" alt="${item.name}" class="w-full h-full object-cover">
-                    ${item.popular ? '<span class="absolute top-4 right-4 bg-amber-500 text-white px-3 py-1 rounded-full text-sm font-medium"><i class="fas fa-star mr-1"></i>Popular</span>' : ''}
+                    <img src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="w-full h-full object-cover">
+                    ${item.available ? '<span class="absolute top-4 right-4 bg-emerald-600 text-white px-3 py-1 rounded-full text-sm font-medium">Available</span>' : '<span class="absolute top-4 right-4 bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium">Unavailable</span>'}
                 </div>
                 <div class="p-6">
                     <h2 class="text-2xl font-medium text-primary mb-4">${item.name}</h2>
                     <div class="flex items-center gap-4 text-sm text-gray-500 mb-6">
-                        <div class="flex items-center gap-1">
-                            <i class="fas fa-star text-amber-500"></i>
-                            <span class="font-medium text-gray-700">${item.rating}</span>
-                            <span>(${item.reviews} reviews)</span>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${item.available ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${item.available ? 'Available' : 'Unavailable'}</span>
                         </div>
                         <div class="flex items-center gap-1">
                             <i class="fas fa-users"></i>
@@ -808,7 +698,7 @@ try {
                             <p class="text-sm text-gray-500">Price</p>
                             <p class="text-3xl font-bold text-primary">₱${item.price.toLocaleString()}</p>
                         </div>
-                        <button onclick="addToCart(${item.id}); closeModal(); toggleCart()" class="bg-primary hover:bg-green-800 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="${item.available ? `addToCart(${item.id}); closeModal(); toggleCart()` : ''}" class="${item.available ? 'bg-primary hover:bg-green-800 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-6 py-3 rounded-lg font-medium transition-colors">
                             <i class="fas fa-plus mr-2"></i>Add to Cart
                         </button>
                     </div>
@@ -867,14 +757,23 @@ try {
             const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
             const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-            // Update badge
-            const badge = document.getElementById('cartBadge');
-            if(cartCount > 0) {
-                badge.textContent = cartCount;
-                badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
+            // Update badge(s) across page and navbar if present
+            const badges = [];
+            const mainBadge = document.getElementById('cartBadge');
+            if (mainBadge) badges.push(mainBadge);
+            // Navbar desktop button badge reuses same id; ensure uniqueness by selecting duplicates
+            document.querySelectorAll('#nav-cart-btn #cartBadge, #nav-cart-btn-mobile .cart-badge').forEach(el => badges.push(el));
+            badges.forEach(badgeEl => {
+                if (!badgeEl) return;
+                if (cartCount > 0) {
+                    badgeEl.textContent = cartCount;
+                    badgeEl.classList.remove('hidden');
+                    badgeEl.classList.add('flex');
+                } else {
+                    badgeEl.classList.add('hidden');
+                    badgeEl.classList.remove('flex');
+                }
+            });
 
             // Update cart items
             if(cart.length === 0) {
@@ -889,7 +788,7 @@ try {
                 const cartList = document.getElementById('cartList');
                 cartList.innerHTML = cart.map(item => `
                     <div class="flex gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <img src="${item.image}" alt="${item.name}" class="w-20 h-20 object-cover rounded-lg">
+                        <img src="${item.image}" alt="${item.name}" class="w-20 h-20 object-cover rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/160x160?text=Menu';">
                         <div class="flex-1">
                             <h4 class="font-medium text-sm mb-1">${item.name}</h4>
                             <p class="text-sm text-primary font-semibold">₱${item.price.toLocaleString()}</p>
@@ -914,137 +813,6 @@ try {
         document.getElementById('itemModal').addEventListener('click', function(e) {
             if(e.target === this) closeModal();
         });
-
-        // Checkout functions
-        function openCheckout() {
-            if(cart.length === 0) {
-                alert('Your cart is empty!');
-                return;
-            }
-
-            // Populate checkout items
-            const checkoutItems = document.getElementById('checkoutItems');
-            checkoutItems.innerHTML = cart.map(item => `
-                <div class="flex gap-3 pb-3 border-b border-gray-200">
-                    <img src="${item.image}" alt="${item.name}" class="w-16 h-16 object-cover rounded-lg">
-                    <div class="flex-1">
-                        <h4 class="font-medium text-sm">${item.name}</h4>
-                        <p class="text-xs text-gray-500">${item.servings}</p>
-                        <div class="flex items-center justify-between mt-1">
-                            <span class="text-xs text-gray-600">Qty: ${item.quantity}</span>
-                            <span class="text-sm font-semibold text-primary">₱${(item.price * item.quantity).toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
-            // Calculate totals
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const deliveryFee = 200;
-            const total = subtotal + deliveryFee;
-
-            document.getElementById('checkoutSubtotal').textContent = '₱' + subtotal.toLocaleString();
-            document.getElementById('checkoutDelivery').textContent = '₱' + deliveryFee.toLocaleString();
-            document.getElementById('checkoutTotal').textContent = '₱' + total.toLocaleString();
-
-            // Set minimum date to tomorrow
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            document.getElementById('eventDate').min = tomorrow.toISOString().slice(0, 16);
-
-            document.getElementById('checkoutModal').classList.add('active');
-            document.body.style.overflow = 'hidden';
-        }
-
-        function closeCheckout() {
-            document.getElementById('checkoutModal').classList.remove('active');
-            document.body.style.overflow = 'auto';
-        }
-
-        function processOrder(event) {
-            event.preventDefault();
-
-            // Gather form fields aligned to DB
-            const name = document.getElementById('customerName').value.trim();
-            const phone = document.getElementById('customerPhone').value.trim();
-            const email = document.getElementById('customerEmail').value.trim();
-            const oa_street = document.getElementById('oa_street').value.trim();
-            const oa_city = document.getElementById('oa_city').value.trim();
-            const oa_province = document.getElementById('oa_province').value.trim();
-            const eventDT = document.getElementById('eventDate').value; // yyyy-MM-ddTHH:mm
-            const order_needed = eventDT ? eventDT.split('T')[0] : '';
-            const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
-            const specialInstructions = document.getElementById('specialInstructions').value.trim();
-
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const deliveryFee = 200;
-            const total = subtotal + deliveryFee;
-
-            const payload = {
-                customer_name: name,
-                customer_phone: phone,
-                customer_email: email,
-                oa_street,
-                oa_city,
-                oa_province,
-                order_needed,
-                payment_method: paymentMethod,
-                notes: specialInstructions,
-                items: cart.map(it => ({ menu_id: it.id, quantity: it.quantity, price: it.price })),
-                subtotal,
-                delivery_fee: deliveryFee,
-                total
-            };
-
-            fetch('submit_order.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (!data || !data.success) {
-                    throw new Error(data && data.message ? data.message : 'Order failed');
-                }
-                document.getElementById('orderReference').textContent = data.reference || ('SB-' + data.order_id);
-                closeCheckout();
-                document.getElementById('successModal').classList.add('active');
-                cart = [];
-                updateCart();
-            })
-            .catch(err => {
-                console.error('Checkout error:', err);
-                alert('Sorry, we could not place your order. Please try again.');
-            });
-        }
-
-        function closeSuccess() {
-            document.getElementById('successModal').classList.remove('active');
-            document.body.style.overflow = 'auto';
-        }
-
-        // Close modals when clicking outside
-        document.getElementById('checkoutModal').addEventListener('click', function(e) {
-            if(e.target === this) closeCheckout();
-        });
-
-        document.getElementById('successModal').addEventListener('click', function(e) {
-            if(e.target === this) closeSuccess();
-        });
-
-        // Payment method selection visual feedback
-        document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                document.querySelectorAll('input[name="paymentMethod"]').forEach(r => {
-                    r.parentElement.classList.remove('border-primary', 'bg-green-50');
-                    r.parentElement.classList.add('border-gray-200');
-                });
-                if(this.checked) {
-                    this.parentElement.classList.add('border-primary', 'bg-green-50');
-                    this.parentElement.classList.remove('border-gray-200');
-                }
-            });
-        });
     </script>
 </body>
 </html>
@@ -1056,14 +824,14 @@ function menu_card_template() {
     ?>
     <div class="menu-card bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
         <div class="relative overflow-hidden h-48" onclick="openItemModal(<?php echo $item['id']; ?>)">
-            <img src="<?php echo $item['image']; ?>" alt="<?php echo $item['name']; ?>" class="menu-image w-full h-full object-cover">
+            <img src="<?php echo $item['image']; ?>" alt="<?php echo $item['name']; ?>" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="menu-image w-full h-full object-cover">
             <div class="menu-overlay absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-            <?php if($item['popular']): ?>
-                <span class="absolute top-3 left-3 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">
-                    <i class="fas fa-star mr-1"></i>Popular
-                </span>
+            <?php if(!empty($item['available'])): ?>
+                <span class="absolute top-3 left-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Available</span>
+            <?php else: ?>
+                <span class="absolute top-3 left-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Unavailable</span>
             <?php endif; ?>
-            <button onclick="event.stopPropagation(); addToCart(<?php echo $item['id']; ?>)" class="add-btn absolute bottom-3 right-3 bg-white text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
+            <button onclick="event.stopPropagation(); <?php echo !empty($item['available']) ? 'addToCart('.$item['id'].')' : ''; ?>" <?php echo empty($item['available']) ? 'disabled aria-disabled="true"' : ''; ?> class="add-btn absolute bottom-3 right-3 <?php echo !empty($item['available']) ? 'bg-white text-primary hover:bg-primary hover:text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'; ?> px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
                 <i class="fas fa-plus mr-1"></i>Add
             </button>
         </div>
@@ -1071,11 +839,7 @@ function menu_card_template() {
             <h4 class="font-medium text-primary mb-2 hover:text-amber-500 transition-colors"><?php echo $item['name']; ?></h4>
             <p class="text-sm text-gray-600 mb-3 line-clamp-2"><?php echo $item['description']; ?></p>
             <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-1 text-sm text-gray-500">
-                    <i class="fas fa-star text-amber-500"></i>
-                    <span class="font-medium text-gray-700"><?php echo $item['rating']; ?></span>
-                    <span class="text-xs">(<?php echo $item['reviews']; ?>)</span>
-                </div>
+                <span class="text-xs font-medium <?php echo !empty($item['available']) ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo !empty($item['available']) ? 'Available' : 'Unavailable'; ?></span>
                 <p class="text-xl font-bold text-primary">₱<?php echo number_format($item['price']); ?></p>
             </div>
             <div class="flex items-center gap-2 text-xs text-gray-500">

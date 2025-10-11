@@ -353,7 +353,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 <div class="max-w-md mx-auto w-full animate-fade-in-right">
                     <!-- Mobile Logo -->
                     <div class="md:hidden text-center mb-8">
-                        <img src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=150&h=150&fit=crop&crop=center" 
+                        <img src="../images/logo.png" 
                              alt="Sandok ni Binggay" 
                              class="w-20 h-20 mx-auto rounded-full border-4 border-primary shadow-lg object-cover mb-4">
                         <h2 class="text-2xl font-bold text-primary">Sandok ni Binggay</h2>
@@ -462,7 +462,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     <div class="mt-8 text-center animate-fade-in-up delay-500">
                         <p class="text-gray-600">
                             Don't have an account? 
-                            <a href="registration.php" class="text-accent hover:text-accent-dark font-medium transition-colors">
+                            <a href="registration" class="text-accent hover:text-accent-dark font-medium transition-colors">
                                 Sign up now
                             </a>
                         </p>

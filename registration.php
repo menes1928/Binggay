@@ -486,6 +486,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
     </script>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
+
+<?php include __DIR__ . '/user/partials/navbar.php'; ?>
     <!-- Background Decorative Elements -->
     <div class="decorative-circle" style="width: 500px; height: 500px; top: -250px; right: -250px;"></div>
     <div class="decorative-circle" style="width: 400px; height: 400px; bottom: -200px; left: -200px;"></div>
@@ -731,7 +733,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                 <div class="mt-8 text-center animate-fade-in-up delay-800">
                     <p class="text-gray-600">
                         Already have an account? 
-                        <a href="login.php" class="text-accent hover:text-accent-dark font-medium transition-colors">
+                        <a href="login" class="text-accent hover:text-accent-dark font-medium transition-colors">
                             Sign in here
                         </a>
                     </p>
