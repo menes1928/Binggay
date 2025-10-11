@@ -362,7 +362,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
         <!-- Items -->
         <div class="animate-fade-in-up">
             <h3 id="sectionTitle" class="text-2xl font-medium text-primary mb-6"><?php echo htmlspecialchars($selectedCategoryName === 'All' ? 'All Menu Items' : $selectedCategoryName); ?></h3>
-            <div id="menuGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div id="menuGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" data-reveal-group>
                 <?php foreach($menuItems as $item): ?>
                     <?php menu_card_template(); ?>
                 <?php endforeach; ?>
@@ -416,19 +416,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer class="bg-primary text-white py-8 mt-16">
-        <div class="container mx-auto px-4 text-center">
-            <img src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=150&h=150&fit=crop&crop=center" 
-                 alt="Sandok ni Binggay" 
-                 class="w-20 h-20 mx-auto mb-4 rounded-full border-4 border-white/20 object-cover">
-            <h3 class="text-xl font-medium text-white mb-2">Sandok ni Binggay</h3>
-            <p class="text-white/80 mb-4">Nothing Beats Home-Cooked Meals</p>
-            <div class="text-sm text-white/80">
-                <span>Party Trays • Packed Meals • Foods for Caterings • Grazing Table Setup</span>
-            </div>
-        </div>
-    </footer>
+    <?php include __DIR__ . '/partials/footer.php'; ?>
 
     <script>
         // Menu items data as JavaScript
@@ -475,6 +463,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 const pageItems = filteredItems.slice(start, start + pageSize);
                 // Render current page
                 menuGrid.innerHTML = pageItems.map(item => createMenuCard(item)).join('');
+                if (typeof window.SNBRevealRefresh === 'function') window.SNBRevealRefresh();
                 // Render pagination controls
                 renderPagination(totalPages);
             }
@@ -545,6 +534,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                         renderMenu();
                         // Scroll to the search bar so it sits at the top
                         scrollToSearch();
+                        if (typeof window.SNBRevealRefresh === 'function') window.SNBRevealRefresh();
                     }
                 });
             });
@@ -604,8 +594,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
 
         // Create menu card HTML
         function createMenuCard(item) {
-            return `
-                <div class="menu-card bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
+                return `
+                    <div class="menu-card fade-reveal bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
                     <div class="relative overflow-hidden h-48" onclick="openItemModal(${item.id})">
                         <img src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="menu-image w-full h-full object-cover">
                         <div class="menu-overlay absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
@@ -800,7 +790,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
 function menu_card_template() {
     global $item;
     ?>
-    <div class="menu-card bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
+    <div class="menu-card fade-reveal bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
         <div class="relative overflow-hidden h-48" onclick="openItemModal(<?php echo $item['id']; ?>)">
             <img src="<?php echo $item['image']; ?>" alt="<?php echo $item['name']; ?>" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="menu-image w-full h-full object-cover">
             <div class="menu-overlay absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>

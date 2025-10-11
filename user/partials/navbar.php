@@ -51,22 +51,22 @@ function current_user_display_name() {
 
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center space-x-8">
-                <a href="home" class="nav-link transition-colors duration-300 relative group">
-                    Home
-                    <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
-                </a>
-                <a href="menu" class="nav-link transition-colors duration-300 relative group">
-                    Menu
-                    <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
-                </a>
-                <a href="cateringpackages" class="nav-link transition-colors duration-300 relative group">
-                    Packages
-                    <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
-                </a>
-                <a href="booking" class="nav-link transition-colors duration-300 relative group">
-                    Bookings
-                    <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
-                </a>
+                <?php $current = strtolower(basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))); ?>
+                <?php
+                    $links = [
+                        ['href' => 'home.php', 'label' => 'Home', 'key' => 'home.php'],
+                        ['href' => 'menu.php', 'label' => 'Menu', 'key' => 'menu.php'],
+                        ['href' => 'cateringpackages.php', 'label' => 'Packages', 'key' => 'cateringpackages.php'],
+                        ['href' => 'booking.php', 'label' => 'Bookings', 'key' => 'booking.php'],
+                    ];
+                ?>
+                <?php foreach ($links as $ln): $isActive = ($current === strtolower($ln['key'])); ?>
+                    <a href="<?php echo htmlspecialchars($ln['href']); ?>"
+                       class="nav-link transition-colors duration-300 relative group <?php echo $isActive ? 'text-amber-400' : ''; ?>">
+                        <?php echo htmlspecialchars($ln['label']); ?>
+                        <span class="absolute -bottom-1 left-0 h-0.5 bg-amber-400 transition-all duration-300 <?php echo $isActive ? 'w-10' : 'w-0 group-hover:w-full'; ?>"></span>
+                    </a>
+                <?php endforeach; ?>
             </div>
 
             <!-- Auth / Profile -->
@@ -92,8 +92,11 @@ function current_user_display_name() {
                         </div>
                     </div>
                 <?php else: ?>
-                    <a id="login-btn-nav" href="./login" class="px-4 py-2 rounded border-2 border-white text-white hover:bg-white hover:text-green-900 transition-colors">Login</a>
-                    <a href="../registration" class="px-4 py-2 rounded bg-yellow-400 text-green-900 hover:bg-yellow-300 transition">Sign up</a>
+                    <a id="login-btn-nav" href="../login.php" class="px-4 py-2 rounded-full bg-amber-400 text-green-900 hover:bg-amber-300 transition flex items-center gap-2 font-medium">
+                        <i class="fas fa-user"></i>
+                        Login
+                    </a>
+                    <a id="signup-btn-nav" href="../registration.php" class="px-4 py-2 rounded-full border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors font-medium">Sign up</a>
                 <?php endif; ?>
             </div>
 
@@ -172,18 +175,21 @@ function current_user_display_name() {
                 mobileBtn.classList.remove('text-green-900');
                 mobileBtn.classList.add(solid ? 'text-green-900' : 'text-white');
             }
-            // Login button style
-            const applyLoginStyle = () => {
-                if (!loginBtn) return;
-                loginBtn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
-                loginBtn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+            // Login button: stays gold; ensure readable text color
+            if (loginBtn) {
+                // No dynamic class swap needed; gold pill remains
+            }
+            // Sign up button style depends on scheme
+            const signupBtn = document.getElementById('signup-btn-nav');
+            if (signupBtn) {
+                signupBtn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
+                signupBtn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
                 if (solid) {
-                    loginBtn.classList.add('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+                    signupBtn.classList.add('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
                 } else {
-                    loginBtn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
+                    signupBtn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
                 }
-            };
-            applyLoginStyle();
+            }
             // Cart button style
             cartBtns.forEach(btn => {
                 btn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');

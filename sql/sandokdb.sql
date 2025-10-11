@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 11, 2025 at 05:30 PM
+-- Generation Time: Oct 11, 2025 at 08:50 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -500,7 +500,7 @@ CREATE TABLE `payments` (
   `user_id` int(11) DEFAULT NULL,
   `pay_date` date DEFAULT NULL,
   `pay_amount` decimal(10,2) DEFAULT NULL,
-  `pay_method` enum('Cash','Online','Credit') DEFAULT NULL,
+  `pay_method` enum('Cash','Gcash','Card','Paypal','Paymaya') DEFAULT NULL,
   `pay_status` enum('Paid','Partial','Pending') DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
