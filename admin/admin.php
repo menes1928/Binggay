@@ -484,7 +484,7 @@ if ($sectionEarly === 'packages') {
                     try { $insI->execute([$newId, $lbl, $qv, $uv, $ov, $sv]); } catch (Throwable $e) {}
                 }
             }
-            // Handle optional photo upload; saved as uploads/packages/package_{id}.<ext>
+            // Handle optional photo upload; saved as uploads/packages/package_{id}.<ext> and persisted to packages.package_image
             if (!empty($_FILES['photo']) && is_uploaded_file($_FILES['photo']['tmp_name'])) {
                 $orig = $_FILES['photo']['name'];
                 $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
@@ -493,17 +493,45 @@ if ($sectionEarly === 'packages') {
                     $destDir = realpath(__DIR__ . '/../uploads/packages');
                     if ($destDir === false) { $destDir = __DIR__ . '/../uploads/packages'; }
                     @mkdir($destDir, 0775, true);
-                    $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $newId . '.' . $ext;
+                    $fileName = 'package_' . $newId . '.' . $ext;
+                    $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $fileName;
+                    // Remove any previous image for this id (all extensions)
                     @array_map(function($f){ @unlink($f); }, glob(rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $newId . '.*'));
-                    move_uploaded_file($_FILES['photo']['tmp_name'], $destPath);
+                    if (move_uploaded_file($_FILES['photo']['tmp_name'], $destPath)) {
+                        $rel = 'uploads/packages/' . $fileName; // store relative path
+                        try { $pdo->prepare("UPDATE packages SET package_image=? WHERE package_id=?")->execute([$rel, $newId]); } catch (Throwable $e) { /* ignore */ }
+                    }
                 }
             }
             $pdo->commit();
-            echo json_encode(['success'=>true]);
+            // Build image URL (with cache-busting) if exists
+            $imgUrl = null;
+            try {
+                $dir = __DIR__ . '/../uploads/packages';
+                foreach (['jpg','jpeg','png','webp','gif','avif'] as $ext) {
+                    $p = $dir . '/package_' . $newId . '.' . $ext;
+                    if (file_exists($p)) { $imgUrl = '../uploads/packages/package_' . $newId . '.' . $ext; $v=@filemtime($p); if($v){ $imgUrl .= '?v=' . $v; } break; }
+                }
+            } catch (Throwable $e) {}
+            echo json_encode(['success'=>true,'package_id'=>$newId,'image_url'=>$imgUrl]);
         } catch (Throwable $e) {
             try { $pdo->rollBack(); } catch (Throwable $e2) {}
             echo json_encode(['success'=>false,'message'=>'Create failed']);
         }
+        exit;
+    }
+
+    if ($action === 'toggle_active' && $pkgId > 0) {
+        header('Content-Type: application/json');
+        try {
+            $curr = $pdo->prepare("SELECT is_active FROM packages WHERE package_id=?");
+            $curr->execute([$pkgId]);
+            $v = (int)($curr->fetchColumn() ?? 0);
+            $nv = $v === 1 ? 0 : 1;
+            $upd = $pdo->prepare("UPDATE packages SET is_active=? WHERE package_id=?");
+            $upd->execute([$nv, $pkgId]);
+            echo json_encode(['success'=>true,'is_active'=>$nv]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Toggle failed']); }
         exit;
     }
 
@@ -539,7 +567,7 @@ if ($sectionEarly === 'packages') {
                     try { $insI->execute([$pkgId, $lbl, $qv, $uv, $ov, $sv]); } catch (Throwable $e) {}
                 }
             }
-            // Optional photo upload replace
+            // Optional photo upload replace and persist to packages.package_image
             if (!empty($_FILES['photo']) && is_uploaded_file($_FILES['photo']['tmp_name'])) {
                 $orig = $_FILES['photo']['name'];
                 $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
@@ -548,13 +576,27 @@ if ($sectionEarly === 'packages') {
                     $destDir = realpath(__DIR__ . '/../uploads/packages');
                     if ($destDir === false) { $destDir = __DIR__ . '/../uploads/packages'; }
                     @mkdir($destDir, 0775, true);
-                    $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $pkgId . '.' . $ext;
+                    $fileName = 'package_' . $pkgId . '.' . $ext;
+                    $destPath = rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $fileName;
+                    // Remove any previous image for this id (all extensions)
                     @array_map(function($f){ @unlink($f); }, glob(rtrim($destDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'package_' . $pkgId . '.*'));
-                    move_uploaded_file($_FILES['photo']['tmp_name'], $destPath);
+                    if (move_uploaded_file($_FILES['photo']['tmp_name'], $destPath)) {
+                        $rel = 'uploads/packages/' . $fileName; // store relative path
+                        try { $pdo->prepare("UPDATE packages SET package_image=? WHERE package_id=?")->execute([$rel, $pkgId]); } catch (Throwable $e) { /* ignore */ }
+                    }
                 }
             }
             $pdo->commit();
-            echo json_encode(['success'=>true]);
+            // Build image URL (with cache-busting) if exists
+            $imgUrl = null;
+            try {
+                $dir = __DIR__ . '/../uploads/packages';
+                foreach (['jpg','jpeg','png','webp','gif','avif'] as $ext) {
+                    $p = $dir . '/package_' . $pkgId . '.' . $ext;
+                    if (file_exists($p)) { $imgUrl = '../uploads/packages/package_' . $pkgId . '.' . $ext; $v=@filemtime($p); if($v){ $imgUrl .= '?v=' . $v; } break; }
+                }
+            } catch (Throwable $e) {}
+            echo json_encode(['success'=>true,'package_id'=>$pkgId,'image_url'=>$imgUrl]);
         } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} echo json_encode(['success'=>false,'message'=>'Update failed']); }
         exit;
     }
@@ -955,7 +997,12 @@ if ($sectionEarly === 'employees') {
             $candidates = ['jpg','jpeg','png','webp','gif','avif'];
             foreach ($candidates as $ext) {
                 $path = $dir . '/package_' . $id . '.' . $ext;
-                if (file_exists($path)) return '../uploads/packages/package_' . $id . '.' . $ext;
+                if (file_exists($path)) {
+                    $url = '../uploads/packages/package_' . $id . '.' . $ext;
+                    $ver = @filemtime($path);
+                    if ($ver) { $url .= (strpos($url,'?')!==false?'&':'?') . 'v=' . $ver; }
+                    return $url;
+                }
             }
             return '../images/logo.png';
         }
@@ -2559,18 +2606,18 @@ if ($sectionEarly === 'employees') {
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <?php if ($section === 'packages' && !empty($pkgRows)): foreach ($pkgRows as $pr): ?>
-                        <div data-package-card class="group relative rounded-2xl border border-gray-200 bg-white/90 backdrop-blur overflow-hidden shadow-sm transition-all duration-200 hover:shadow-xl hover:-translate-y-1">
+                        <div data-package-card class="group relative rounded-2xl border border-gray-200 bg-white/90 backdrop-blur overflow-hidden shadow-sm transition-all duration-200 hover:shadow-xl hover:-translate-y-1 flex flex-col">
                             <div class="relative h-56 w-full bg-gray-100 overflow-hidden">
                                 <img src="<?php echo htmlspecialchars(pkg_img_src($pr['package_id'])); ?>" alt="Package Image" class="w-full h-full object-cover transform transition-transform duration-300 group-hover:scale-105"/>
                                 <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent pointer-events-none"></div>
                             </div>
-                            <div class="p-5 space-y-3">
+                            <div class="p-5 space-y-3 flex-1">
                                 <div class="flex items-start justify-between">
                                     <div>
                                         <div class="font-semibold text-primary text-base"><?php echo htmlspecialchars($pr['name']); ?></div>
                                         <div class="text-sm text-muted-foreground">Pax: <?php echo htmlspecialchars($pr['pax']); ?><?php if ($pr['base_price'] !== null): ?> • ₱<?php echo number_format((float)$pr['base_price'],2); ?><?php endif; ?></div>
                                     </div>
-                                    <span class="inline-block px-2 py-0.5 rounded-full text-[11px] border <?php echo ((int)$pr['is_active']===1) ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-gray-50 border-gray-300 text-gray-800'; ?> group-hover:shadow-sm"><?php echo ((int)$pr['is_active']===1) ? 'Active' : 'Inactive'; ?></span>
+                                    <span class="status-badge inline-block px-2 py-0.5 rounded-full text-[11px] border <?php echo ((int)$pr['is_active']===1) ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-gray-50 border-gray-300 text-gray-800'; ?> group-hover:shadow-sm"><?php echo ((int)$pr['is_active']===1) ? 'Active' : 'Inactive'; ?></span>
                                 </div>
                                 <?php
                                 // Items preview (first 6)
@@ -2589,9 +2636,14 @@ if ($sectionEarly === 'employees') {
                                         <li class="text-muted-foreground">No items</li>
                                     <?php endif; ?>
                                 </ul>
-                                <div class="flex items-center justify-end gap-2 pt-2">
-                                    <button data-edit-package="<?php echo (int)$pr['package_id']; ?>" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50 text-sm transition-colors"><i class="fas fa-pen me-1"></i>Edit</button>
-                                    <button data-delete-package="<?php echo (int)$pr['package_id']; ?>" class="px-3 py-1.5 border rounded-lg hover:bg-rose-50 text-sm text-rose-700 border-rose-300 transition-colors"><i class="fas fa-trash me-1"></i>Delete</button>
+                                <div class="flex items-center justify-between gap-2 pt-2 mt-4 border-t pt-3">
+                                    <button data-toggle-active="<?php echo (int)$pr['package_id']; ?>" class="px-3 py-1.5 rounded-lg text-sm border <?php echo ((int)$pr['is_active']===1) ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100' : 'bg-gray-50 border-gray-300 text-gray-800 hover:bg-gray-100'; ?> transition-colors">
+                                        <i class="fas fa-power-off me-1"></i><span class="toggle-label"><?php echo ((int)$pr['is_active']===1) ? 'Set Inactive' : 'Set Active'; ?></span>
+                                    </button>
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button data-edit-package="<?php echo (int)$pr['package_id']; ?>" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50 text-sm transition-colors"><i class="fas fa-pen me-1"></i>Edit</button>
+                                        <button data-delete-package="<?php echo (int)$pr['package_id']; ?>" class="px-3 py-1.5 border rounded-lg hover:bg-rose-50 text-sm text-rose-700 border-rose-300 transition-colors"><i class="fas fa-trash me-1"></i>Delete</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2790,13 +2842,39 @@ if ($sectionEarly === 'employees') {
                     wrap.appendChild(row);
                     updateItemsScroll();
                 });
-                // Attach edit/delete handlers
-                document.querySelectorAll('[data-edit-package]')?.forEach(btn=>{
-                    btn.addEventListener('click', async ()=>{
-                        const id = btn.getAttribute('data-edit-package');
-                        // Try to get current image src from the card to show quick preview
+                // Event delegation for toggle/edit/delete so dynamically added cards work
+                document.getElementById('packages-content')?.addEventListener('click', async (ev)=>{
+                    const tglBtn = ev.target.closest('[data-toggle-active]');
+                    if (tglBtn) {
+                        const id = tglBtn.getAttribute('data-toggle-active');
                         try {
-                            const card = btn.closest('[data-package-card]');
+                            const r = await fetch(`?section=packages&action=toggle_active&package_id=${id}`, { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                            const j = await r.json(); if (!j.success) return alert(j.message||'Toggle failed');
+                            const card = tglBtn.closest('[data-package-card]');
+                            const isActive = String(j.is_active) === '1';
+                            // Update badge
+                            const chip = card?.querySelector('.status-badge');
+                            if (chip) {
+                                chip.textContent = isActive ? 'Active' : 'Inactive';
+                                chip.classList.remove('bg-emerald-50','border-emerald-300','text-emerald-800','bg-gray-50','border-gray-300','text-gray-800');
+                                if (isActive) chip.classList.add('bg-emerald-50','border-emerald-300','text-emerald-800');
+                                else chip.classList.add('bg-gray-50','border-gray-300','text-gray-800');
+                            }
+                            // Update button styles/label
+                            const lbl = tglBtn.querySelector('.toggle-label');
+                            if (lbl) lbl.textContent = isActive ? 'Set Inactive' : 'Set Active';
+                            tglBtn.classList.remove('bg-emerald-50','border-emerald-300','text-emerald-800','hover:bg-emerald-100','bg-gray-50','border-gray-300','text-gray-800','hover:bg-gray-100');
+                            if (isActive) tglBtn.classList.add('bg-emerald-50','border-emerald-300','text-emerald-800','hover:bg-emerald-100');
+                            else tglBtn.classList.add('bg-gray-50','border-gray-300','text-gray-800','hover:bg-gray-100');
+                        } catch (_) { alert('Network error'); }
+                        return;
+                    }
+                    const editBtn = ev.target.closest('[data-edit-package]');
+                    if (editBtn) {
+                        const id = editBtn.getAttribute('data-edit-package');
+                        // Preview current image from the card
+                        try {
+                            const card = editBtn.closest('[data-package-card]');
                             const img = card ? card.querySelector('img') : null;
                             if (img && img.getAttribute('src')) setPreviewSrc(img.getAttribute('src'));
                         } catch(_) {}
@@ -2834,23 +2912,148 @@ if ($sectionEarly === 'employees') {
                             updateItemsScroll();
                             openModal();
                         } catch (_) { alert('Network error'); }
-                    });
-                });
-                document.querySelectorAll('[data-delete-package]')?.forEach(btn=>{
-                    btn.addEventListener('click', async ()=>{
-                        const id = btn.getAttribute('data-delete-package');
+                        return;
+                    }
+                    const delBtn = ev.target.closest('[data-delete-package]');
+                    if (delBtn) {
+                        const id = delBtn.getAttribute('data-delete-package');
                         if (!confirm('Delete this package?')) return;
-                        try { await fetch(`?section=packages&action=delete&package_id=${id}&ajax=1`, { headers:{'X-Requested-With':'XMLHttpRequest'} }); location.reload(); } catch (_) { alert('Delete failed'); }
-                    });
+                        try {
+                            const r = await fetch(`?section=packages&action=delete&package_id=${id}&ajax=1`, { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                            const j = await r.json();
+                            if (!j.success) return alert('Delete failed');
+                            const card = delBtn.closest('[data-package-card]');
+                            card?.parentElement?.removeChild(card);
+                        } catch (_) { alert('Delete failed'); }
+                    }
                 });
                 document.getElementById('pkg-form')?.addEventListener('submit', async (e)=>{
                     e.preventDefault();
                     const form = e.target;
                     const fd = new FormData(form);
+                    const readFormItems = () => {
+                        const wrap = document.getElementById('pkg-items');
+                        const rows = wrap ? Array.from(wrap.children) : [];
+                        const items = [];
+                        rows.forEach(row => {
+                            const lbl = row.querySelector('input[name="item_label[]"]')?.value?.trim() || '';
+                            const qtyVal = row.querySelector('input[name="qty[]"]')?.value || '';
+                            const unit = row.querySelector('select[name="unit[]"]')?.value || '';
+                            const opt = row.querySelector('input[name="is_optional[]"]')?.checked ? 1 : 0;
+                            if (lbl) items.push({ label: lbl, qty: qtyVal, unit, optional: opt });
+                        });
+                        return items;
+                    };
+                    const updateCardFromForm = (card, imageUrl) => {
+                        if (!card) return;
+                        const name = form.name.value || '';
+                        const pax = form.pax.value || '';
+                        const price = form.base_price.value || '';
+                        const active = form.is_active.checked;
+                        // Texts
+                        const nameEl = card.querySelector('.font-semibold.text-primary');
+                        if (nameEl) nameEl.textContent = name;
+                        const metaEl = card.querySelector('.text-sm.text-muted-foreground');
+                        if (metaEl) metaEl.textContent = `Pax: ${pax}${price!==''?` • ₱${Number(price).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`:''}`;
+                        // Active chip
+                        const chip = card.querySelector('.status-badge');
+                        if (chip) {
+                            chip.textContent = active ? 'Active' : 'Inactive';
+                            chip.classList.remove('bg-emerald-50','border-emerald-300','text-emerald-800','bg-gray-50','border-gray-300','text-gray-800');
+                            if (active) chip.classList.add('bg-emerald-50','border-emerald-300','text-emerald-800');
+                            else chip.classList.add('bg-gray-50','border-gray-300','text-gray-800');
+                        }
+                        // Toggle button sync
+                        const tbtn = card.querySelector('[data-toggle-active]');
+                        if (tbtn) {
+                            const lbl = tbtn.querySelector('.toggle-label');
+                            if (lbl) lbl.textContent = active ? 'Set Inactive' : 'Set Active';
+                            tbtn.classList.remove('bg-emerald-50','border-emerald-300','text-emerald-800','hover:bg-emerald-100','bg-gray-50','border-gray-300','text-gray-800','hover:bg-gray-100');
+                            if (active) tbtn.classList.add('bg-emerald-50','border-emerald-300','text-emerald-800','hover:bg-emerald-100');
+                            else tbtn.classList.add('bg-gray-50','border-gray-300','text-gray-800','hover:bg-gray-100');
+                        }
+                        // Image
+                        if (imageUrl) {
+                            const img = card.querySelector('img');
+                            if (img) img.src = imageUrl;
+                        }
+                        // Items preview (show all)
+                        const items = readFormItems();
+                        const ul = card.querySelector('ul');
+                        if (ul) {
+                            ul.innerHTML = '';
+                            if (items.length === 0) {
+                                ul.innerHTML = '<li class="text-muted-foreground">No items</li>';
+                            } else {
+                                items.forEach(it=>{
+                                    const li = document.createElement('li');
+                                    li.className = 'mb-1';
+                                    li.innerHTML = `${it.label.replace(/&/g,'&amp;').replace(/</g,'&lt;')} ${it.qty?`<span class=\"text-muted-foreground\">(${Number(it.qty)} ${it.unit||''})</span>`:''} ${it.optional?`<span class=\"ml-1 text-[10px] px-1 rounded bg-amber-50 border border-amber-300 text-amber-800">optional</span>`:''}`;
+                                    ul.appendChild(li);
+                                });
+                            }
+                        }
+                    };
+                    const appendNewCard = (pkgId, imageUrl) => {
+                        const grid = document.querySelector('#packages-content .grid');
+                        if (!grid) return;
+                        const name = form.name.value || '';
+                        const pax = form.pax.value || '';
+                        const price = form.base_price.value || '';
+                        const active = form.is_active.checked;
+                        const items = readFormItems();
+                        const priceHtml = price!=='' ? ` • ₱${Number(price).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
+                        const chipCls = active ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-gray-50 border-gray-300 text-gray-800';
+                        const imgSrc = imageUrl || '../images/logo.png';
+                        const itemsHtml = items.length
+                            ? items.map(it=>`<li class="mb-1">${(it.label||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}${it.qty?` <span class=\"text-muted-foreground\">(${Number(it.qty)} ${it.unit||''})</span>`:''}${it.optional?`<span class=\"ml-1 text-[10px] px-1 rounded bg-amber-50 border border-amber-300 text-amber-800\">optional</span>`:''}</li>`).join('')
+                            : '<li class="text-muted-foreground">No items</li>';
+                        const html = `
+                        <div data-package-card class="group relative rounded-2xl border border-gray-200 bg-white/90 backdrop-blur overflow-hidden shadow-sm transition-all duration-200 hover:shadow-xl hover:-translate-y-1 flex flex-col">
+                            <div class="relative h-56 w-full bg-gray-100 overflow-hidden">
+                                <img src="${imgSrc}" alt="Package Image" class="w-full h-full object-cover transform transition-transform duration-300 group-hover:scale-105"/>
+                                <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent pointer-events-none"></div>
+                            </div>
+                            <div class="p-5 space-y-3 flex-1">
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <div class="font-semibold text-primary text-base"></div>
+                                        <div class="text-sm text-muted-foreground"></div>
+                                    </div>
+                                    <span class="status-badge inline-block px-2 py-0.5 rounded-full text-[11px] border ${chipCls} group-hover:shadow-sm">${active?'Active':'Inactive'}</span>
+                                </div>
+                                <ul class="text-sm list-disc pl-5">${itemsHtml}</ul>
+                                <div class="flex items-center justify-between gap-2 pt-2 mt-4 border-t pt-3">
+                                    <button data-toggle-active="${pkgId}" class="px-3 py-1.5 rounded-lg text-sm border ${active?'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100':'bg-gray-50 border-gray-300 text-gray-800 hover:bg-gray-100'} transition-colors">
+                                        <i class="fas fa-power-off me-1"></i><span class="toggle-label">${active?'Set Inactive':'Set Active'}</span>
+                                    </button>
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button data-edit-package="${pkgId}" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50 text-sm transition-colors"><i class="fas fa-pen me-1"></i>Edit</button>
+                                        <button data-delete-package="${pkgId}" class="px-3 py-1.5 border rounded-lg hover:bg-rose-50 text-sm text-rose-700 border-rose-300 transition-colors"><i class="fas fa-trash me-1"></i>Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                        grid.insertAdjacentHTML('afterbegin', html);
+                        const card = grid.firstElementChild;
+                        // Fill name and meta after insert to avoid escaping complexity
+                        const nameEl = card.querySelector('.font-semibold.text-primary');
+                        if (nameEl) nameEl.textContent = name;
+                        const metaEl = card.querySelector('.text-sm.text-muted-foreground');
+                        if (metaEl) metaEl.textContent = `Pax: ${pax}${priceHtml}`;
+                    };
                     try {
                         const r = await fetch('?section=packages', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} });
                         const j = await r.json(); if (!j.success) { alert(j.message||'Save failed'); return; }
-                        closeModal(); location.reload();
+                        const isUpdate = (form.action && form.action.value === 'update') || fd.get('action') === 'update';
+                        const pkgId = (form.package_id && form.package_id.value) ? form.package_id.value : (j.package_id||'');
+                        if (isUpdate) {
+                            const card = document.querySelector(`[data-edit-package="${pkgId}"]`)?.closest('[data-package-card]');
+                            updateCardFromForm(card, j.image_url||null);
+                        } else {
+                            appendNewCard(pkgId, j.image_url||null);
+                        }
+                        closeModal();
                     } catch (_) { alert('Network error'); }
                 });
             }

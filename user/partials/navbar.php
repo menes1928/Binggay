@@ -51,19 +51,19 @@ function current_user_display_name() {
 
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center space-x-8">
-                <a href="home.php#home" class="nav-link transition-colors duration-300 relative group">
+                <a href="home" class="nav-link transition-colors duration-300 relative group">
                     Home
                     <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
                 </a>
-                <a href="menu.php" class="nav-link transition-colors duration-300 relative group">
+                <a href="menu" class="nav-link transition-colors duration-300 relative group">
                     Menu
                     <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
                 </a>
-                <a href="cateringpackages.php" class="nav-link transition-colors duration-300 relative group">
+                <a href="cateringpackages" class="nav-link transition-colors duration-300 relative group">
                     Packages
                     <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
                 </a>
-                <a href="booking.php" class="nav-link transition-colors duration-300 relative group">
+                <a href="booking" class="nav-link transition-colors duration-300 relative group">
                     Bookings
                     <span class="absolute -bottom-1 left-0 w-0 h-0.5 bg-yellow-400 transition-all duration-300 group-hover:w-full"></span>
                 </a>
@@ -71,6 +71,12 @@ function current_user_display_name() {
 
             <!-- Auth / Profile -->
             <div class="hidden md:flex items-center space-x-4">
+                <!-- Global Cart Button -->
+                <button id="nav-cart-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span class="sr-only">Cart</span>
+                    <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
+                </button>
                 <?php if (!empty($_SESSION['user_id'])): ?>
                     <div class="relative" id="nav-profile">
                         <button id="profile-btn" class="flex items-center gap-2 text-white hover:text-yellow-400 transition-colors">
@@ -86,15 +92,21 @@ function current_user_display_name() {
                         </div>
                     </div>
                 <?php else: ?>
-                    <a id="login-btn-nav" href="../login.php" class="px-4 py-2 rounded border-2 border-white text-white hover:bg-white hover:text-green-900 transition-colors">Login</a>
-                    <a href="../registration.php" class="px-4 py-2 rounded bg-yellow-400 text-green-900 hover:bg-yellow-300 transition">Sign up</a>
+                    <a id="login-btn-nav" href="./login" class="px-4 py-2 rounded border-2 border-white text-white hover:bg-white hover:text-green-900 transition-colors">Login</a>
+                    <a href="../registration" class="px-4 py-2 rounded bg-yellow-400 text-green-900 hover:bg-yellow-300 transition">Sign up</a>
                 <?php endif; ?>
             </div>
 
             <!-- Mobile Menu Button -->
-            <button id="mobile-menu-btn" class="md:hidden text-white hover:text-yellow-400 transition-colors duration-300">
+            <div class="md:hidden flex items-center gap-3">
+                <button id="nav-cart-btn-mobile" class="p-2 rounded border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors relative">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span class="cart-badge hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-5 h-5 items-center justify-center text-[10px] font-bold"></span>
+                </button>
+                <button id="mobile-menu-btn" class="text-white hover:text-yellow-400 transition-colors duration-300">
                 <i data-lucide="menu" class="w-6 h-6"></i>
-            </button>
+                </button>
+            </div>
         </nav>
 
         <!-- Mobile Navigation -->
@@ -119,40 +131,124 @@ function current_user_display_name() {
 <script>
     // Navbar behaviors (self-contained)
     (function(){
-        // Sync Login button color with nav state (clear vs solid)
         const navRoot = document.querySelector('header.nav-root');
         const loginBtn = document.getElementById('login-btn-nav');
-        const setLoginStyle = () => {
-            if (!loginBtn || !navRoot) return;
-            const solid = navRoot.classList.contains('nav-solid');
-            loginBtn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
-            loginBtn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+        const links = Array.from(document.querySelectorAll('.nav-link'));
+        const profileBtn = document.getElementById('profile-btn');
+        const mobileBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const cartBtns = Array.from(document.querySelectorAll('#nav-cart-btn, #nav-cart-btn-mobile'));
+
+        // Toggle nav scheme based on backdrop (clear on dark/green, solid on white)
+        const setScheme = (solid) => {
+            if (!navRoot) return;
+            // Header container styles
+            navRoot.classList.toggle('nav-solid', solid);
+            // Apply background/border via utility classes
             if (solid) {
-                loginBtn.classList.add('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+                navRoot.classList.add('bg-white/95','backdrop-blur','border-b','border-green-200','shadow');
+                navRoot.classList.remove('bg-transparent','border-transparent','shadow-none');
             } else {
-                loginBtn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
+                navRoot.classList.add('bg-transparent');
+                navRoot.classList.remove('bg-white/95','border-b','border-green-200','shadow');
             }
+            // Links color
+            links.forEach(a => {
+                a.classList.remove('text-white','text-green-900');
+                a.classList.add(solid ? 'text-green-900' : 'text-white');
+            });
+            // Profile button color (text)
+            if (profileBtn) {
+                profileBtn.classList.remove('text-white','hover:text-yellow-400','text-green-900','hover:text-green-700');
+                if (solid) {
+                    profileBtn.classList.add('text-green-900','hover:text-green-700');
+                } else {
+                    profileBtn.classList.add('text-white','hover:text-yellow-400');
+                }
+            }
+            // Mobile menu button color
+            if (mobileBtn) {
+                mobileBtn.classList.remove('text-white');
+                mobileBtn.classList.remove('text-green-900');
+                mobileBtn.classList.add(solid ? 'text-green-900' : 'text-white');
+            }
+            // Login button style
+            const applyLoginStyle = () => {
+                if (!loginBtn) return;
+                loginBtn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
+                loginBtn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+                if (solid) {
+                    loginBtn.classList.add('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+                } else {
+                    loginBtn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
+                }
+            };
+            applyLoginStyle();
+            // Cart button style
+            cartBtns.forEach(btn => {
+                btn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
+                btn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+                if (solid) {
+                    btn.classList.add('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
+                } else {
+                    btn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
+                }
+            });
         };
-        // Observe header class changes (works with page-level IntersectionObserver)
-        if (navRoot) {
-            setLoginStyle();
-            const mo = new MutationObserver(setLoginStyle);
-            mo.observe(navRoot, { attributes: true, attributeFilter: ['class'] });
+
+        // Observe page-provided contrast targets (e.g., hero + green search spacer)
+        const targets = Array.from(document.querySelectorAll('[data-nav-contrast="dark"]'));
+        if (targets.length && 'IntersectionObserver' in window) {
+            const vis = new Map();
+            const recompute = () => {
+                const anyVisible = Array.from(vis.values()).some(Boolean);
+                setScheme(!anyVisible);
+            };
+            const io = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    const isVisible = entry.isIntersecting && entry.intersectionRatio > 0;
+                    vis.set(entry.target, isVisible);
+                });
+                recompute();
+            }, { root: null, threshold: [0, 0.05, 0.1], rootMargin: '-80px 0px 0px 0px' });
+            targets.forEach(t => {
+                // seed initial
+                const r = t.getBoundingClientRect();
+                const initiallyVisible = r.top <= 80 && r.bottom > 0;
+                vis.set(t, initiallyVisible);
+                io.observe(t);
+            });
+            recompute();
+        } else {
+            // Fallback: make nav clear (green-transparent) near top of page, then white-transparent after scrolling
+            const threshold = 140; // px from top before switching to white-transparent
+            let ticking = false;
+            const onScroll = () => {
+                if (!ticking) {
+                    window.requestAnimationFrame(() => {
+                        const solid = window.scrollY > threshold;
+                        setScheme(solid);
+                        ticking = false;
+                    });
+                    ticking = true;
+                }
+            };
+            // Initial state and listeners
+            setScheme(window.scrollY > threshold);
+            window.addEventListener('scroll', onScroll, { passive: true });
+            window.addEventListener('resize', onScroll);
         }
 
         // Profile dropdown toggle
-        const btn = document.getElementById('profile-btn');
         const menu = document.getElementById('profile-menu');
-        if (btn && menu) {
+        if (profileBtn && menu) {
             const toggle = () => menu.classList.toggle('hidden');
-            const close = (e) => { if (!menu.contains(e.target) && !btn.contains(e.target)) menu.classList.add('hidden'); };
-            btn.addEventListener('click', (e)=>{ e.stopPropagation(); toggle(); });
+            const close = (e) => { if (!menu.contains(e.target) && !profileBtn.contains(e.target)) menu.classList.add('hidden'); };
+            profileBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggle(); });
             document.addEventListener('click', close);
         }
 
         // Mobile menu toggle
-        const mobileBtn = document.getElementById('mobile-menu-btn');
-        const mobileMenu = document.getElementById('mobile-menu');
         let isOpen = false;
         const setIcon = () => {
             if (!mobileBtn) return;
@@ -166,16 +262,27 @@ function current_user_display_name() {
         if (mobileBtn && mobileMenu) {
             mobileBtn.addEventListener('click', function(){
                 isOpen = !isOpen;
-                if (isOpen) {
-                    mobileMenu.classList.remove('hidden');
-                } else {
-                    mobileMenu.classList.add('hidden');
-                }
+                mobileMenu.classList.toggle('hidden', !isOpen);
                 setIcon();
             });
-            // Initialize icon on load
             setIcon();
         }
+
+        // Cart button behavior: open cart on menu page if available; else navigate to menu with #cart
+        const handleCartClick = (e) => {
+            e.preventDefault();
+            try {
+                const hasToggle = typeof window.toggleCart === 'function';
+                const hasSidebar = document.getElementById('cartSidebar');
+                if (hasToggle && hasSidebar) {
+                    window.toggleCart();
+                    return;
+                }
+            } catch (_) {}
+            // Go to menu and open cart via hash
+            window.location.href = 'menu.php#cart';
+        };
+        cartBtns.forEach(btn => btn && btn.addEventListener('click', handleCartClick));
 
         // Initialize lucide icons if available on page
         if (window.lucide && typeof window.lucide.createIcons === 'function') {

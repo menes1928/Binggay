@@ -29,23 +29,6 @@ if (isset($_POST['delete']) && isset($_POST['id']) && isset($_POST['table'])) {
     echo "<meta http-equiv='refresh' content='0'>";
 }
 
-$foodFilters = [
-    'category' => $_GET['food_category'] ?? '',
-    'pax'      => $_GET['food_pax'] ?? '',
-    'avail'    => $_GET['food_avail'] ?? '',
-    'sort'     => $_GET['food_sort'] ?? '',
-];
-if (array_filter($foodFilters)) {
-    $data = $con->getFilteredMenuOOP(
-        $foodFilters['category'] ?: null,
-        $foodFilters['pax'] ?: null,
-        $foodFilters['avail'] !== '' ? $foodFilters['avail'] : null,
-        $foodFilters['sort'] ?: null
-    );
-} else {
-    $data = $con->viewMenu();
-}
-
 
 
 ?>

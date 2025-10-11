@@ -1,139 +1,83 @@
 <?php
-// Menu items data
-$menuItems = [
-    [
-        'id' => 1,
-        'name' => 'Filipino Fiesta Party Tray',
-        'description' => 'A delightful assortment of Filipino favorites including Pancit Canton, Lumpia Shanghai, BBQ Chicken, and Sweet & Sour Meatballs. Perfect for celebrations!',
-        'price' => 8500,
-        'image' => 'https://images.unsplash.com/photo-1735190093631-d66ecd1bc433?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaWxpcGlubyUyMHBhcnR5JTIwdHJheSUyMGZvb2R8ZW58MXx8fHwxNzU5OTIzMTI4fDA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '50-60 people',
-        'prepTime' => '2-3 hours',
-        'popular' => true,
-        'rating' => 4.9,
-        'reviews' => 156
-    ],
-    [
-        'id' => 2,
-        'name' => 'Premium Buffet Spread',
-        'description' => 'Luxurious catering spread featuring roasted meats, seafood delights, pasta stations, and fresh salads. Includes setup and serving utensils.',
-        'price' => 25000,
-        'image' => 'https://images.unsplash.com/photo-1668097519018-f7d13a079c0a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXRlcmluZyUyMGJ1ZmZldCUyMGZvb2R8ZW58MXx8fHwxNzU5OTExOTQyfDA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Catering Packages',
-        'servings' => '100-120 people',
-        'prepTime' => '4-5 hours',
-        'popular' => true,
-        'rating' => 5.0,
-        'reviews' => 89
-    ],
-    [
-        'id' => 3,
-        'name' => 'Executive Lunch Box',
-        'description' => 'Individually packed gourmet meals with choice of protein, steamed rice, vegetables, and dessert. Perfect for corporate events and meetings.',
-        'price' => 250,
-        'image' => 'https://images.unsplash.com/photo-1744957280662-af6472128abd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYWNrZWQlMjBtZWFsJTIwYm94fGVufDF8fHx8MTc1OTkyMzEyOXww&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Packed Meals',
-        'servings' => '1 person',
-        'prepTime' => '30 mins',
-        'popular' => false,
-        'rating' => 4.7,
-        'reviews' => 234
-    ],
-    [
-        'id' => 4,
-        'name' => 'Artisan Grazing Table',
-        'description' => 'Beautifully curated selection of premium cheeses, charcuterie, fresh fruits, nuts, crackers, and gourmet dips. Aesthetically arranged for visual impact.',
-        'price' => 12000,
-        'image' => 'https://images.unsplash.com/photo-1653559251018-f59d60ab3223?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmF6aW5nJTIwdGFibGUlMjBjaGFyY3V0ZXJpZXxlbnwxfHx8fDE3NTk5MjMxMzB8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Grazing Tables',
-        'servings' => '40-50 people',
-        'prepTime' => '3 hours',
-        'popular' => true,
-        'rating' => 4.9,
-        'reviews' => 112
-    ],
-    [
-        'id' => 5,
-        'name' => 'Classic Chicken Adobo',
-        'description' => 'Traditional Filipino chicken adobo simmered in soy sauce, vinegar, and spices. Tender, flavorful, and authentically home-cooked.',
-        'price' => 3500,
-        'image' => 'https://images.unsplash.com/photo-1606525575548-2d62ed40291d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmaWxpcGlubyUyMGFkb2JvJTIwZGlzaHxlbnwxfHx8fDE3NTk4MzgwNzB8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '30-40 people',
-        'prepTime' => '2 hours',
-        'popular' => false,
-        'rating' => 4.8,
-        'reviews' => 198
-    ],
-    [
-        'id' => 6,
-        'name' => 'Crispy Fried Chicken Platter',
-        'description' => 'Golden fried chicken pieces, perfectly seasoned and fried to crispy perfection. Served with special dipping sauces and coleslaw.',
-        'price' => 4200,
-        'image' => 'https://images.unsplash.com/photo-1643892467625-65df6a500524?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmcmllZCUyMGNoaWNrZW4lMjBwbGF0dGVyfGVufDF8fHx8MTc1OTkyMzEzMHww&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '35-40 people',
-        'prepTime' => '1.5 hours',
-        'popular' => true,
-        'rating' => 4.9,
-        'reviews' => 267
-    ],
-    [
-        'id' => 7,
-        'name' => 'Creamy Carbonara Pasta',
-        'description' => 'Rich and creamy pasta carbonara with bacon bits, parmesan cheese, and fresh herbs. A crowd favorite for any occasion.',
-        'price' => 3800,
-        'image' => 'https://images.unsplash.com/photo-1588013273468-315fd88ea34c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYXN0YSUyMGNhcmJvbmFyYXxlbnwxfHx8fDE3NTk4MTMzMzF8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Party Trays',
-        'servings' => '30-35 people',
-        'prepTime' => '1 hour',
-        'popular' => false,
-        'rating' => 4.7,
-        'reviews' => 143
-    ],
-    [
-        'id' => 8,
-        'name' => 'Grilled Seafood Platter',
-        'description' => 'Fresh seafood medley including grilled fish, prawns, and squid. Served with lemon butter sauce and steamed vegetables.',
-        'price' => 6500,
-        'image' => 'https://images.unsplash.com/photo-1758448786233-2051ecd150c8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmlsbGVkJTIwc2VhZm9vZCUyMHBsYXR0ZXJ8ZW58MXx8fHwxNzU5OTIzMTMxfDA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Catering Packages',
-        'servings' => '40-45 people',
-        'prepTime' => '2.5 hours',
-        'popular' => false,
-        'rating' => 4.8,
-        'reviews' => 91
-    ],
-    [
-        'id' => 9,
-        'name' => 'Budget-Friendly Family Meal',
-        'description' => 'Affordable meal pack perfect for small gatherings. Includes rice, choice of 2 viands, and drinks.',
-        'price' => 180,
-        'image' => 'https://images.unsplash.com/photo-1744957280662-af6472128abd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYWNrZWQlMjBtZWFsJTIwYm94fGVufDF8fHx8MTc1OTkyMzEyOXww&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Packed Meals',
-        'servings' => '1 person',
-        'prepTime' => '20 mins',
-        'popular' => false,
-        'rating' => 4.5,
-        'reviews' => 421
-    ],
-    [
-        'id' => 10,
-        'name' => 'Deluxe Grazing Board',
-        'description' => 'Premium grazing board with imported and local cheeses, cured meats, seasonal fruits, artisan breads, and gourmet spreads.',
-        'price' => 8500,
-        'image' => 'https://images.unsplash.com/photo-1653559251018-f59d60ab3223?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmF6aW5nJTIwdGFibGUlMjBjaGFyY3V0ZXJpZXxlbnwxfHx8fDE3NTk5MjMxMzB8MA&ixlib=rb-4.1.0&q=80&w=1080',
-        'category' => 'Grazing Tables',
-        'servings' => '25-30 people',
-        'prepTime' => '2 hours',
-        'popular' => false,
-        'rating' => 5.0,
-        'reviews' => 78
-    ]
-];
+require_once __DIR__ . '/../classes/database.php';
+$db = new database();
 
-$categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazing Tables'];
+
+function normalize_menu_pic($raw) {
+    $raw = trim((string)$raw);
+    if ($raw === '') {
+        return 'https://placehold.co/800x600?text=Menu+Photo';
+    }
+ 
+    $raw = str_replace('\\', '/', $raw);
+
+   
+    if (preg_match('~^https?://~i', $raw)) {
+        return $raw;
+    }
+
+ 
+    if (strpos($raw, '/') === false) {
+        return '/Binggay/menu/' . $raw;
+    }
+
+  
+    if (preg_match('~^(menu|images|uploads)(/|$)~i', $raw)) {
+        return '/Binggay/' . ltrim($raw, '/');
+    }
+
+
+    if (preg_match('~(?:^|/)Binggay/(.+)$~i', $raw, $m)) {
+        return '/Binggay/' . ltrim($m[1], '/');
+    }
+
+    return '/Binggay/' . ltrim($raw, '/');
+}
+
+// Categories from DB with an 'All' pseudo-category
+$dbCategories = $db->viewCategories();
+$categories = [ [ 'category_id' => 0, 'category_name' => 'All' ] ];
+foreach ($dbCategories as $row) {
+    $categories[] = [
+        'category_id' => (int)$row['category_id'],
+        'category_name' => (string)$row['category_name'],
+    ];
+}
+
+// Selected category via query string (?cat=ID), 0 means All
+$selectedCategoryId = isset($_GET['cat']) ? max(0, (int)$_GET['cat']) : 0;
+$selectedCategoryName = 'All';
+foreach ($categories as $c) { if ((int)$c['category_id'] === $selectedCategoryId) { $selectedCategoryName = $c['category_name']; break; } }
+
+// Fetch menus (include both available and unavailable). If All, pass null to avoid join
+$menuRows = $db->getFilteredMenuOOP($selectedCategoryId ?: null, null, 'alpha_asc');
+
+// Map to UI-friendly array expected by the JS/template
+$menuItems = array_map(function($m){
+    $pic = isset($m['menu_pic']) ? $m['menu_pic'] : '';
+    $avail = isset($m['menu_avail']) ? (int)$m['menu_avail'] : 1;
+    return [
+        'id' => (int)$m['menu_id'],
+        'name' => (string)$m['menu_name'],
+        'description' => (string)$m['menu_desc'],
+        'price' => (float)$m['menu_price'],
+        'image' => normalize_menu_pic($pic),
+        'category' => '',
+        'servings' => isset($m['menu_pax']) ? (string)$m['menu_pax'] : '',
+        'prepTime' => '',
+        'popular' => false,
+        'rating' => 0,
+        'reviews' => 0,
+        'available' => ($avail === 1),
+    ];
+}, $menuRows);
+
+// If requested as AJAX for menu items, return JSON and exit early
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
+    header('Content-Type: application/json');
+    echo json_encode($menuItems);
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -359,14 +303,8 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
 <body class="min-h-screen">
     <?php include __DIR__ . '/partials/navbar.php'; ?>
 
-    <!-- Floating Cart Button (keeps cart accessible and preserves cartBadge) -->
-    <button onclick="toggleCart()" class="fixed bottom-6 right-6 z-50 bg-primary text-white rounded-full w-14 h-14 shadow-lg hover:bg-green-800 transition-colors flex items-center justify-center relative">
-        <i class="fas fa-shopping-cart text-xl"></i>
-        <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold"></span>
-    </button>
-
     <!-- Hero Banner -->
-    <div class="bg-gradient-to-r from-primary to-green-800 text-white py-12 animate-fade-in">
+    <div class="bg-gradient-to-r from-primary to-green-800 text-white pt-32 pb-12 md:pt-36 animate-fade-in" data-nav-contrast="dark">
         <div class="container mx-auto px-4 text-center">
             <h2 class="text-3xl font-medium text-white mb-3">Delicious Home-Cooked Catering</h2>
             <p class="text-white/90 max-w-2xl mx-auto mb-6">
@@ -385,8 +323,8 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
         </div>
     </div>
 
-    <!-- Search Bar (moved here from header to keep search working) -->
-    <div class="bg-white/90 backdrop-blur-sm border-b border-gray-200">
+    <!-- Search Bar on green background -->
+    <div id="searchSection" class="bg-gradient-to-r from-primary to-green-800 border-b border-green-900/10" data-nav-contrast="dark">
         <div class="container mx-auto px-4 py-4">
             <div class="relative max-w-2xl mx-auto">
                 <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
@@ -403,42 +341,33 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                 <i class="fas fa-filter text-gray-400 flex-shrink-0"></i>
-                <?php foreach($categories as $category): ?>
-                <button onclick="filterCategory('<?php echo $category; ?>')" 
-                        class="category-btn px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 <?php echo $category === 'All' ? 'bg-primary text-white shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'; ?>"
-                        data-category="<?php echo $category; ?>">
-                    <?php echo $category; ?>
-                </button>
+                <?php foreach($categories as $cat): ?>
+                    <?php $isActive = ((int)$cat['category_id'] === $selectedCategoryId); ?>
+                    <a href="<?php echo (int)$cat['category_id'] === 0 ? 'menu.php' : ('menu.php?cat='.(int)$cat['category_id']); ?>"
+                       class="category-chip px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 <?php echo $isActive ? 'bg-primary text-white shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'; ?>"
+                       data-cat-id="<?php echo (int)$cat['category_id']; ?>">
+                       <?php echo htmlspecialchars($cat['category_name']); ?>
+                    </a>
                 <?php endforeach; ?>
             </div>
         </div>
     </div>
 
+    <!-- Green spacer above first content section -->
+    <div class="bg-gradient-to-r from-primary to-green-800 h-4 w-full" data-nav-contrast="dark"></div>
+
     <!-- Menu Grid -->
     <div class="container mx-auto px-4 py-8">
-        <!-- Popular Items -->
-        <div id="popularSection" class="mb-12 animate-fade-in-up">
-            <div class="flex items-center gap-2 mb-6">
-                <i class="fas fa-star text-amber-500"></i>
-                <h3 class="text-2xl font-medium text-primary">Popular Items</h3>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <?php foreach($menuItems as $item): ?>
-                    <?php if($item['popular']): ?>
-                        <?php include 'menu_card_template.php'; ?>
-                    <?php endif; ?>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-        <!-- All Items -->
+        <!-- Items -->
         <div class="animate-fade-in-up">
-            <h3 id="sectionTitle" class="text-2xl font-medium text-primary mb-6">All Menu Items</h3>
+            <h3 id="sectionTitle" class="text-2xl font-medium text-primary mb-6"><?php echo htmlspecialchars($selectedCategoryName === 'All' ? 'All Menu Items' : $selectedCategoryName); ?></h3>
             <div id="menuGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <?php foreach($menuItems as $item): ?>
-                    <?php include 'menu_card_template.php'; ?>
+                    <?php menu_card_template(); ?>
                 <?php endforeach; ?>
             </div>
+            <!-- Pagination -->
+            <div id="pagination" class="mt-8 flex items-center justify-center gap-2 flex-wrap"></div>
         </div>
 
         <div id="noResults" class="hidden text-center py-16">
@@ -502,58 +431,174 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
 
     <script>
         // Menu items data as JavaScript
-        const menuItems = <?php echo json_encode($menuItems); ?>;
+        let menuItems = <?php echo json_encode($menuItems); ?>;
         let cart = [];
-        let selectedCategory = 'All';
+        let selectedCategoryId = <?php echo (int)$selectedCategoryId; ?>;
+        let selectedCategory = '<?php echo addslashes($selectedCategoryName); ?>';
+        let currentPage = 1;
+        const pageSize = 20;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             renderMenu();
             setupSearch();
+            setupCategoryChips();
+            // If navigated with #cart, open the cart sidebar
+            if (window.location.hash === '#cart' && typeof toggleCart === 'function') {
+                toggleCart();
+            }
         });
 
         // Filter by category
-        function filterCategory(category) {
-            selectedCategory = category;
-            
-            // Update active button
-            document.querySelectorAll('.category-btn').forEach(btn => {
-                if(btn.dataset.category === category) {
-                    btn.className = 'category-btn px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 bg-primary text-white shadow-md';
-                } else {
-                    btn.className = 'category-btn px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 bg-gray-100 hover:bg-gray-200 text-gray-700';
-                }
-            });
-
-            // Update section title
-            document.getElementById('sectionTitle').textContent = category === 'All' ? 'All Menu Items' : category;
-            
-            // Show/hide popular section
-            document.getElementById('popularSection').style.display = category === 'All' ? 'block' : 'none';
-            
-            renderMenu();
-        }
+        // Category is now server-driven via links; no JS switching required
 
         // Render menu items
         function renderMenu() {
             const searchQuery = document.getElementById('searchInput').value.toLowerCase();
-            const filteredItems = menuItems.filter(item => {
-                const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-                const matchesSearch = item.name.toLowerCase().includes(searchQuery) || 
-                                     item.description.toLowerCase().includes(searchQuery);
-                return matchesCategory && matchesSearch;
-            });
+            const filteredItems = menuItems.filter(item => item.name.toLowerCase().includes(searchQuery) || item.description.toLowerCase().includes(searchQuery));
 
             const menuGrid = document.getElementById('menuGrid');
             const noResults = document.getElementById('noResults');
+            const pagination = document.getElementById('pagination');
 
             if(filteredItems.length === 0) {
                 menuGrid.innerHTML = '';
                 noResults.classList.remove('hidden');
+                if (pagination) pagination.innerHTML = '';
             } else {
                 noResults.classList.add('hidden');
-                menuGrid.innerHTML = filteredItems.map(item => createMenuCard(item)).join('');
+                // Pagination math
+                const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+                if (currentPage > totalPages) currentPage = totalPages;
+                const start = (currentPage - 1) * pageSize;
+                const pageItems = filteredItems.slice(start, start + pageSize);
+                // Render current page
+                menuGrid.innerHTML = pageItems.map(item => createMenuCard(item)).join('');
+                // Render pagination controls
+                renderPagination(totalPages);
             }
+        }
+
+        function renderPagination(totalPages) {
+            const el = document.getElementById('pagination');
+            if (!el) return;
+            if (totalPages <= 1) {
+                el.innerHTML = '';
+                return;
+            }
+
+            // Helper to build page button
+            const btn = (label, page, disabled = false, active = false) => {
+                const base = 'px-3 py-2 rounded-md text-sm border transition-all';
+                const styles = active
+                    ? ' bg-primary text-white border-primary shadow-sm'
+                    : (disabled ? ' text-gray-400 border-gray-200 cursor-not-allowed'
+                                : ' bg-white text-gray-700 hover:bg-gray-50 border-gray-200');
+                const data = disabled ? '' : ` data-page="${page}"`;
+                const aria = active ? ' aria-current="page"' : '';
+                return `<a href="#" class="${base}${styles ? ' ' + styles : ''}"${data}${aria}>${label}</a>`;
+            };
+
+            // Determine range of pages to show (use window around current)
+            const pages = [];
+            const maxButtons = 7; // including first/last when collapsed
+            let start = 1;
+            let end = totalPages;
+            if (totalPages > maxButtons) {
+                start = Math.max(1, currentPage - 2);
+                end = Math.min(totalPages, currentPage + 2);
+                if (start <= 2) { start = 1; end = Math.min(totalPages, start + 4); }
+                if (end >= totalPages - 1) { end = totalPages; start = Math.max(1, end - 4); }
+            }
+
+            // Build HTML
+            let html = '';
+            // Prev
+            html += btn('Prev', currentPage - 1, currentPage === 1, false);
+            // First page and ellipsis
+            if (start > 1) {
+                html += btn('1', 1, false, currentPage === 1);
+                if (start > 2) html += `<span class="px-2 text-gray-400">…</span>`;
+            }
+            // Middle pages
+            for (let p = start; p <= end; p++) {
+                html += btn(String(p), p, false, p === currentPage);
+            }
+            // Last page and ellipsis
+            if (end < totalPages) {
+                if (end < totalPages - 1) html += `<span class="px-2 text-gray-400">…</span>`;
+                html += btn(String(totalPages), totalPages, false, currentPage === totalPages);
+            }
+            // Next
+            html += btn('Next', currentPage + 1, currentPage === totalPages, false);
+
+            el.innerHTML = html;
+
+            // Wire up clicks
+            el.querySelectorAll('a[data-page]').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const target = parseInt(a.getAttribute('data-page') || '1', 10);
+                    if (!Number.isNaN(target) && target >= 1 && target <= totalPages && target !== currentPage) {
+                        currentPage = target;
+                        renderMenu();
+                        // Scroll to the search bar so it sits at the top
+                        scrollToSearch();
+                    }
+                });
+            });
+        }
+
+        // Smoothly scroll to the search bar with an offset for the navbar
+        function scrollToSearch() {
+            const target = document.getElementById('searchSection') || document.getElementById('searchInput');
+            if (!target) return;
+            const navEl = document.querySelector('nav, header[role="banner"], header');
+            const navH = navEl ? Math.ceil(navEl.getBoundingClientRect().height) : 80;
+            const extra = 8; // small breathing space
+            const top = target.getBoundingClientRect().top + window.pageYOffset - navH - extra;
+            window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        }
+
+        // Fetch menus by category (AJAX)
+        async function fetchMenus(catId) {
+            try {
+                const resp = await fetch(`menu.php?ajax=menu&cat=${encodeURIComponent(catId)}`, { headers: { 'Accept': 'application/json' } });
+                if (!resp.ok) throw new Error('Failed to fetch');
+                const data = await resp.json();
+                menuItems = Array.isArray(data) ? data : [];
+                currentPage = 1;
+                renderMenu();
+            } catch (e) {
+                console.error('Fetch menus error:', e);
+            }
+        }
+
+        // Initialize category chips to filter without page reload
+        function setupCategoryChips() {
+            const chips = document.querySelectorAll('.category-chip');
+            chips.forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const catId = parseInt(chip.dataset.catId || '0', 10) || 0;
+                    selectedCategoryId = catId;
+                    selectedCategory = chip.textContent.trim() || 'All';
+                    // Update active styles
+                    chips.forEach(c => {
+                        const active = (parseInt(c.dataset.catId || '0',10) === selectedCategoryId);
+                        c.className = `category-chip px-4 py-2 rounded-full whitespace-nowrap transition-all hover:scale-105 ${active ? 'bg-primary text-white shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`;
+                    });
+                    // Update section title
+                    const titleEl = document.getElementById('sectionTitle');
+                    if (titleEl) titleEl.textContent = (selectedCategory.toLowerCase() === 'all') ? 'All Menu Items' : selectedCategory;
+                    // Clear search on category change for clarity
+                    const s = document.getElementById('searchInput');
+                    if (s) { s.value = ''; }
+                    currentPage = 1;
+                    // Fetch and render
+                    fetchMenus(selectedCategoryId);
+                });
+            });
         }
 
         // Create menu card HTML
@@ -561,10 +606,10 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
             return `
                 <div class="menu-card bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
                     <div class="relative overflow-hidden h-48" onclick="openItemModal(${item.id})">
-                        <img src="${item.image}" alt="${item.name}" class="menu-image w-full h-full object-cover">
+                        <img src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="menu-image w-full h-full object-cover">
                         <div class="menu-overlay absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                        ${item.popular ? '<span class="absolute top-3 left-3 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg"><i class="fas fa-star mr-1"></i>Popular</span>' : ''}
-                        <button onclick="event.stopPropagation(); addToCart(${item.id})" class="add-btn absolute bottom-3 right-3 bg-white text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
+                        ${item.available ? '<span class="absolute top-3 left-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Available</span>' : '<span class="absolute top-3 left-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Unavailable</span>'}
+                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="event.stopPropagation(); ${item.available ? `addToCart(${item.id})` : ''}" class="add-btn absolute bottom-3 right-3 ${item.available ? 'bg-white text-primary hover:bg-primary hover:text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
                             <i class="fas fa-plus mr-1"></i>Add
                         </button>
                     </div>
@@ -572,11 +617,7 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
                         <h4 class="font-medium text-primary mb-2 hover:text-amber-500 transition-colors">${item.name}</h4>
                         <p class="text-sm text-gray-600 mb-3 line-clamp-2">${item.description}</p>
                         <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-1 text-sm text-gray-500">
-                                <i class="fas fa-star text-amber-500"></i>
-                                <span class="font-medium text-gray-700">${item.rating}</span>
-                                <span class="text-xs">(${item.reviews})</span>
-                            </div>
+                            <span class="text-xs font-medium ${item.available ? 'text-emerald-700' : 'text-red-700'}">${item.available ? 'Available' : 'Unavailable'}</span>
                             <p class="text-xl font-bold text-primary">₱${item.price.toLocaleString()}</p>
                         </div>
                         <div class="flex items-center gap-2 text-xs text-gray-500">
@@ -597,7 +638,10 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
 
         // Setup search
         function setupSearch() {
-            document.getElementById('searchInput').addEventListener('input', renderMenu);
+            document.getElementById('searchInput').addEventListener('input', () => {
+                currentPage = 1;
+                renderMenu();
+            });
         }
 
         // Open item modal
@@ -607,16 +651,14 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
 
             const modalContent = `
                 <div class="relative h-64 md:h-96">
-                    <img src="${item.image}" alt="${item.name}" class="w-full h-full object-cover">
-                    ${item.popular ? '<span class="absolute top-4 right-4 bg-amber-500 text-white px-3 py-1 rounded-full text-sm font-medium"><i class="fas fa-star mr-1"></i>Popular</span>' : ''}
+                    <img src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="w-full h-full object-cover">
+                    ${item.available ? '<span class="absolute top-4 right-4 bg-emerald-600 text-white px-3 py-1 rounded-full text-sm font-medium">Available</span>' : '<span class="absolute top-4 right-4 bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium">Unavailable</span>'}
                 </div>
                 <div class="p-6">
                     <h2 class="text-2xl font-medium text-primary mb-4">${item.name}</h2>
                     <div class="flex items-center gap-4 text-sm text-gray-500 mb-6">
-                        <div class="flex items-center gap-1">
-                            <i class="fas fa-star text-amber-500"></i>
-                            <span class="font-medium text-gray-700">${item.rating}</span>
-                            <span>(${item.reviews} reviews)</span>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${item.available ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${item.available ? 'Available' : 'Unavailable'}</span>
                         </div>
                         <div class="flex items-center gap-1">
                             <i class="fas fa-users"></i>
@@ -633,7 +675,7 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
                             <p class="text-sm text-gray-500">Price</p>
                             <p class="text-3xl font-bold text-primary">₱${item.price.toLocaleString()}</p>
                         </div>
-                        <button onclick="addToCart(${item.id}); closeModal(); toggleCart()" class="bg-primary hover:bg-green-800 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="${item.available ? `addToCart(${item.id}); closeModal(); toggleCart()` : ''}" class="${item.available ? 'bg-primary hover:bg-green-800 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-6 py-3 rounded-lg font-medium transition-colors">
                             <i class="fas fa-plus mr-2"></i>Add to Cart
                         </button>
                     </div>
@@ -692,14 +734,23 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
             const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
             const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-            // Update badge
-            const badge = document.getElementById('cartBadge');
-            if(cartCount > 0) {
-                badge.textContent = cartCount;
-                badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
+            // Update badge(s) across page and navbar if present
+            const badges = [];
+            const mainBadge = document.getElementById('cartBadge');
+            if (mainBadge) badges.push(mainBadge);
+            // Navbar desktop button badge reuses same id; ensure uniqueness by selecting duplicates
+            document.querySelectorAll('#nav-cart-btn #cartBadge, #nav-cart-btn-mobile .cart-badge').forEach(el => badges.push(el));
+            badges.forEach(badgeEl => {
+                if (!badgeEl) return;
+                if (cartCount > 0) {
+                    badgeEl.textContent = cartCount;
+                    badgeEl.classList.remove('hidden');
+                    badgeEl.classList.add('flex');
+                } else {
+                    badgeEl.classList.add('hidden');
+                    badgeEl.classList.remove('flex');
+                }
+            });
 
             // Update cart items
             if(cart.length === 0) {
@@ -714,7 +765,7 @@ $categories = ['All', 'Party Trays', 'Packed Meals', 'Catering Packages', 'Grazi
                 const cartList = document.getElementById('cartList');
                 cartList.innerHTML = cart.map(item => `
                     <div class="flex gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <img src="${item.image}" alt="${item.name}" class="w-20 h-20 object-cover rounded-lg">
+                        <img src="${item.image}" alt="${item.name}" class="w-20 h-20 object-cover rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/160x160?text=Menu';">
                         <div class="flex-1">
                             <h4 class="font-medium text-sm mb-1">${item.name}</h4>
                             <p class="text-sm text-primary font-semibold">₱${item.price.toLocaleString()}</p>
@@ -750,14 +801,14 @@ function menu_card_template() {
     ?>
     <div class="menu-card bg-white rounded-lg overflow-hidden border border-gray-200 cursor-pointer">
         <div class="relative overflow-hidden h-48" onclick="openItemModal(<?php echo $item['id']; ?>)">
-            <img src="<?php echo $item['image']; ?>" alt="<?php echo $item['name']; ?>" class="menu-image w-full h-full object-cover">
+            <img src="<?php echo $item['image']; ?>" alt="<?php echo $item['name']; ?>" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="menu-image w-full h-full object-cover">
             <div class="menu-overlay absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-            <?php if($item['popular']): ?>
-                <span class="absolute top-3 left-3 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">
-                    <i class="fas fa-star mr-1"></i>Popular
-                </span>
+            <?php if(!empty($item['available'])): ?>
+                <span class="absolute top-3 left-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Available</span>
+            <?php else: ?>
+                <span class="absolute top-3 left-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Unavailable</span>
             <?php endif; ?>
-            <button onclick="event.stopPropagation(); addToCart(<?php echo $item['id']; ?>)" class="add-btn absolute bottom-3 right-3 bg-white text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
+            <button onclick="event.stopPropagation(); <?php echo !empty($item['available']) ? 'addToCart('.$item['id'].')' : ''; ?>" <?php echo empty($item['available']) ? 'disabled aria-disabled="true"' : ''; ?> class="add-btn absolute bottom-3 right-3 <?php echo !empty($item['available']) ? 'bg-white text-primary hover:bg-primary hover:text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'; ?> px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
                 <i class="fas fa-plus mr-1"></i>Add
             </button>
         </div>
@@ -765,11 +816,7 @@ function menu_card_template() {
             <h4 class="font-medium text-primary mb-2 hover:text-amber-500 transition-colors"><?php echo $item['name']; ?></h4>
             <p class="text-sm text-gray-600 mb-3 line-clamp-2"><?php echo $item['description']; ?></p>
             <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-1 text-sm text-gray-500">
-                    <i class="fas fa-star text-amber-500"></i>
-                    <span class="font-medium text-gray-700"><?php echo $item['rating']; ?></span>
-                    <span class="text-xs">(<?php echo $item['reviews']; ?>)</span>
-                </div>
+                <span class="text-xs font-medium <?php echo !empty($item['available']) ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo !empty($item['available']) ? 'Available' : 'Unavailable'; ?></span>
                 <p class="text-xl font-bold text-primary">₱<?php echo number_format($item['price']); ?></p>
             </div>
             <div class="flex items-center gap-2 text-xs text-gray-500">
