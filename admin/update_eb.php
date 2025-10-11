@@ -59,7 +59,7 @@ if (!$booking) {
     <meta charset="UTF-8">
     <title>Edit Event Booking Status</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <link rel="stylesheet" href="./package/dist/sweetalert2.css">
+    <link rel="stylesheet" href="../package/dist/sweetalert2.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light py-5">
@@ -120,8 +120,8 @@ if (!$booking) {
     </form>
     <?php endif; ?>
 </div>
-<script src="./package/dist/sweetalert2.js"></script>
-<script src="./bootstrap-5.3.3-dist/js/bootstrap.js"></script>
+<script src="../package/dist/sweetalert2.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <?php echo $sweetAlertConfig; ?>
 </body>
 </html>

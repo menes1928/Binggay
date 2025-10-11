@@ -1,52 +1,74 @@
 <?php
 session_start();
+require_once __DIR__ . '/classes/database.php';
 
 // Handle registration form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
-    $firstName = $_POST['first_name'] ?? '';
-    $lastName = $_POST['last_name'] ?? '';
-    $sex = $_POST['sex'] ?? '';
-    $email = $_POST['email'] ?? '';
-    $phone = $_POST['phone'] ?? '';
-    $username = $_POST['username'] ?? '';
+    $firstName = trim($_POST['first_name'] ?? '');
+    $lastName = trim($_POST['last_name'] ?? '');
+    $sex = trim($_POST['sex'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $confirmPassword = $_POST['confirm_password'] ?? '';
     
-    // Handle file upload
-    $photo = '';
+    // Handle file upload (store relative path like existing data)
+    $photo = null;
     if (isset($_FILES['photo']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
-        $uploadDir = 'uploads/profiles/';
+        $uploadDir = __DIR__ . '/uploads/profile/';
+        $publicRel = '../uploads/profile/';
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0755, true);
         }
-        $fileExtension = pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION);
-        $newFileName = uniqid() . '.' . $fileExtension;
-        $uploadPath = $uploadDir . $newFileName;
-        
-        if (move_uploaded_file($_FILES['photo']['tmp_name'], $uploadPath)) {
-            $photo = $uploadPath;
+        $fileExtension = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','webp'];
+        if (!in_array($fileExtension, $allowed, true)) {
+            $errors[] = 'Invalid photo type. Allowed: jpg, jpeg, png, webp';
+        } else {
+            $newFileName = uniqid('', true) . '.' . $fileExtension;
+            $uploadPath = $uploadDir . $newFileName;
+            if (move_uploaded_file($_FILES['photo']['tmp_name'], $uploadPath)) {
+                $photo = $publicRel . $newFileName; // match existing samples in DB
+            }
         }
     }
     
-    // TODO: Add actual registration logic here (database insertion, password hashing, etc.)
-    // For now, this is a placeholder
+    $errors = $errors ?? [];
     
-    $errors = [];
-    
-    if (empty($firstName)) $errors[] = 'First name is required';
-    if (empty($lastName)) $errors[] = 'Last name is required';
-    if (empty($sex)) $errors[] = 'Please select your sex';
-    if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Valid email is required';
-    if (empty($phone)) $errors[] = 'Phone number is required';
-    if (empty($username) || strlen($username) < 4) $errors[] = 'Username must be at least 4 characters';
-    if (empty($password) || strlen($password) < 8) $errors[] = 'Password must be at least 8 characters';
+    // Validation
+    if ($firstName === '') $errors[] = 'First name is required';
+    if ($lastName === '') $errors[] = 'Last name is required';
+    if ($sex === '') $errors[] = 'Please select your sex';
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Valid email is required';
+    if ($phone === '') $errors[] = 'Phone number is required';
+    if ($username === '' || strlen($username) < 4) $errors[] = 'Username must be at least 4 characters';
+    if ($password === '' || strlen($password) < 8) $errors[] = 'Password must be at least 8 characters';
     if ($password !== $confirmPassword) $errors[] = 'Passwords do not match';
-    
+
     if (empty($errors)) {
-        // Success - redirect to login
-        $_SESSION['registration_success'] = true;
-        header('Location: login.php');
-        exit;
+        try {
+            $db = new database();
+            $pdo = $db->opencon();
+
+            // Check duplicates by username and email
+            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE user_username = ? OR user_email = ? LIMIT 1');
+            $stmt->execute([$username, $email]);
+            if ($stmt->fetch()) {
+                $errors[] = 'Username or email already exists';
+            } else {
+                $hash = password_hash($password, PASSWORD_BCRYPT);
+                $stmt = $pdo->prepare('INSERT INTO users (user_fn, user_ln, user_sex, user_email, user_phone, user_username, user_password, user_photo, user_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())');
+                $user_type = 0; // 0 for customer per sample data
+                $stmt->execute([$firstName, $lastName, ucfirst(strtolower($sex)), $email, $phone, $username, $hash, $photo, $user_type]);
+
+                $_SESSION['registration_success'] = true;
+                header('Location: login.php');
+                exit;
+            }
+        } catch (Throwable $e) {
+            $errors[] = 'Registration failed: ' . $e->getMessage();
+        }
     }
 }
 ?>

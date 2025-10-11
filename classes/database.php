@@ -4,7 +4,7 @@ class database {
 
     public function __construct(
         string $host = 'localhost',
-        string $db = 'sandokdb',
+        string $db = 'sandok',
         string $user = 'root',
         string $pass = '',
         string $charset = 'utf8mb4'

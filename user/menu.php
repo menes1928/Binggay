@@ -308,14 +308,13 @@ try {
     </script>
 </head>
 <body class="min-h-screen">
-<<<<<<< HEAD
     <!-- Header -->
     <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-md border-b border-gray-200">
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center justify-between gap-4 flex-wrap">
                 <!-- Logo -->
                 <div class="flex items-center gap-3 animate-fade-in-up">
-                    <img src="images/logo.png" 
+                    <img src="../images/logo.png" 
                          alt="Sandok ni Binggay" 
                          class="w-16 h-16 rounded-full border-4 border-primary shadow-lg object-cover">
                     <div class="hidden md:block">
@@ -323,9 +322,6 @@ try {
                         <p class="text-sm text-muted-foreground">Nothing Beats Home-Cooked Meals</p>
                     </div>
                 </div>
-=======
-    <?php include __DIR__ . '/partials/navbar.php'; ?>
->>>>>>> c282e6197beba05f269f1e05fc49942dc94f4872
 
     <!-- Floating Cart Button (keeps cart accessible and preserves cartBadge) -->
     <button onclick="toggleCart()" class="fixed bottom-6 right-6 z-50 bg-primary text-white rounded-full w-14 h-14 shadow-lg hover:bg-green-800 transition-colors flex items-center justify-center relative">
