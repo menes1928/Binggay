@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 11, 2025 at 12:42 PM
+-- Generation Time: Oct 11, 2025 at 05:30 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -227,7 +227,7 @@ INSERT INTO `menu` (`menu_id`, `menu_name`, `menu_desc`, `menu_pax`, `menu_price
 (89, 'Pork Higado (Half Pan)', NULL, '6-8 pax', 800.00, 'default.jpg', 1, '2025-06-14 05:09:01'),
 (90, 'Pork Higado (Full Pan)', NULL, '10-15 pax', 1400.00, 'default.jpg', 1, '2025-06-14 05:09:01'),
 (91, 'Baby Back Ribs (Half Pan)', NULL, '6-8 pax', 800.00, 'default.jpg', 1, '2025-06-14 05:09:01'),
-(92, 'Baby Back Ribs (Full Pan)', '', '10-15', 1400.00, 'default.jpg', 1, '2025-06-14 05:09:01'),
+(92, 'Baby Back Ribs (Full Pan)', '', '10-15', 1400.00, 'menu_68ea6362365639.44210674.jpg', 1, '2025-06-14 05:09:01'),
 (93, 'Tokwa\'t Baboy (Half Pan)', NULL, '6-8 pax', 800.00, 'default.jpg', 1, '2025-06-14 05:09:01'),
 (94, 'Tokwa\'t Baboy (Full Pan)', NULL, '10-15 pax', 1400.00, 'default.jpg', 1, '2025-06-14 05:09:01'),
 (95, 'Calderobo (Half Pan)', NULL, '6-8 pax', 800.00, 'default.jpg', 1, '2025-06-14 05:09:01'),
@@ -422,9 +422,9 @@ CREATE TABLE `packages` (
 --
 
 INSERT INTO `packages` (`package_id`, `name`, `pax`, `base_price`, `is_active`, `notes`, `package_image`, `created_at`, `updated_at`) VALUES
-(1, 'Standard', '50', 35000.00, 1, '', NULL, '2025-10-09 17:43:42', '2025-10-09 17:43:42'),
-(2, 'Wedding Package', '100', 55000.00, 1, '', NULL, '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(3, 'Corporate', '150', 78000.00, 1, '', NULL, '2025-10-09 18:04:56', '2025-10-10 17:13:50');
+(1, 'Standard', '50', 35000.00, 1, '', 'uploads/packages/package_1.jpg', '2025-10-09 17:43:42', '2025-10-11 11:00:23'),
+(2, 'Wedding Package', '100', 55000.00, 1, '', 'uploads/packages/package_2.jpg', '2025-10-09 18:03:25', '2025-10-11 10:59:54'),
+(3, 'Corporate', '150', 78000.00, 0, '', 'uploads/packages/package_3.jpg', '2025-10-09 18:04:56', '2025-10-11 13:57:39');
 
 -- --------------------------------------------------------
 
@@ -450,39 +450,42 @@ CREATE TABLE `package_items` (
 --
 
 INSERT INTO `package_items` (`item_id`, `package_id`, `item_label`, `qty`, `unit`, `is_optional`, `sort_order`, `item_pic`, `created_at`, `updated_at`) VALUES
-(31, 2, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(32, 2, 'Pork Menu', NULL, 'dish', 0, 1, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(33, 2, 'Chicken Menu', NULL, 'dish', 0, 2, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(34, 2, 'Rice', NULL, 'dish', 0, 3, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(35, 2, 'Veggies/Pasta/Fish Fillet', NULL, 'dish', 0, 4, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(36, 2, '100 Cups of Dessert', NULL, 'cups', 0, 5, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(37, 2, 'Drinks', NULL, 'dish', 0, 6, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(38, 2, 'Backdrop & Platform/ Complete Setup', NULL, 'other', 0, 7, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(39, 2, 'Table Buffet w/ Skirting Setup', NULL, 'other', 0, 8, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(40, 2, '7 Chaffing Dish w/ Food Heat Lamp', NULL, 'pcs', 0, 9, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(41, 2, 'Cake & Gift Table w/ Skirting Designs', NULL, 'other', 0, 10, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(42, 2, 'Chairs w/ Cover', NULL, 'other', 0, 11, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(43, 2, 'Tables w/ cover', NULL, 'other', 0, 12, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(44, 2, '100 PAX Silverware, Glassware, Dinner ware', NULL, 'pax', 0, 13, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(45, 2, '100pcs Serving Spoon', NULL, 'pcs', 0, 14, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(46, 2, '4 Food Attendants', NULL, 'attendants', 0, 15, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(47, 2, 'Elegant Table Buffet', NULL, 'other', 0, 16, '', '2025-10-09 18:03:25', '2025-10-09 18:03:25'),
-(64, 1, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(65, 1, 'Pork Menu', NULL, 'dish', 0, 1, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(66, 1, 'Chicken Menu', NULL, 'dish', 0, 2, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(67, 1, 'Rice', NULL, 'dish', 0, 3, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(68, 1, 'Veggies/Pasta/Fish Fillet(choose 1)', NULL, 'dish', 0, 4, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(69, 1, '50 Cups of Desserts', 50, 'cups', 0, 5, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(70, 1, 'Backdrop & Platform/ Complete Setup', NULL, 'other', 0, 6, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(71, 1, 'Elegant Table Buffet', NULL, 'other', 0, 7, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(72, 1, '6 Chaffing Dish', 6, 'other', 0, 8, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(73, 1, 'Banquet Complete Setup', NULL, 'other', 0, 9, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(74, 1, 'Tables and Chairs with cover', NULL, 'other', 0, 10, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(75, 1, 'Artificial Flowers and Balloons for Decoration', NULL, 'other', 0, 11, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(76, 1, '60 Pax Silverware and Dinner ware', 60, 'pcs', 0, 12, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(77, 1, '2 Food Attendants', 2, 'attendants', 0, 13, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(78, 1, 'Elegant Table Buffet', NULL, 'other', 0, 14, '', '2025-10-10 16:26:15', '2025-10-10 16:26:15'),
-(81, 3, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-10 17:13:50', '2025-10-10 17:13:50');
+(153, 1, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(154, 1, 'Pork Menu', NULL, 'dish', 0, 1, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(155, 1, 'Chicken Menu', NULL, 'dish', 0, 2, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(156, 1, 'Rice', NULL, 'dish', 0, 3, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(157, 1, 'Veggies/Pasta/Fish Fillet(choose 1)', NULL, 'dish', 0, 4, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(158, 1, '50 Cups of Desserts', 50, 'cups', 0, 5, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(159, 1, 'Backdrop & Platform/ Complete Setup', NULL, 'other', 0, 6, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(160, 1, 'Elegant Table Buffet', NULL, 'other', 0, 7, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(161, 1, '6 Chaffing Dish', 6, 'other', 0, 8, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(162, 1, 'Banquet Complete Setup', NULL, 'other', 0, 9, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(163, 1, 'Tables and Chairs with cover', NULL, 'other', 0, 10, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(164, 1, 'Artificial Flowers and Balloons for Decoration', NULL, 'other', 0, 11, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(165, 1, '60 Pax Silverware and Dinner ware', 60, 'pcs', 0, 12, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(166, 1, '2 Food Attendants', 2, 'attendants', 0, 13, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(167, 1, 'Elegant Table Buffet', NULL, 'other', 0, 14, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
+(168, 2, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(169, 2, 'Pork Menu', NULL, 'dish', 0, 1, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(170, 2, 'Chicken Menu', NULL, 'dish', 0, 2, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(171, 2, 'Rice', NULL, 'dish', 0, 3, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(172, 2, 'Veggies/Pasta/Fish Fillet', NULL, 'dish', 0, 4, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(173, 2, '100 Cups of Dessert', NULL, 'cups', 0, 5, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(174, 2, 'Drinks', NULL, 'dish', 0, 6, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(175, 2, 'Backdrop & Platform/ Complete Setup', NULL, 'other', 0, 7, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(176, 2, 'Table Buffet w/ Skirting Setup', NULL, 'other', 0, 8, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(177, 2, '7 Chaffing Dish w/ Food Heat Lamp', NULL, 'pcs', 0, 9, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(178, 2, 'Cake & Gift Table w/ Skirting Designs', NULL, 'other', 0, 10, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(179, 2, 'Chairs w/ Cover', NULL, 'other', 0, 11, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(180, 2, 'Tables w/ cover', NULL, 'other', 0, 12, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(181, 2, '100 PAX Silverware, Glassware, Dinner ware', NULL, 'pax', 0, 13, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(182, 2, '100pcs Serving Spoon', NULL, 'pcs', 0, 14, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(183, 2, '4 Food Attendants', NULL, 'attendants', 0, 15, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(184, 2, 'Elegant Table Buffet', NULL, 'other', 0, 16, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
+(194, 3, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59'),
+(195, 3, 'Chicken Menu', NULL, 'dish', 0, 1, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59'),
+(196, 3, 'Pork Menu', NULL, 'dish', 0, 2, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59'),
+(197, 3, 'Veggies/Pasta/Fish Fillet', NULL, 'attendants', 0, 3, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59');
 
 -- --------------------------------------------------------
 
@@ -700,7 +703,7 @@ ALTER TABLE `packages`
 -- AUTO_INCREMENT for table `package_items`
 --
 ALTER TABLE `package_items`
-  MODIFY `item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=82;
+  MODIFY `item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=198;
 
 --
 -- AUTO_INCREMENT for table `payments`
