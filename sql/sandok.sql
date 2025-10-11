@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 08, 2025 at 04:12 PM
+-- Generation Time: Oct 09, 2025 at 05:30 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -58,9 +58,7 @@ CREATE TABLE `cateringpackages` (
   `cp_phone` varchar(11) NOT NULL,
   `cp_place` varchar(255) NOT NULL,
   `cp_date` date NOT NULL,
-  `cp_desc` text DEFAULT NULL,
   `cp_price` decimal(10,2) NOT NULL,
-  `cp_avail` tinyint(1) DEFAULT NULL,
   `cp_addon_pax` int(11) DEFAULT NULL,
   `cp_notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
@@ -70,37 +68,8 @@ CREATE TABLE `cateringpackages` (
 -- Dumping data for table `cateringpackages`
 --
 
-INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_phone`, `cp_place`, `cp_date`, `cp_desc`, `cp_price`, `cp_avail`, `cp_addon_pax`, `cp_notes`, `created_at`) VALUES
-(1, 6, 'Cxyris Tan', '09603070809', 'San Sebastian Cathedral, P.Laygo St., Lipa City, Batangas', '2025-06-21', 'hello', 99000.00, NULL, NULL, NULL, '2025-10-08 13:58:18');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `employee`
---
-
-CREATE TABLE `employee` (
-  `emp_id` int(11) NOT NULL,
-  `emp_fn` varchar(255) NOT NULL,
-  `emp_ln` varchar(255) NOT NULL,
-  `emp_sex` varchar(6) NOT NULL,
-  `emp_email` varchar(100) NOT NULL,
-  `emp_phone` varchar(255) NOT NULL,
-  `emp_role` varchar(255) NOT NULL,
-  `emp_avail` tinyint(1) DEFAULT NULL,
-  `emp_photo` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `employee`
---
-
-INSERT INTO `employee` (`emp_id`, `emp_fn`, `emp_ln`, `emp_sex`, `emp_email`, `emp_phone`, `emp_role`, `emp_avail`, `emp_photo`, `created_at`) VALUES
-(1, 'Kyle', 'Vanleet', 'Male', 'f@gmaail.com', '09674535234', 'Chef', 1, NULL, '2025-06-05 15:36:36'),
-(2, 'John', 'Def', 'Male', 'jd@gmail.com', '09125637121', 'Dishwasher', 1, NULL, '2025-06-12 05:02:51'),
-(3, 'Francine', 'Diaz', 'Female', 'fd@gmail.com', '09652374213', 'FoodAttendant', 1, '../uploads/profile/emp_68e65e7b585620.20115560.jpg', '2025-06-12 05:07:18'),
-(4, 'Cris', 'Reyes', 'Female', 'cr@gmail.com', '09897236423', 'Server', 1, '../uploads/profile/emp_68e66585181af2.42330367.jpg', '2025-10-08 13:22:13');
+INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_phone`, `cp_place`, `cp_date`, `cp_price`, `cp_addon_pax`, `cp_notes`, `created_at`) VALUES
+(1, 6, 'Cxyris Tan', '09603070809', 'San Sebastian Cathedral, P.Laygo St., Lipa City, Batangas', '2025-06-21', 99000.00, NULL, '', '2025-10-08 17:16:57');
 
 -- --------------------------------------------------------
 
@@ -129,7 +98,7 @@ CREATE TABLE `eventbookings` (
 --
 
 INSERT INTO `eventbookings` (`eb_id`, `user_id`, `eb_name`, `eb_contact`, `eb_type`, `eb_venue`, `eb_date`, `eb_order`, `eb_status`, `created_at`, `eb_package_pax`, `eb_addon_pax`, `eb_notes`) VALUES
-(4, 6, 'Cxyris Tan', '09603070809', 'marriage', 'San Sebastian Cathedral, P.Laygo Street, Lipa City, Batangas', '2025-06-21 05:00:00', 'party trays', 'Pending', '2025-06-15 10:45:54', NULL, NULL, NULL);
+(4, 6, 'Cxyris Tan', '09603070809', 'Wedding', 'San Sebastian Cathedral, P.Laygo Street, Lipa City, Batangas', '2025-06-21 05:00:00', 'party trays', 'In Progress', '2025-06-15 10:45:54', '50', 2, '');
 
 -- --------------------------------------------------------
 
@@ -448,8 +417,8 @@ CREATE TABLE `orders` (
 
 INSERT INTO `orders` (`order_id`, `user_id`, `order_date`, `order_status`, `order_amount`, `order_needed`, `created_at`, `updated_at`) VALUES
 (1, 5, '2025-06-14 05:00:00', 'pending', 4600.00, '2025-06-15', '2025-06-14 18:25:00', '2025-06-14 18:25:00'),
-(2, 5, '2025-06-15 05:00:00', 'pending', 2700.00, '2025-06-20', '2025-06-15 10:10:35', '2025-06-15 10:10:35'),
-(3, 5, '2025-06-15 05:00:00', 'pending', 3100.00, '2025-06-15', '2025-06-15 12:33:22', '2025-06-15 12:33:22');
+(2, 5, '2025-06-15 05:00:00', 'completed', 2700.00, '2025-06-20', '2025-06-15 10:10:35', '2025-10-08 18:59:25'),
+(3, 5, '2025-06-15 05:00:00', 'completed', 3100.00, '2025-06-15', '2025-06-15 12:33:22', '2025-10-08 19:02:26');
 
 -- --------------------------------------------------------
 
@@ -465,7 +434,7 @@ CREATE TABLE `payments` (
   `pay_date` date DEFAULT NULL,
   `pay_amount` decimal(10,2) DEFAULT NULL,
   `pay_method` enum('Cash','Online','Credit') DEFAULT NULL,
-  `pay_status` enum('Paid','Pending') DEFAULT NULL,
+  `pay_status` enum('Paid','Partial','Pending') DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -474,10 +443,10 @@ CREATE TABLE `payments` (
 --
 
 INSERT INTO `payments` (`pay_id`, `order_id`, `cp_id`, `user_id`, `pay_date`, `pay_amount`, `pay_method`, `pay_status`, `created_at`) VALUES
-(1, 1, NULL, 5, '2025-06-14', 4600.00, 'Cash', 'Pending', '2025-10-08 14:00:22'),
-(2, 2, NULL, 5, '2025-06-15', 2700.00, 'Cash', 'Pending', '2025-10-08 14:00:22'),
-(3, NULL, 1, 6, '2025-06-15', 49500.00, 'Online', '', '2025-10-08 14:00:22'),
-(4, 3, NULL, 5, '2025-06-15', 3100.00, 'Cash', 'Pending', '2025-10-08 14:00:22');
+(1, 1, NULL, 5, '2025-06-14', 4600.00, 'Cash', '', '2025-10-08 14:00:22'),
+(2, 2, NULL, 5, '2025-10-09', 2700.00, 'Cash', 'Paid', '2025-10-08 18:54:20'),
+(3, NULL, 1, 6, '2025-10-09', 99000.00, 'Cash', 'Paid', '2025-10-08 17:59:57'),
+(4, 3, NULL, 5, '2025-10-09', 3100.00, 'Cash', 'Paid', '2025-10-08 19:02:26');
 
 -- --------------------------------------------------------
 
@@ -526,12 +495,6 @@ ALTER TABLE `category`
 ALTER TABLE `cateringpackages`
   ADD PRIMARY KEY (`cp_id`),
   ADD KEY `cateringpackages_ibfk_1` (`user_id`);
-
---
--- Indexes for table `employee`
---
-ALTER TABLE `employee`
-  ADD PRIMARY KEY (`emp_id`);
 
 --
 -- Indexes for table `eventbookings`
@@ -607,12 +570,6 @@ ALTER TABLE `category`
 --
 ALTER TABLE `cateringpackages`
   MODIFY `cp_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
---
--- AUTO_INCREMENT for table `employee`
---
-ALTER TABLE `employee`
-  MODIFY `emp_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `eventbookings`
