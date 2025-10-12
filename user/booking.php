@@ -522,6 +522,40 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Summary Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background: linear-gradient(135deg, #1B4332 0%, #2d5a47 100%);
+            margin: 5% auto;
+            padding: 0;
+            border: 2px solid #D4AF37;
+            border-radius: 20px;
+            width: 92%;
+            max-width: 900px;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #D4AF37 0%, #c9a32a 100%);
+            color: #1B4332;
+            padding: 24px 28px;
+            border-radius: 18px 18px 0 0;
+        }
+        .modal-body { padding: 24px 28px; }
+        .modal-actions { display: flex; gap: 12px; margin-top: 16px; }
+        .btn { background: linear-gradient(135deg, #D4AF37 0%, #c9a32a 100%); color:#1B4332; padding:12px 24px; border-radius:999px; border:none; font-weight:700; cursor:pointer; }
+        .btn.secondary { background: transparent; color:#D4AF37; border:1px solid #D4AF37; }
     </style>
 </head>
 <body>
@@ -902,6 +936,55 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         </div>
     </section>
 
+    <!-- Review and Confirm Modal -->
+    <div id="summaryModal" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="text-2xl md:text-3xl font-bold">Review Your Booking</h3>
+                <p class="mt-1">Please check the information below before submitting.</p>
+            </div>
+            <div class="modal-body">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="gold-text font-semibold mb-2">Personal Details</h4>
+                        <ul class="space-y-1 text-sm">
+                            <li><span class="opacity-80">Name:</span> <span id="smryName" class="font-semibold"></span></li>
+                            <li><span class="opacity-80">Email:</span> <span id="smryEmail" class="font-semibold"></span></li>
+                            <li><span class="opacity-80">Contact:</span> <span id="smryPhone" class="font-semibold"></span></li>
+                            <li id="smryAltPhoneRow" class="hidden"><span class="opacity-80">Alt Contact:</span> <span id="smryAltPhone" class="font-semibold"></span></li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="gold-text font-semibold mb-2">Event Details</h4>
+                        <ul class="space-y-1 text-sm">
+                            <li><span class="opacity-80">Event Type:</span> <span id="smryEventType" class="font-semibold"></span></li>
+                            <li><span class="opacity-80">Package:</span> <span id="smryPackage" class="font-semibold"></span></li>
+                            <li><span class="opacity-80">Date:</span> <span id="smryDate" class="font-semibold"></span></li>
+                            <li><span class="opacity-80">Time:</span> <span id="smryTime" class="font-semibold"></span></li>
+                        </ul>
+                    </div>
+                    <div class="md:col-span-2">
+                        <h4 class="gold-text font-semibold mb-2">Venue</h4>
+                        <p id="smryVenue" class="text-sm font-semibold"></p>
+                    </div>
+                    <div class="md:col-span-2">
+                        <h4 class="gold-text font-semibold mb-2">Add-ons</h4>
+                        <p id="smryAddons" class="text-sm font-semibold"></p>
+                    </div>
+                    <div class="md:col-span-2">
+                        <h4 class="gold-text font-semibold mb-2">Notes</h4>
+                        <p id="smryNotes" class="text-sm font-semibold whitespace-pre-line"></p>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="smryEdit" class="btn secondary">Edit</button>
+                    <button type="button" id="smryConfirm" class="btn">Confirm & Submit</button>
+                </div>
+                <p class="mt-4 text-xs opacity-80">By confirming, you agree to our Terms and Agreement and allow us to contact you regarding this booking.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="bg-primary py-12">
         <div class="container mx-auto px-4">
@@ -1042,6 +1125,26 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         addonBoxes.forEach(cb=>{ cb.addEventListener('change', ()=>toggleAddonFields(cb)); toggleAddonFields(cb); });
 
         // Form Validation and Submission (requires login)
+        let pendingFormData = null;
+        const modalEl = document.getElementById('summaryModal');
+        const openSummary = () => { modalEl.style.display = 'block'; modalEl.setAttribute('aria-hidden','false'); };
+        const closeSummary = () => { modalEl.style.display = 'none'; modalEl.setAttribute('aria-hidden','true'); };
+
+        async function submitToServer(formData){
+            document.getElementById('loadingOverlay').classList.add('active');
+            return fetch('booking_api.php', { method:'POST', body: formData })
+                .then(async r=>{
+                    let data = null;
+                    try { data = await r.json(); }
+                    catch(_) { throw new Error('Invalid server response'); }
+                    if (!r.ok) { throw new Error(data && data.message ? data.message : 'Request failed'); }
+                    return data;
+                })
+                .finally(()=>{
+                    document.getElementById('loadingOverlay').classList.remove('active');
+                });
+        }
+
         document.getElementById('bookingForm').addEventListener('submit', function(e) {
             if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
                 e.preventDefault();
@@ -1049,12 +1152,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 return false;
             }
             e.preventDefault();
-            
-            // Show loading overlay
-            document.getElementById('loadingOverlay').classList.add('active');
-            
             const formData = new FormData(this);
-            // Serialize add-ons to addons[] entries expected by backend
+            // Serialize add-ons to addons[] entries expected by backend in the format: "5 pax", "3 tables", ...
             const checked = Array.from(document.querySelectorAll('.bf-addon:checked'));
             const addonLabels = [];
             for (const cb of checked){
@@ -1066,39 +1165,76 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 const unit = unitSel ? unitSel.value : '';
                 const qty = qtyInput ? parseInt(qtyInput.value, 10) : 0;
                 if (!qty || qty < 1){
-                    document.getElementById('loadingOverlay').classList.remove('active');
                     alert(`Please enter a valid quantity for ${name}.`);
                     return;
                 }
-                const label = unit ? `${name} x ${qty} ${unit}` : `${name} x ${qty}`;
+                // Map UI name to desired label word
+                let singular;
+                switch ((name||'').toLowerCase()){
+                    case 'pax': singular = 'pax'; break;
+                    case 'table': singular = 'table'; break;
+                    case 'chairs': singular = 'chair'; break;
+                    case 'utensils': singular = 'utensil'; break;
+                    case 'waiters': singular = 'waiter'; break;
+                    default: singular = (unit||name||'item').toString().toLowerCase(); break;
+                }
+                const word = (singular === 'pax') ? 'pax' : (qty === 1 ? singular : (singular + 's'));
+                const label = `${qty} ${word}`;
                 addonLabels.push(label);
             }
             // Remove any previous addons[] then append fresh
             formData.delete('addons[]');
             addonLabels.forEach(l=>formData.append('addons[]', l));
-            fetch('booking_api.php', { method:'POST', body: formData })
-                .then(async r=>{
-                    let data = null;
-                    try { data = await r.json(); }
-                    catch(_) { throw new Error('Invalid server response'); }
-                    if (!r.ok) { throw new Error(data && data.message ? data.message : 'Request failed'); }
-                    return data;
-                })
+
+            // Populate summary
+            const getText = (sel) => sel && sel.options && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
+            document.getElementById('smryName').textContent = (formData.get('fullName')||'').toString();
+            document.getElementById('smryEmail').textContent = (formData.get('email')||'').toString();
+            document.getElementById('smryPhone').textContent = (formData.get('phone')||'').toString();
+            const alt = (formData.get('altPhone')||'').toString();
+            document.getElementById('smryAltPhone').textContent = alt;
+            document.getElementById('smryAltPhoneRow').classList.toggle('hidden', alt.trim()==='');
+            document.getElementById('smryEventType').textContent = getText(etSel);
+            document.getElementById('smryPackage').textContent = getText(pkgSel);
+            document.getElementById('smryDate').textContent = (formData.get('eventDate')||'').toString();
+            document.getElementById('smryTime').textContent = (formData.get('eventTime')||'').toString();
+            const venue = [
+                (formData.get('venueName')||'').toString(),
+                (formData.get('venueStreet')||'').toString(),
+                (formData.get('venueBarangay')||'').toString(),
+                (formData.get('venueCity')||'').toString(),
+                (formData.get('venueProvince')||'').toString(),
+            ].filter(Boolean).join(' , ');
+            document.getElementById('smryVenue').textContent = venue || '—';
+            document.getElementById('smryAddons').textContent = addonLabels.length ? addonLabels.join(', ') : 'None';
+            document.getElementById('smryNotes').textContent = (formData.get('notes')||'').toString() || 'None';
+
+            // Store and show modal
+            pendingFormData = formData;
+            openSummary();
+        });
+
+        // Modal buttons
+        document.getElementById('smryEdit').addEventListener('click', ()=>{
+            closeSummary();
+        });
+        document.getElementById('smryConfirm').addEventListener('click', ()=>{
+            if (!pendingFormData) { closeSummary(); return; }
+            closeSummary();
+            submitToServer(pendingFormData)
                 .then(j=>{
-                    document.getElementById('loadingOverlay').classList.remove('active');
                     if (!j.success) { alert(j.message||'Failed to submit booking'); return; }
                     alert('🎉 Thank you! Your booking has been submitted. We\'ll contact you for confirmation.');
-                    this.reset();
-                    // Reset dependent selects
+                    const form = document.getElementById('bookingForm');
+                    form.reset();
                     pkgSel.innerHTML = '<option value="">Select an event type first</option>';
-                    // Hide all addon fields after reset
                     addonBoxes.forEach(cb=>toggleAddonFields(cb));
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 })
                 .catch((err)=>{
-                    document.getElementById('loadingOverlay').classList.remove('active');
                     alert((err && err.message) ? err.message : 'Network error. Please try again.');
-                });
+                })
+                .finally(()=>{ pendingFormData = null; });
         });
 
     // Require event date at least 14 days from now

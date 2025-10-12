@@ -870,45 +870,7 @@
         </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="bg-primary py-12">
-        <div class="container mx-auto px-4">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-                <div>
-                    <h3 class="text-2xl font-bold gold-text mb-4">Sandok ni Binggay</h3>
-                    <p class="opacity-90">Nothing Beats Home-Cooked Meals</p>
-                </div>
-                <div>
-                    <h4 class="font-semibold mb-4 gold-text">Quick Links</h4>
-                    <ul class="space-y-2">
-                        <li><a href="home.php" class="hover-gold">Home</a></li>
-                        <li><a href="menu.php" class="hover-gold">Menu</a></li>
-                        <li><a href="cateringpackages.php" class="hover-gold">Packages</a></li>
-                        <li><a href="booking.php" class="hover-gold">Book Event</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h4 class="font-semibold mb-4 gold-text">Contact</h4>
-                    <ul class="space-y-2">
-                        <li><i class="fas fa-phone gold-text mr-2"></i>+63 912 345 6789</li>
-                        <li><i class="fas fa-envelope gold-text mr-2"></i>info@sandoknibinggay.com</li>
-                        <li><i class="fas fa-map-marker-alt gold-text mr-2"></i>Metro Manila, Philippines</li>
-                    </ul>
-                </div>
-                <div>
-                    <h4 class="font-semibold mb-4 gold-text">Follow Us</h4>
-                    <div class="flex space-x-4">
-                        <a href="#" class="text-2xl hover-gold"><i class="fab fa-facebook"></i></a>
-                        <a href="#" class="text-2xl hover-gold"><i class="fab fa-instagram"></i></a>
-                        <a href="#" class="text-2xl hover-gold"><i class="fab fa-twitter"></i></a>
-                    </div>
-                </div>
-            </div>
-            <div class="border-t border-white/20 pt-6 text-center">
-                <p class="opacity-80">&copy; 2025 Sandok ni Binggay. All rights reserved.</p>
-            </div>
-        </div>
-    </footer>
+    <?php include __DIR__ . '/partials/footer.php'; ?>
 
     <script>
         // Shared navbar partial manages contrast and interactions

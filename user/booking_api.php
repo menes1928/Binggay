@@ -3,6 +3,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/../classes/Mailer.php';
 $db = new database();
 $pdo = $db->opencon();
 
@@ -31,9 +32,22 @@ try {
     $eventTime = strOrNull($_POST['eventTime'] ?? ''); // HH:mm
     $notes = strOrNull($_POST['notes'] ?? '');
     $agree = isset($_POST['agree']) && ($_POST['agree'] === '1' || $_POST['agree'] === 'true' || $_POST['agree'] === 'on');
-    // Add-ons list as CSV for eb_addon_pax per spec (Pax, Table, Chairs, Utensils, Waiters)
+    // Add-ons as labeled items, expect addons[] strings like "5 pax", "3 tables"; if not provided, build from individual counts
     $addons = isset($_POST['addons']) ? (array)$_POST['addons'] : [];
     $addons = array_values(array_filter(array_map('trim', $addons), fn($s)=>$s!==''));
+    if (empty($addons)) {
+        // Build from potential numeric fields
+        $pax = isset($_POST['addon_pax']) ? (int)$_POST['addon_pax'] : 0;
+        $tables = isset($_POST['tables']) ? (int)$_POST['tables'] : 0;
+        $chairs = isset($_POST['chairs']) ? (int)$_POST['chairs'] : 0;
+        $utensils = isset($_POST['utensils']) ? (int)$_POST['utensils'] : 0;
+        $waiters = isset($_POST['waiters']) ? (int)$_POST['waiters'] : 0;
+        if ($pax > 0) { $addons[] = $pax . ' pax'; }
+        if ($tables > 0) { $addons[] = $tables . ' ' . ($tables === 1 ? 'table' : 'tables'); }
+        if ($chairs > 0) { $addons[] = $chairs . ' ' . ($chairs === 1 ? 'chair' : 'chairs'); }
+        if ($utensils > 0) { $addons[] = $utensils . ' ' . ($utensils === 1 ? 'utensil' : 'utensils'); }
+        if ($waiters > 0) { $addons[] = $waiters . ' ' . ($waiters === 1 ? 'waiter' : 'waiters'); }
+    }
 
     if (!$fullName || !$email || !$phone1 || !$eventDate || !$eventTime || !$agree || $eventTypeId<=0 || $packageId<=0) {
         echo json_encode(['success'=>false,'message'=>'Please complete all required fields.']); exit;
@@ -67,16 +81,17 @@ try {
     $pkg = $p->fetch(PDO::FETCH_ASSOC) ?: [];
     $pkgLabel = ($pkg['name'] ?? 'Package') . (isset($pkg['pax']) && $pkg['pax']!=='' ? (' - ' . $pkg['pax']) : '');
 
-    // eb_addon_pax CSV
+    // eb_addon_pax CSV in the format "5 pax, 3 tables"
     $ebAddon = $addons ? implode(', ', $addons) : null;
 
     // Persist
-    $stmt = $pdo->prepare('INSERT INTO eventbookings (user_id, event_type_id, package_id, eb_name, eb_contact, eb_venue, eb_date, eb_order, eb_status, eb_addon_pax, eb_notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    $stmt = $pdo->prepare('INSERT INTO eventbookings (user_id, event_type_id, package_id, eb_name, eb_email, eb_contact, eb_venue, eb_date, eb_order, eb_status, eb_addon_pax, eb_notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $ok = $stmt->execute([
         (int)$userId,
         (int)$eventTypeId,
         (int)$packageId,
         $fullName,
+        $email,
         $ebContact,
         $ebVenue,
         $ebDate,
@@ -87,6 +102,28 @@ try {
     ]);
 
     if ($ok) {
+        // Send booking summary (Pending) to user's email
+        try {
+            $userEmail = (string)($_SESSION['user_email'] ?? $email);
+            $userFn = trim((string)($_SESSION['user_fn'] ?? ''));
+            $userLn = trim((string)($_SESSION['user_ln'] ?? ''));
+            $toName = trim($userFn . ' ' . $userLn);
+            $mailer = new Mailer();
+            $data = [
+                'fullName'   => $fullName ?: $toName,
+                'event_type' => $eventTypeId,
+                'package'    => $pkgLabel,
+                'event_date' => $ebDate,
+                'venue'      => $ebVenue,
+                'contact'    => $ebContact,
+                'addons'     => $ebAddon,
+                'notes'      => $notes,
+            ];
+            // Map event_type id to name
+            try { $t=$pdo->prepare('SELECT name FROM event_types WHERE event_type_id=?'); $t->execute([$eventTypeId]); $data['event_type']=(string)($t->fetchColumn()?:'Event Booking'); } catch (Throwable $e) {}
+            [$subject, $html] = $mailer->renderBookingEmail($data, 'Pending');
+            if ($userEmail) { $mailer->send($userEmail, $toName ?: $fullName, $subject, $html); }
+        } catch (Throwable $e) { /* ignore email errors */ }
         echo json_encode(['success'=>true, 'message'=>'Booking submitted successfully']);
     } else {
         echo json_encode(['success'=>false, 'message'=>'Failed to save booking']);

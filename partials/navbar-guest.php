@@ -96,10 +96,10 @@ function current_user_display_name() {
                 <?php $current = strtolower(basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))); ?>
                 <?php
                     $links = [
-                        ['href' => 'home.php', 'label' => 'Home', 'key' => 'home.php'],
-                        ['href' => 'menu.php', 'label' => 'Menu', 'key' => 'menu.php'],
-                        ['href' => 'cateringpackages.php', 'label' => 'Packages', 'key' => 'cateringpackages.php'],
-                        ['href' => 'booking.php', 'label' => 'Bookings', 'key' => 'booking.php'],
+                        ['href' => 'home.php', 'label' => 'Home', 'key' => 'home'],
+                        ['href' => 'menu.php', 'label' => 'Menu', 'key' => 'menu'],
+                        ['href' => 'cateringpackages.php', 'label' => 'Packages', 'key' => 'cateringpackages'],
+                        ['href' => 'booking.php', 'label' => 'Bookings', 'key' => 'booking'],
                     ];
                 ?>
                 <?php foreach ($links as $ln): $isActive = ($current === strtolower($ln['key'])); ?>

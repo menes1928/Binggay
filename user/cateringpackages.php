@@ -712,6 +712,12 @@ try {
                             <input id="cp_date" type="date" required
                                    class="w-full px-4 py-3 rounded-lg bg-white/10 border border-gold/30 focus:border-gold outline-none transition-all">
                         </div>
+                        <div>
+                            <label class="block mb-2 font-semibold">Email *</label>
+                            <input id="cp_email" type="email" required
+                                   class="w-full px-4 py-3 rounded-lg bg-white/10 border border-gold/30 focus:border-gold outline-none transition-all"
+                                   placeholder="you@email.com">
+                        </div>
                     </div>
                     <h4 class="font-semibold mb-3 text-lg gold-text">Address</h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -870,7 +876,7 @@ try {
         // Booking flow state
         const bookingState = {
             pkg: { id: null, name: '', pax: 0, basePrice: 0 },
-            details: { fullName: '', phone: '', date: '', street: '', barangay: '', municipality: '', province: '' },
+            details: { fullName: '', phone: '', email: '', date: '', street: '', barangay: '', municipality: '', province: '' },
             addons: { addonPax: 0, chairs: 0, tables: 0, notes: '' },
             termsAccepted: false,
             amounts: { total: 0, deposit: 0 }
@@ -917,7 +923,7 @@ try {
             document.getElementById(`step${step}`).classList.remove('hidden');
             if(reset){
                 // clear inputs
-                ['cp_fullName','cp_phone','cp_date','cp_street','cp_barangay','cp_municipality','cp_province','cp_addon_pax','cp_chairs','cp_tables','cp_notes','cp_number','cp_amount_input'].forEach(id=>{
+                ['cp_fullName','cp_phone','cp_email','cp_date','cp_street','cp_barangay','cp_municipality','cp_province','cp_addon_pax','cp_chairs','cp_tables','cp_notes','cp_number','cp_amount_input'].forEach(id=>{
                     const el = document.getElementById(id); if(!el) return; if(el.type==='number') el.value = 0; else el.value = '';
                 });
                 document.getElementById('cp_pay_type').value = 'Card';
@@ -928,6 +934,7 @@ try {
                 // collect and compute
                 bookingState.details.fullName = document.getElementById('cp_fullName').value.trim();
                 bookingState.details.phone = document.getElementById('cp_phone').value.trim();
+                bookingState.details.email = document.getElementById('cp_email').value.trim();
                 bookingState.details.date = document.getElementById('cp_date').value;
                 // enforce min date (today + 14 days)
                 const minStr = document.getElementById('cp_date').min || '';
@@ -944,8 +951,13 @@ try {
                 bookingState.addons.tables = parseInt(document.getElementById('cp_tables').value||'0');
                 bookingState.addons.notes = document.getElementById('cp_notes').value.trim();
                 // validations minimal for required fields
-                if(!bookingState.details.fullName || !bookingState.details.phone || !bookingState.details.date || !bookingState.details.street || !bookingState.details.barangay || !bookingState.details.municipality || !bookingState.details.province){
+                if(!bookingState.details.fullName || !bookingState.details.phone || !bookingState.details.email || !bookingState.details.date || !bookingState.details.street || !bookingState.details.barangay || !bookingState.details.municipality || !bookingState.details.province){
                     alert('Please complete your details and address.');
+                    return gotoStep(1);
+                }
+                // basic email format check
+                if(bookingState.details.email.indexOf('@')===-1 || bookingState.details.email.indexOf('.')===-1){
+                    alert('Please enter a valid email address.');
                     return gotoStep(1);
                 }
                 const total = (bookingState.pkg.basePrice) + (bookingState.addons.addonPax*200);
@@ -1012,6 +1024,7 @@ try {
                 notes: bookingState.addons.notes,
                 full_name: bookingState.details.fullName,
                 phone: bookingState.details.phone,
+                email: bookingState.details.email,
                 street: bookingState.details.street,
                 barangay: bookingState.details.barangay,
                 municipality: bookingState.details.municipality,
