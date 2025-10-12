@@ -1,4 +1,8 @@
 <?php
+// Start session early so the navbar can read login state (avatar + username)
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 require_once __DIR__ . '/../classes/database.php';
 $db = new database();
 
@@ -409,9 +413,96 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                     <span class="font-medium">Total:</span>
                     <span id="cartTotal" class="text-2xl font-bold text-primary">₱0</span>
                 </div>
-                <button class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
+                <button id="checkoutBtn" class="w-full bg-primary hover:bg-green-800 text-white py-3 rounded-lg transition-colors font-medium">
                     Proceed to Checkout
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+    <div id="checkoutModal" class="modal">
+        <div class="modal-content bg-white rounded-lg max-w-2xl w-full mx-4">
+            <form id="checkoutForm">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-xl font-semibold text-primary">Checkout</h3>
+                    <button type="button" class="text-gray-500 hover:text-gray-900" onclick="toggleCheckout(false)"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-6 grid grid-cols-1 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Full Name</label>
+                            <input type="text" id="co_name" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Juan Dela Cruz" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Email</label>
+                            <input type="email" id="co_email" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="you@example.com" required>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Phone</label>
+                            <input type="tel" id="co_phone" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="09XXXXXXXXX" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Date Needed</label>
+                            <input type="date" id="co_needed" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" required>
+                            <p class="text-xs text-gray-500 mt-1">Must be at least 1 day in advance.</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Street</label>
+                            <input type="text" id="co_street" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="123 Mabini St." required>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">City</label>
+                            <input type="text" id="co_city" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Quezon City" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Province</label>
+                            <input type="text" id="co_province" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Metro Manila" required>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Payment Method</label>
+                            <select id="co_method" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" required>
+                                <option value="Gcash">Gcash</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Card">Card</option>
+                                <option value="Paypal">Paypal</option>
+                                <option value="Paymaya">Paymaya</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Notes</label>
+                            <input type="text" id="co_notes" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Optional">
+                        </div>
+                    </div>
+                </div>
+                <div class="p-6 border-t border-gray-200 flex items-center justify-between">
+                    <div class="text-sm text-gray-600">Total: <span id="co_total" class="font-semibold text-primary">₱0</span></div>
+                    <div class="flex items-center gap-3">
+                        <button type="button" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50" onclick="toggleCheckout(false)">Cancel</button>
+                        <button type="submit" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-green-800">Place Order</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Order Summary (Double Confirmation) Modal -->
+    <div id="summaryModal" class="modal">
+        <div class="modal-content bg-white rounded-lg max-w-3xl w-full mx-4">
+            <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                <h3 class="text-xl font-semibold text-primary">Order Summary</h3>
+                <button type="button" class="text-gray-500 hover:text-gray-900" onclick="toggleSummary(false)"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="summaryBody" class="p-6 space-y-5"></div>
+            <div class="p-6 border-t border-gray-200 flex items-center justify-between">
+                <button type="button" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50" onclick="backToCheckout()">Back</button>
+                <button id="summaryConfirmBtn" type="button" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-green-800" onclick="confirmOrder()">Confirm & Place Order</button>
             </div>
         </div>
     </div>
@@ -426,16 +517,64 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
         let selectedCategory = '<?php echo addslashes($selectedCategoryName); ?>';
         let currentPage = 1;
         const pageSize = 20;
+    // pending payload holder for double confirmation
+    let pendingOrderPayload = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
+            // Load persisted cart from localStorage
+            try {
+                const raw = localStorage.getItem('binggay_cart_v1');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        // Basic validation and normalization
+                        cart = parsed.filter(it => it && typeof it.id === 'number' && typeof it.quantity === 'number' && it.quantity > 0)
+                                     .map(it => ({
+                                         id: it.id,
+                                         quantity: Math.max(1, Math.floor(it.quantity)),
+                                         price: typeof it.price === 'number' ? it.price : 0,
+                                         name: typeof it.name === 'string' ? it.name : '',
+                                         image: typeof it.image === 'string' ? it.image : '',
+                                         servings: typeof it.servings === 'string' ? it.servings : '',
+                                         prepTime: typeof it.prepTime === 'string' ? it.prepTime : '',
+                                         available: !!it.available
+                                     }));
+                    }
+                }
+            } catch (e) { /* ignore parse errors */ }
+
             renderMenu();
             setupSearch();
             setupCategoryChips();
-            // If navigated with #cart, open the cart sidebar
-            if (window.location.hash === '#cart' && typeof toggleCart === 'function') {
-                toggleCart();
-            }
+            updateCart(); // reflect loaded cart
+            // Open cart if URL hash explicitly requests it (menu.php#cart)
+            try {
+                if (window.location && window.location.hash === '#cart' && typeof toggleCart === 'function') {
+                    toggleCart();
+                }
+            } catch (_) {}
+            // Or open only if explicitly requested via one-time flag
+            try {
+                const openOnce = sessionStorage.getItem('open_cart_once');
+                if (openOnce === '1' && typeof toggleCart === 'function') {
+                    toggleCart();
+                    sessionStorage.removeItem('open_cart_once');
+                }
+            } catch (_) {}
+
+            // Cross-tab sync
+            window.addEventListener('storage', (ev) => {
+                if (ev.key === 'binggay_cart_v1') {
+                    try {
+                        const parsed = ev.newValue ? JSON.parse(ev.newValue) : [];
+                        if (Array.isArray(parsed)) {
+                            cart = parsed;
+                            updateCart();
+                        }
+                    } catch (_) {}
+                }
+            });
         });
 
         // Filter by category
@@ -694,6 +833,118 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
             document.body.style.overflow = document.getElementById('cartSidebar').classList.contains('active') ? 'hidden' : 'auto';
         }
 
+        // Toggle checkout modal
+        function toggleCheckout(open = true) {
+            const modal = document.getElementById('checkoutModal');
+            if (!modal) return;
+            modal.classList.toggle('active', open);
+            document.body.style.overflow = open ? 'hidden' : 'auto';
+            if (open) {
+                // Update total shown in modal
+                const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                document.getElementById('co_total').textContent = '₱' + cartTotal.toLocaleString();
+            }
+        }
+
+        // Toggle summary modal
+        function toggleSummary(open = true) {
+            const modal = document.getElementById('summaryModal');
+            if (!modal) return;
+            modal.classList.toggle('active', open);
+            document.body.style.overflow = open ? 'hidden' : 'auto';
+        }
+
+        // Helper formatter
+        function peso(n){
+            return '₱' + Number(n || 0).toLocaleString();
+        }
+
+        // Build order payload from current form fields and cart
+        function buildOrderPayloadFromForm() {
+            const payload = {
+                items: cart.map(i => ({ id: i.id, quantity: i.quantity, price: i.price, name: i.name })),
+                order_needed: document.getElementById('co_needed').value,
+                address: {
+                    street: document.getElementById('co_street').value,
+                    city: document.getElementById('co_city').value,
+                    province: document.getElementById('co_province').value,
+                },
+                pay_method: document.getElementById('co_method').value,
+                customer: {
+                    name: document.getElementById('co_name').value,
+                    email: document.getElementById('co_email').value,
+                    phone: document.getElementById('co_phone').value,
+                    notes: document.getElementById('co_notes').value,
+                }
+            };
+            return payload;
+        }
+
+        // Render the summary modal body
+        function renderSummary(payload){
+            const sumBody = document.getElementById('summaryBody');
+            if (!sumBody) return;
+            const total = (payload.items || []).reduce((acc, it)=> acc + (Number(it.price)||0) * (Number(it.quantity)||0), 0);
+            const addr = `${payload.address.street}, ${payload.address.city}, ${payload.address.province}`;
+            const itemsHtml = (payload.items || []).map(it => `
+                <tr>
+                    <td class="py-2">${it.name}</td>
+                    <td class="py-2 text-center">${it.quantity}</td>
+                    <td class="py-2 text-right">${peso(it.price)}</td>
+                    <td class="py-2 text-right font-medium">${peso((Number(it.price)||0) * (Number(it.quantity)||0))}</td>
+                </tr>
+            `).join('');
+            sumBody.innerHTML = `
+                <div>
+                    <h4 class="text-lg font-semibold text-primary mb-3">Items</h4>
+                    <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50 text-gray-600">
+                                <tr>
+                                    <th class="text-left px-4 py-2">Item</th>
+                                    <th class="text-center px-4 py-2">Qty</th>
+                                    <th class="text-right px-4 py-2">Price</th>
+                                    <th class="text-right px-4 py-2">Line Total</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">${itemsHtml || '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">No items</td></tr>'}</tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="3" class="px-4 py-3 text-right font-medium">Total</td>
+                                    <td class="px-4 py-3 text-right text-primary font-bold">${peso(total)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="text-lg font-semibold text-primary mb-3">Customer</h4>
+                        <div class="text-sm text-gray-700 space-y-1">
+                            <div><span class="text-gray-500">Name:</span> ${payload.customer.name}</div>
+                            <div><span class="text-gray-500">Email:</span> ${payload.customer.email}</div>
+                            <div><span class="text-gray-500">Phone:</span> ${payload.customer.phone}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-lg font-semibold text-primary mb-3">Order Details</h4>
+                        <div class="text-sm text-gray-700 space-y-1">
+                            <div><span class="text-gray-500">Date Needed:</span> ${payload.order_needed}</div>
+                            <div><span class="text-gray-500">Payment Method:</span> ${payload.pay_method}</div>
+                            <div><span class="text-gray-500">Address:</span> ${addr}</div>
+                            ${payload.customer.notes ? `<div><span class=\"text-gray-500\">Notes:</span> ${payload.customer.notes}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Go back from summary to checkout for edits
+        function backToCheckout(){
+            toggleSummary(false);
+            toggleCheckout(true);
+        }
+
         // Add to cart
         function addToCart(itemId) {
             const item = menuItems.find(i => i.id === itemId);
@@ -775,12 +1026,108 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
 
                 document.getElementById('cartTotal').textContent = '₱' + cartTotal.toLocaleString();
             }
+
+            // Persist to localStorage
+            try {
+                localStorage.setItem('binggay_cart_v1', JSON.stringify(cart));
+            } catch (_) {}
         }
 
         // Close modal when clicking outside
         document.getElementById('itemModal').addEventListener('click', function(e) {
             if(e.target === this) closeModal();
         });
+
+        // Helper to set min date (tomorrow) and validate date-needed
+        function setupDateNeeded() {
+            const input = document.getElementById('co_needed');
+            if (!input) return;
+            const tzOffsetMs = 8 * 60 * 60 * 1000; // approximate Asia/Manila offset for today (no DST)
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const tomorrow = new Date(today.getTime() + 24*60*60*1000);
+            const yyyy = tomorrow.getFullYear();
+            const mm = String(tomorrow.getMonth()+1).padStart(2,'0');
+            const dd = String(tomorrow.getDate()).padStart(2,'0');
+            input.min = `${yyyy}-${mm}-${dd}`;
+            input.addEventListener('change', () => {
+                const v = input.value;
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+                const chosen = new Date(v + 'T00:00:00');
+                if (chosen.getTime() < tomorrow.getTime()) {
+                    alert('Orders must be placed at least 1 day in advance.');
+                    input.value = input.min;
+                }
+            });
+        }
+
+        // Open checkout on button click
+        const checkoutBtn = document.getElementById('checkoutBtn');
+        if (checkoutBtn) {
+            checkoutBtn.addEventListener('click', function(){
+                if (cart.length === 0) return;
+                toggleCheckout(true);
+                setupDateNeeded();
+            });
+        }
+
+        // Submit checkout (now opens summary for double confirmation)
+        const checkoutForm = document.getElementById('checkoutForm');
+        if (checkoutForm) {
+            checkoutForm.addEventListener('submit', async function(e){
+                e.preventDefault();
+                // Client-side guard: ensure needed date >= tomorrow
+                const neededVal = document.getElementById('co_needed').value;
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(neededVal)) {
+                    alert('Please select a valid date.');
+                    return;
+                }
+                const t0 = new Date();
+                const tToday = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate());
+                const tTomorrow = new Date(tToday.getTime() + 24*60*60*1000);
+                const tChosen = new Date(neededVal + 'T00:00:00');
+                if (tChosen.getTime() < tTomorrow.getTime()) {
+                    alert('Orders must be placed at least 1 day in advance.');
+                    return;
+                }
+                // Build payload and open summary modal for confirmation
+                pendingOrderPayload = buildOrderPayloadFromForm();
+                renderSummary(pendingOrderPayload);
+                toggleCheckout(false);
+                toggleSummary(true);
+            });
+        }
+
+        // Confirm and place order after summary
+        async function confirmOrder(){
+            if (!pendingOrderPayload) return;
+            const btn = document.getElementById('summaryConfirmBtn');
+            const orig = btn ? btn.textContent : '';
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = 'Placing order...'; }
+                const resp = await fetch('api_checkout.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(pendingOrderPayload)
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.ok) throw new Error(data.error || 'Checkout failed');
+                // success: clear cart, close modals, show alert
+                cart = [];
+                updateCart();
+                try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
+                toggleSummary(false);
+                toggleCheckout(false);
+                try { if (document.getElementById('cartSidebar')?.classList.contains('active')) toggleCart(); } catch(_) {}
+                alert('Order placed successfully! Order #' + data.order_id);
+                pendingOrderPayload = null;
+            } catch (err) {
+                console.error(err);
+                alert('Error: ' + (err?.message || 'Unknown error'));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = orig || 'Confirm & Place Order'; }
+            }
+        }
     </script>
 </body>
 </html>

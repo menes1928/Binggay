@@ -1,4 +1,8 @@
 <?php
+// Start session early so the shared navbar can read login state (avatar + username)
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 require_once __DIR__ . '/../classes/database.php';
 $db = new database();
 $pdo = $db->opencon();

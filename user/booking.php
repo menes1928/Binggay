@@ -1,3 +1,9 @@
+<?php
+// Start session early so the shared navbar can read login state (avatar + username)
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -523,53 +529,10 @@
         <div class="loader"></div>
     </div>
 
-    <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="container mx-auto px-4">
-            <div class="flex items-center justify-between py-4">
-                <!-- Logo -->
-                <div class="flex items-center space-x-3">
-                    <i class="fas fa-utensils text-3xl gold-text"></i>
-                    <div>
-                        <h1 class="text-2xl font-bold text-white">Sandok ni Binggay</h1>
-                        <p class="text-xs gold-text italic">Nothing Beats Home-Cooked Meals</p>
-                    </div>
-                </div>
-                
-                <!-- Desktop Navigation -->
-                <div class="hidden md:flex items-center space-x-6">
-                    <a href="index.php" class="nav-link text-white hover-gold">Home</a>
-                    <a href="menu.php" class="nav-link text-white hover-gold">Menu</a>
-                    <a href="packages.php" class="nav-link text-white hover-gold">Packages</a>
-                    <a href="bookings.php" class="nav-link active gold-text">Book Event</a>
-                    <a href="about.php" class="nav-link text-white hover-gold">About</a>
-                    <a href="contact.php" class="nav-link text-white hover-gold">Contact</a>
-                    <a href="login.php" class="btn-submit" style="padding: 10px 25px; font-size: 14px;">
-                        <span><i class="fas fa-user mr-2"></i>Login</span>
-                    </a>
-                </div>
-                
-                <!-- Mobile Menu Toggle -->
-                <button class="md:hidden text-white text-2xl" onclick="toggleMobileMenu()">
-                    <i class="fas fa-bars"></i>
-                </button>
-            </div>
-            
-            <!-- Mobile Navigation -->
-            <div id="mobileMenu" class="hidden md:hidden pb-4">
-                <a href="index.php" class="block py-2 text-white hover-gold">Home</a>
-                <a href="menu.php" class="block py-2 text-white hover-gold">Menu</a>
-                <a href="packages.php" class="block py-2 text-white hover-gold">Packages</a>
-                <a href="bookings.php" class="block py-2 gold-text">Book Event</a>
-                <a href="about.php" class="block py-2 text-white hover-gold">About</a>
-                <a href="contact.php" class="block py-2 text-white hover-gold">Contact</a>
-                <a href="login.php" class="block py-2 gold-text">Login</a>
-            </div>
-        </div>
-    </nav>
+    <?php include __DIR__ . '/partials/navbar.php'; ?>
 
     <!-- Hero Section -->
-    <section class="hero-section">
+    <section class="hero-section" data-nav-contrast="dark">
         <div class="container mx-auto px-4 text-center hero-content">
             <h1 class="text-5xl md:text-7xl font-bold mb-6">Book Your Event</h1>
             <p class="text-xl md:text-2xl gold-text mb-8">Let us make your celebration unforgettable</p>
@@ -579,6 +542,9 @@
             </p>
         </div>
     </section>
+
+    <!-- Small green spacer to keep nav in dark scheme below hero edge -->
+    <div class="bg-gradient-to-r from-primary to-green-800 h-4 w-full" data-nav-contrast="dark"></div>
 
     <!-- Stats Section -->
     <section class="container mx-auto px-4">
@@ -954,22 +920,7 @@
     </footer>
 
     <script>
-        // Mobile Menu Toggle
-        function toggleMobileMenu() {
-            const menu = document.getElementById('mobileMenu');
-            menu.classList.toggle('hidden');
-        }
-
-        // Navbar Scroll Effect
-        window.addEventListener('scroll', function() {
-            const navbar = document.querySelector('.navbar');
-            if (window.scrollY > 50) {
-                navbar.classList.add('scrolled');
-            } else {
-                navbar.classList.remove('scrolled');
-            }
-        });
-
+        // Navbar is controlled by shared partial (contrast via data-nav-contrast)
         // Scroll Animation
         const scrollElements = document.querySelectorAll('.scroll-animate');
         
