@@ -31,6 +31,17 @@ try {
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $order_needed)) {
         throw new Exception('Invalid order_needed date format (expected YYYY-MM-DD)');
     }
+    // Enforce: no same-day orders. Must be at least tomorrow.
+    $tz = new DateTimeZone('Asia/Manila');
+    $minDate = new DateTime('tomorrow', $tz);
+    $needed = DateTime::createFromFormat('Y-m-d', $order_needed, $tz);
+    if (!$needed) {
+        throw new Exception('Invalid order_needed date');
+    }
+    $needed->setTime(0, 0, 0);
+    if ($needed < $minDate) {
+        throw new Exception('Orders must be placed at least 1 day before the needed date.');
+    }
     if (!is_array($items) || count($items) === 0) {
         throw new Exception('Cart is empty');
     }

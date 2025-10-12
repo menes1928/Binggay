@@ -533,7 +533,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     <?php include __DIR__ . '/../partials/navbar-user.php'; ?>
 
     <!-- Hero Section -->
-    <section class="hero-section">
+    <section class="hero-section" data-nav-contrast="dark">
         <div class="container mx-auto px-4 text-center hero-content">
             <h1 class="text-5xl md:text-7xl font-bold mb-6">Book Your Event</h1>
             <p class="text-xl md:text-2xl gold-text mb-8">Let us make your celebration unforgettable</p>
@@ -543,6 +543,9 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
             </p>
         </div>
     </section>
+
+    <!-- Small green spacer to keep nav in dark scheme below hero edge -->
+    <div class="bg-gradient-to-r from-primary to-green-800 h-4 w-full" data-nav-contrast="dark"></div>
 
     <!-- Stats Section -->
     <section class="container mx-auto px-4">
@@ -940,7 +943,21 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     </footer>
 
     <script>
-        // Shared navbar partial manages contrast and interactions
+        // Mobile Menu Toggle
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobileMenu');
+            menu.classList.toggle('hidden');
+        }
+
+        // Navbar Scroll Effect
+        window.addEventListener('scroll', function() {
+            const navbar = document.querySelector('.navbar');
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
 
         // Scroll Animation
         const scrollElements = document.querySelectorAll('.scroll-animate');

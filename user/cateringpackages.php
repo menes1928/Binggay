@@ -836,7 +836,7 @@ try {
         </div>
     </div>
 
-    <?php include __DIR__ . '/partials/footer.php'; ?>
+    <?php include __DIR__ . '/../partials/footer.php'; ?>
 
     <script>
         // Removed page-specific navbar JS; shared partial controls nav behavior
