@@ -1675,18 +1675,49 @@ if ($sectionEarly === 'eventtypes') {
                     <div class="flex items-center gap-4">
                         <!-- Notifications -->
                         <div class="relative">
-                            <button class="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                            <button class="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Notifications">
                                 <i class="fas fa-bell text-gray-600"></i>
                                 <span class="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
                             </button>
                         </div>
 
-                        <!-- User Menu -->
-                        <div class="flex items-center gap-2">
-                            <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-medium">
-                                A
+                        <!-- Admin User Dropdown -->
+                        <?php
+                            $adminName = trim((string)($_SESSION['user_name'] ?? ($_SESSION['user_fn'] ?? '')) . ' ' . (string)($_SESSION['user_ln'] ?? ''));
+                            $adminName = trim($adminName !== '' ? $adminName : (string)($_SESSION['user_username'] ?? 'Admin'));
+                            $adminEmail = trim((string)($_SESSION['user_email'] ?? ''));
+                            $adminPhoto = isset($_SESSION['user_photo']) ? (string)$_SESSION['user_photo'] : '';
+                            $adminInitial = strtoupper(mb_substr($adminName !== '' ? $adminName : 'A', 0, 1, 'UTF-8'));
+                        ?>
+                        <div id="admin-user-menu" class="relative">
+                            <button id="admin-user-button" class="flex items-center gap-2 hover:bg-gray-100 px-2 py-1.5 rounded-lg transition" aria-haspopup="true" aria-expanded="false">
+                                <?php if ($adminPhoto): ?>
+                                    <img src="<?= htmlspecialchars($adminPhoto) ?>" alt="Profile" class="w-8 h-8 rounded-full object-cover border" onerror="this.style.display='none'">
+                                <?php else: ?>
+                                    <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-medium">
+                                        <?= htmlspecialchars($adminInitial) ?>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="hidden sm:block text-left">
+                                    <div class="text-sm font-medium leading-4"><?= htmlspecialchars($adminName) ?></div>
+                                   
+                                </div>
+                                <i class="fas fa-chevron-down text-gray-500 text-xs"></i>
+                            </button>
+                            <div id="admin-user-dropdown" class="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-50">
+                                <div class="px-3 py-2 border-b">
+                                    <div class="text-sm font-medium truncate"><?= htmlspecialchars($adminName) ?></div>
+                                    
+                                </div>
+                                <a href="../user/profile.php" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm">
+                                    <i class="fas fa-user text-gray-600 w-4"></i>
+                                    <span>Profile</span>
+                                </a>
+                                <a href="../user/logout.php" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm text-rose-700">
+                                    <i class="fas fa-sign-out-alt w-4"></i>
+                                    <span>Logout</span>
+                                </a>
                             </div>
-                            <span class="text-sm font-medium">Admin</span>
                         </div>
                     </div>
                 </div>
@@ -3108,22 +3139,72 @@ if ($sectionEarly === 'eventtypes') {
         const sidebarIcon = document.getElementById('sidebar-icon');
         const sidebarTexts = document.querySelectorAll('.sidebar-text');
 
-        // Initialize from persisted preference
-        try { localStorage.setItem('sidebarCollapsed', 'false'); } catch (_) {}
-        sidebar.classList.add('sidebar-expanded');
-        sidebar.classList.remove('sidebar-collapsed');
+        // Initialize from persisted preference (default: expanded)
+        try {
+            const sv = localStorage.getItem('sidebarCollapsed');
+            sidebarCollapsed = (sv === 'true');
+        } catch (_) { sidebarCollapsed = false; }
+        if (sidebarCollapsed) {
+            sidebar.classList.add('sidebar-collapsed');
+            sidebar.classList.remove('sidebar-expanded');
+            sidebarTexts.forEach(text => text.style.display = 'none');
+        } else {
+            sidebar.classList.add('sidebar-expanded');
+            sidebar.classList.remove('sidebar-collapsed');
+            sidebarTexts.forEach(text => text.style.display = 'block');
+        }
         if (sidebarIcon) sidebarIcon.className = 'fas fa-bars text-sm';
-        sidebarTexts.forEach(text => text.style.display = 'block');
-
         if (sidebarToggle) { sidebarToggle.style.display='none'; }
 
         // Clicking empty space inside the sidebar toggles expand/collapse.
         // Ignore clicks on interactive elements (nav items, buttons, links, inputs).
-        // Disable click-to-toggle
-        sidebar.addEventListener('click', function(e) { /* locked */ });
+        const setSidebarState = (collapsed) => {
+            sidebarCollapsed = !!collapsed;
+            if (sidebarCollapsed) {
+                sidebar.classList.add('sidebar-collapsed');
+                sidebar.classList.remove('sidebar-expanded');
+                sidebarTexts.forEach(text => text.style.display = 'none');
+            } else {
+                sidebar.classList.add('sidebar-expanded');
+                sidebar.classList.remove('sidebar-collapsed');
+                sidebarTexts.forEach(text => text.style.display = 'block');
+            }
+            try { localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? 'true' : 'false'); } catch(_) {}
+        };
+        // Initialize from stored preference if available
+        try {
+            const sv = localStorage.getItem('sidebarCollapsed');
+            if (sv === 'true' || sv === 'false') setSidebarState(sv === 'true');
+        } catch(_) {}
+        sidebar.addEventListener('click', function(e) {
+            const link = e.target.closest('a');
+            const interactive = e.target.closest('a,button,input,select,textarea,label');
+            if (interactive) {
+                // If the user clicked a navigation link, let it navigate without toggling
+                return;
+            }
+            // Prevent toggling when clicking scrollbars
+            if (e.clientX === 0 && e.clientY === 0) return;
+            setSidebarState(!sidebarCollapsed);
+        });
 
         // Initialize charts when page loads
         document.addEventListener('DOMContentLoaded', function() {
+            // Admin user dropdown toggle
+            (function(){
+                const btn = document.getElementById('admin-user-button');
+                const dd = document.getElementById('admin-user-dropdown');
+                if (!btn || !dd) return;
+                const close = () => { dd.classList.add('hidden'); btn.setAttribute('aria-expanded','false'); };
+                const open = () => { dd.classList.remove('hidden'); btn.setAttribute('aria-expanded','true'); };
+                let openState = false;
+                btn.addEventListener('click', (e)=>{ e.stopPropagation(); openState ? close() : open(); openState = !openState; });
+                document.addEventListener('click', (e)=>{
+                    if (!dd.contains(e.target) && e.target !== btn && !btn.contains(e.target)) { close(); openState=false; }
+                });
+                document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { close(); openState=false; } });
+            })();
+
             const initialSection = '<?php echo htmlspecialchars($section); ?>';
             // Bookings: handle Confirmed/Completed actions on card buttons
             if (initialSection === 'bookings') {

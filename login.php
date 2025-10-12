@@ -61,9 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
                     // Simple role-based redirect: 1 = admin per sample data
                     if ((int)$user['user_type'] === 1) {
-                        header('Location: admin/admin_homepage.php');
+                        header('Location: admin/admin');
                     } else {
-                        header('Location: user/home.php');
+                        header('Location: user/home');
                     }
                     exit;
                 }
