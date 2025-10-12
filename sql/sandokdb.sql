@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 12, 2025 at 10:41 AM
+-- Generation Time: Oct 12, 2025 at 02:50 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -83,7 +83,7 @@ CREATE TABLE `eventbookings` (
   `event_type_id` int(11) NOT NULL,
   `package_id` int(11) NOT NULL,
   `eb_name` varchar(255) NOT NULL,
-  `eb_contact` varchar(11) NOT NULL,
+  `eb_contact` varchar(255) NOT NULL,
   `eb_venue` varchar(255) NOT NULL,
   `eb_date` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `eb_order` varchar(100) NOT NULL,
@@ -109,6 +109,13 @@ CREATE TABLE `event_types` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `event_types`
+--
+
+INSERT INTO `event_types` (`event_type_id`, `name`, `min_package_pax`, `max_package_pax`, `notes`, `created_at`, `updated_at`) VALUES
+(1, 'Wedding', '100', '200', NULL, '2025-10-12 11:36:35', '2025-10-12 11:36:35');
+
 -- --------------------------------------------------------
 
 --
@@ -120,6 +127,14 @@ CREATE TABLE `event_type_packages` (
   `package_id` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `event_type_packages`
+--
+
+INSERT INTO `event_type_packages` (`event_type_id`, `package_id`, `created_at`) VALUES
+(1, 2, '2025-10-12 11:36:35'),
+(1, 3, '2025-10-12 11:36:35');
 
 -- --------------------------------------------------------
 
@@ -682,7 +697,7 @@ ALTER TABLE `eventbookings`
 -- AUTO_INCREMENT for table `event_types`
 --
 ALTER TABLE `event_types`
-  MODIFY `event_type_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `event_type_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `menu`

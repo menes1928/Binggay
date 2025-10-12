@@ -862,6 +862,127 @@ if ($sectionEarly === 'employees') {
         header('Location: ?section=employees'); exit;
     }
 }
+
+// Event Types early actions (AJAX endpoints)
+if ($sectionEarly === 'eventtypes') {
+    $action = $_GET['action'] ?? '';
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    $etId = isset($_GET['event_type_id']) ? (int)$_GET['event_type_id'] : 0;
+    if ($etId <= 0 && isset($_POST['event_type_id'])) { $etId = (int)$_POST['event_type_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    $pdo = $db->opencon();
+
+    // List event types with package counts
+    if ($action === 'list') {
+        header('Content-Type: application/json');
+        try {
+            $stmt = $pdo->query("SELECT et.event_type_id, et.name, et.min_package_pax, et.max_package_pax, et.notes, et.created_at, et.updated_at,
+                                        COALESCE((SELECT COUNT(*) FROM event_type_packages ep WHERE ep.event_type_id=et.event_type_id),0) AS package_count
+                                 FROM event_types et
+                                 ORDER BY et.updated_at DESC, et.event_type_id DESC");
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            echo json_encode(['success'=>true,'data'=>$rows]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'List failed']); }
+        exit;
+    }
+
+    // List packages for selection
+    if ($action === 'list_packages') {
+        header('Content-Type: application/json');
+        try {
+            $rows = $pdo->query("SELECT package_id, name, pax, base_price, is_active FROM packages ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            echo json_encode(['success'=>true,'data'=>$rows]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'List failed']); }
+        exit;
+    }
+
+    // Get a single event type with its package ids
+    if ($action === 'get' && $etId > 0) {
+        header('Content-Type: application/json');
+        try {
+            $g = $pdo->prepare("SELECT * FROM event_types WHERE event_type_id=?");
+            $g->execute([$etId]);
+            $row = $g->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            $m = $pdo->prepare("SELECT package_id FROM event_type_packages WHERE event_type_id=? ORDER BY package_id");
+            $m->execute([$etId]);
+            $pkgIds = array_map('intval', array_column($m->fetchAll(PDO::FETCH_ASSOC) ?: [], 'package_id'));
+            echo json_encode(['success'=>true,'data'=>$row,'package_ids'=>$pkgIds]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Fetch failed']); }
+        exit;
+    }
+
+    // Create
+    if ($action === 'create') {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $minP = trim((string)($_POST['min_package_pax'] ?? ''));
+            $maxP = trim((string)($_POST['max_package_pax'] ?? ''));
+            $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
+            $pkgIds = isset($_POST['package_ids']) ? (array)$_POST['package_ids'] : [];
+            $pkgIds = array_values(array_unique(array_map('intval', $pkgIds)));
+            if ($name === '') { echo json_encode(['success'=>false,'message'=>'Name is required']); exit; }
+            // Validate enum range if both provided
+            $toInt = function($v){ return ctype_digit($v) ? (int)$v : null; };
+            $mi = $minP!=='' ? $toInt($minP) : null; $ma = $maxP!=='' ? $toInt($maxP) : null;
+            if ($mi !== null && $ma !== null && $mi > $ma) { echo json_encode(['success'=>false,'message'=>'Min pax cannot exceed max pax']); exit; }
+            $pdo->beginTransaction();
+            $ins = $pdo->prepare("INSERT INTO event_types (name, min_package_pax, max_package_pax, notes) VALUES (?, ?, ?, ?)");
+            $ins->execute([$name, $minP!=='' ? $minP : null, $maxP!=='' ? $maxP : null, $notes !== '' ? $notes : null]);
+            $newId = (int)$pdo->lastInsertId();
+            if ($pkgIds) {
+                $ip = $pdo->prepare("INSERT INTO event_type_packages (event_type_id, package_id) VALUES (?, ?)");
+                foreach ($pkgIds as $pid) { if ($pid > 0) { try { $ip->execute([$newId, $pid]); } catch (Throwable $e) {} } }
+            }
+            $pdo->commit();
+            echo json_encode(['success'=>true,'event_type_id'=>$newId]);
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} echo json_encode(['success'=>false,'message'=>'Create failed']); }
+        exit;
+    }
+
+    // Update
+    if ($action === 'update' && $etId > 0) {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $minP = trim((string)($_POST['min_package_pax'] ?? ''));
+            $maxP = trim((string)($_POST['max_package_pax'] ?? ''));
+            $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
+            $pkgIds = isset($_POST['package_ids']) ? (array)$_POST['package_ids'] : [];
+            $pkgIds = array_values(array_unique(array_map('intval', $pkgIds)));
+            if ($name === '') { echo json_encode(['success'=>false,'message'=>'Name is required']); exit; }
+            $toInt = function($v){ return ctype_digit($v) ? (int)$v : null; };
+            $mi = $minP!=='' ? $toInt($minP) : null; $ma = $maxP!=='' ? $toInt($maxP) : null;
+            if ($mi !== null && $ma !== null && $mi > $ma) { echo json_encode(['success'=>false,'message'=>'Min pax cannot exceed max pax']); exit; }
+            $pdo->beginTransaction();
+            $pdo->prepare("UPDATE event_types SET name=?, min_package_pax=?, max_package_pax=?, notes=? WHERE event_type_id=?")
+                ->execute([$name, $minP!=='' ? $minP : null, $maxP!=='' ? $maxP : null, $notes !== '' ? $notes : null, $etId]);
+            $pdo->prepare("DELETE FROM event_type_packages WHERE event_type_id=?")->execute([$etId]);
+            if ($pkgIds) {
+                $ip = $pdo->prepare("INSERT INTO event_type_packages (event_type_id, package_id) VALUES (?, ?)");
+                foreach ($pkgIds as $pid) { if ($pid > 0) { try { $ip->execute([$etId, $pid]); } catch (Throwable $e) {} } }
+            }
+            $pdo->commit();
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} echo json_encode(['success'=>false,'message'=>'Update failed']); }
+        exit;
+    }
+
+    // Delete
+    if ($action === 'delete' && $etId > 0) {
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare("DELETE FROM event_type_packages WHERE event_type_id=?")->execute([$etId]);
+            $pdo->prepare("DELETE FROM event_types WHERE event_type_id=?")->execute([$etId]);
+            $pdo->commit();
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} }
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=eventtypes'); exit;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -1365,6 +1486,13 @@ if ($sectionEarly === 'employees') {
                     </div>
                 </a>
 
+                <a class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'eventtypes') ? 'active' : ''; ?>" href="?section=eventtypes">
+                    <i class="fas fa-clipboard-list flex-shrink-0 w-5 h-5"></i>
+                    <div class="sidebar-text text-left">
+                        <div class="font-medium text-sm">Event Types</div>
+                    </div>
+                </a>
+
                 <!-- New: Packages section -->
                 <a class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'packages') ? 'active' : ''; ?>" href="?section=packages">
                     <i class="fas fa-boxes-stacked flex-shrink-0 w-5 h-5"></i>
@@ -1417,6 +1545,7 @@ if ($sectionEarly === 'employees') {
                                         'bookings' => 'Bookings Management',
                                         'catering' => 'Catering Packages',
                                         'categories' => 'Food Categories',
+                                        'eventtypes' => 'Event Types',
                                         'packages' => 'Packages',
                                         'settings' => 'Settings'
                                     ];
@@ -2528,6 +2657,131 @@ if ($sectionEarly === 'employees') {
                                 </div>
                                 <div class="flex justify-end gap-2 pt-2">
                                     <button type="button" id="cat-cancel" class="px-3 py-2 rounded border border-gray-300">Cancel</button>
+                                    <button type="submit" class="px-4 py-2 rounded bg-primary text-white">Save</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <?php
+                // Event Types data (no pagination for now; small list expected)
+                $eventTypes = [];
+                if ($section === 'eventtypes') {
+                    try {
+                        $pdo = $db->opencon();
+                        $stmt = $pdo->query("SELECT et.event_type_id, et.name, et.min_package_pax, et.max_package_pax, et.notes, et.updated_at,
+                                                     COALESCE((SELECT COUNT(*) FROM event_type_packages ep WHERE ep.event_type_id=et.event_type_id),0) AS package_count
+                                              FROM event_types et
+                                              ORDER BY et.updated_at DESC, et.event_type_id DESC");
+                        $eventTypes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    } catch (Throwable $e) { $eventTypes = []; }
+                }
+                ?>
+                <div id="eventtypes-content" class="section-content <?php echo ($section === 'eventtypes') ? '' : 'hidden '; ?>p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-medium text-primary">Event Types</h2>
+                            <p class="text-muted-foreground">Manage event types and which packages are allowed per type</p>
+                        </div>
+                        <button type="button" id="open-add-eventtype" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition">
+                            <i class="fas fa-plus"></i>
+                            Add Event Type
+                        </button>
+                    </div>
+                    <div id="et-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        <?php if ($section === 'eventtypes' && !empty($eventTypes)): foreach ($eventTypes as $et): ?>
+                            <div class="card p-4 flex flex-col justify-between">
+                                <div>
+                                    <div class="flex items-start justify-between gap-2">
+                                        <h3 class="text-lg font-semibold text-primary"><?php echo htmlspecialchars($et['name']); ?></h3>
+                                        <span class="inline-flex items-center px-2 py-1 text-xs rounded-full border bg-emerald-50 border-emerald-300 text-emerald-800" title="Linked packages">
+                                            <i class="fa-solid fa-boxes-stacked mr-1"></i>
+                                            <?php echo (int)$et['package_count']; ?>
+                                        </span>
+                                    </div>
+                                    <div class="mt-2 flex items-center gap-2 text-sm">
+                                        <?php if (!empty($et['min_package_pax'])): ?>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full border bg-blue-50 border-blue-300 text-blue-800" title="Min pax">Min: <?php echo htmlspecialchars($et['min_package_pax']); ?></span>
+                                        <?php endif; ?>
+                                        <?php if (!empty($et['max_package_pax'])): ?>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full border bg-purple-50 border-purple-300 text-purple-800" title="Max pax">Max: <?php echo htmlspecialchars($et['max_package_pax']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($et['notes'])): ?>
+                                        <div class="mt-3 text-sm text-muted-foreground line-clamp-3" title="<?php echo htmlspecialchars((string)$et['notes']); ?>"><?php echo htmlspecialchars((string)$et['notes']); ?></div>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="mt-4 flex items-center justify-end gap-2">
+                                    <button type="button" class="et-edit h-9 w-9 grid place-items-center rounded border border-gray-200 hover:bg-gray-50" title="Edit" data-et-id="<?php echo (int)$et['event_type_id']; ?>">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button type="button" class="et-delete h-9 w-9 grid place-items-center rounded border border-red-200 text-red-700 hover:bg-red-50" title="Delete" data-et-id="<?php echo (int)$et['event_type_id']; ?>">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endforeach; else: ?>
+                            <?php if ($section === 'eventtypes'): ?>
+                                <div class="col-span-full text-center text-muted-foreground py-10">No event types yet.</div>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Add/Edit Event Type Modal -->
+                <div id="et-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+                <div id="et-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+                    <div class="w-full max-w-2xl mx-4 scale-95 transition-transform duration-200">
+                        <div class="bg-white rounded-lg shadow-xl">
+                            <div class="flex items-center justify-between px-4 py-3 border-b">
+                                <h3 id="et-modal-title" class="text-lg font-medium">Add Event Type</h3>
+                                <button type="button" id="et-close" class="h-8 w-8 grid place-items-center rounded hover:bg-gray-100"><i class="fas fa-times"></i></button>
+                            </div>
+                            <form id="et-form" class="p-4 space-y-4">
+                                <input type="hidden" name="section" value="eventtypes" />
+                                <input type="hidden" name="ajax" value="1" />
+                                <input type="hidden" name="action" value="create" id="et-action" />
+                                <input type="hidden" name="event_type_id" id="et-id" />
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div class="sm:col-span-2">
+                                        <label class="text-sm text-muted-foreground">Event Name</label>
+                                        <input type="text" name="name" id="et-name" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" required />
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-muted-foreground">Minimum Pax</label>
+                                        <select name="min_package_pax" id="et-min" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                            <option value="">None</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                            <option value="150">150</option>
+                                            <option value="200">200</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-muted-foreground">Maximum Pax</label>
+                                        <select name="max_package_pax" id="et-max" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                            <option value="">None</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                            <option value="150">150</option>
+                                            <option value="200">200</option>
+                                        </select>
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label class="text-sm text-muted-foreground">Notes</label>
+                                        <textarea name="notes" id="et-notes" rows="3" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Optional"></textarea>
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <div class="flex items-center justify-between">
+                                            <label class="text-sm text-muted-foreground">Allowed Packages</label>
+                                            <input id="et-packages-search" type="text" placeholder="Search packages..." class="ml-2 flex-1 px-2 py-1 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                                        </div>
+                                        <div id="et-packages-list" class="mt-2 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2 grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                                    </div>
+                                </div>
+                                <div class="flex justify-end gap-2 pt-2">
+                                    <button type="button" id="et-cancel" class="px-3 py-2 rounded border border-gray-300">Cancel</button>
                                     <button type="submit" class="px-4 py-2 rounded bg-primary text-white">Save</button>
                                 </div>
                             </form>
@@ -3873,6 +4127,8 @@ if ($sectionEarly === 'employees') {
                 // Re-render chosen chips on category name change to update color theme
                 nameEl && nameEl.addEventListener('input', renderChosen);
 
+
+            
                 // Edit existing category: fetch and populate
                 table && table.addEventListener('click', async (e) => {
                     const del = e.target.closest('[data-delete-category]');
@@ -3919,6 +4175,140 @@ if ($sectionEarly === 'employees') {
                         const cp = url.searchParams.get('cat_page');
                         window.location.href = cp ? `?section=categories&cat_page=${encodeURIComponent(cp)}` : '?section=categories';
                     } catch (_) { alert('Network error'); }
+                });
+            }
+
+            // Event Types: modal and CRUD (standalone initializer)
+            if (initialSection === 'eventtypes') {
+                const etBackdrop = document.getElementById('et-backdrop');
+                const etModal = document.getElementById('et-modal');
+                const etTitle = document.getElementById('et-modal-title');
+                const etForm = document.getElementById('et-form');
+                const etAction = document.getElementById('et-action');
+                const etId = document.getElementById('et-id');
+                const etName = document.getElementById('et-name');
+                const etMin = document.getElementById('et-min');
+                const etMax = document.getElementById('et-max');
+                const etNotes = document.getElementById('et-notes');
+                const etPkgSearch = document.getElementById('et-packages-search');
+                const etPkgList = document.getElementById('et-packages-list');
+                let etGrid = document.getElementById('et-grid');
+
+                let allPackages = [];
+                let selectedPackageIds = new Set();
+
+                function showEt(){
+                    if(!etBackdrop||!etModal) return;
+                    etBackdrop.style.display='block';
+                    etModal.style.display='flex';
+                    etBackdrop.classList.remove('pointer-events-none');
+                    etModal.classList.remove('pointer-events-none');
+                    etBackdrop.setAttribute('aria-hidden','false');
+                    etModal.setAttribute('aria-hidden','false');
+                    requestAnimationFrame(()=>{
+                        etBackdrop.style.opacity='1';
+                        etModal.style.opacity='1';
+                        if (etModal.firstElementChild) etModal.firstElementChild.style.transform='scale(1)';
+                    });
+                }
+                function hideEt(){
+                    if(!etBackdrop||!etModal) return;
+                    etBackdrop.style.opacity='0';
+                    etModal.style.opacity='0';
+                    if (etModal.firstElementChild) etModal.firstElementChild.style.transform='scale(0.95)';
+                    setTimeout(()=>{
+                        etBackdrop.classList.add('pointer-events-none');
+                        etModal.classList.add('pointer-events-none');
+                        etBackdrop.style.display='none';
+                        etModal.style.display='none';
+                        etBackdrop.setAttribute('aria-hidden','true');
+                        etModal.setAttribute('aria-hidden','true');
+                    }, 180);
+                }
+                function resetEt(){ etForm?.reset(); if(etAction) etAction.value='create'; if(etId) etId.value=''; if(etTitle) etTitle.textContent='Add Event Type'; selectedPackageIds.clear(); renderPkgList(); }
+
+                async function loadPackages(){
+                    try { const r = await fetch('?section=eventtypes&ajax=1&action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }); const j=await r.json(); if(j.success){ allPackages = j.data||[]; renderPkgList(); } } catch(_){ /* ignore */ }
+                }
+                function renderPkgList(){
+                    if (!etPkgList) return;
+                    const q = (etPkgSearch?.value||'').toLowerCase();
+                    const frag = document.createDocumentFragment();
+                    (allPackages||[]).forEach(p=>{
+                        const txt = ((p.name||'')+' '+(p.pax||'')).toLowerCase();
+                        if (q && !txt.includes(q)) return;
+                        const id = Number(p.package_id);
+                        const wrap = document.createElement('label');
+                        wrap.className='flex items-center gap-2 p-2 rounded border border-gray-200 hover:bg-gray-50';
+                        const cb = document.createElement('input');
+                        cb.type='checkbox'; cb.value=String(id); cb.checked = selectedPackageIds.has(id);
+                        cb.addEventListener('change', ()=>{ if (cb.checked) selectedPackageIds.add(id); else selectedPackageIds.delete(id); });
+                        const name = document.createElement('div');
+                        name.className='text-sm';
+                        name.textContent = (p.name||'') + (p.pax?(' • '+p.pax):'');
+                        const badge = document.createElement('span');
+                        badge.className = 'ml-auto inline-flex items-center px-2 py-0.5 text-xs rounded-full border ' + ((String(p.is_active)==='1') ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-gray-50 border-gray-300 text-gray-700');
+                        badge.textContent = (String(p.is_active)==='1') ? 'Active' : 'Inactive';
+                        wrap.append(cb, name, badge);
+                        frag.appendChild(wrap);
+                    });
+                    etPkgList.innerHTML=''; etPkgList.appendChild(frag);
+                }
+
+                async function refreshEtGrid(){
+                    try {
+                        const html = await fetch('?section=eventtypes', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.text());
+                        const tmp = document.createElement('div'); tmp.innerHTML = html;
+                        const newGrid = tmp.querySelector('#eventtypes-content #et-grid');
+                        if (newGrid && etGrid) { etGrid.replaceWith(newGrid); }
+                        const fresh = document.querySelector('#eventtypes-content #et-grid');
+                        if (fresh) etGrid = fresh;
+                    } catch(_){ /* ignore */ }
+                }
+
+                document.getElementById('open-add-eventtype')?.addEventListener('click', async ()=>{ resetEt(); await loadPackages(); showEt(); });
+                document.getElementById('et-close')?.addEventListener('click', hideEt);
+                document.getElementById('et-cancel')?.addEventListener('click', hideEt);
+                etBackdrop && etBackdrop.addEventListener('click', hideEt);
+                etPkgSearch?.addEventListener('input', renderPkgList);
+
+                document.addEventListener('click', async (e)=>{
+                    const editBtn = e.target.closest?.('.et-edit');
+                    const delBtn = e.target.closest?.('.et-delete');
+                    if (editBtn) {
+                        const id = editBtn.getAttribute('data-et-id');
+                        try {
+                            const r = await fetch(`?section=eventtypes&ajax=1&action=get&event_type_id=${encodeURIComponent(id)}`, { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                            const j = await r.json(); if(!j.success) return alert(j.message||'Failed');
+                            resetEt(); await loadPackages();
+                            const d = j.data||{}; const pkgIds = j.package_ids||[];
+                            if (etTitle) etTitle.textContent='Edit Event Type'; if (etAction) etAction.value='update'; if (etId) etId.value = d.event_type_id || id;
+                            if (etName) etName.value = d.name||''; if (etMin) etMin.value = d.min_package_pax||''; if (etMax) etMax.value = d.max_package_pax||''; if (etNotes) etNotes.value = d.notes||'';
+                            selectedPackageIds = new Set(pkgIds.map(Number)); renderPkgList(); showEt();
+                        } catch(_){ alert('Network error'); }
+                        return;
+                    }
+                    if (delBtn) {
+                        const id = delBtn.getAttribute('data-et-id');
+                        if (!confirm('Delete this event type?')) return;
+                        try { await fetch(`?section=eventtypes&action=delete&event_type_id=${encodeURIComponent(id)}&ajax=1`, { headers:{'X-Requested-With':'XMLHttpRequest'} }); await refreshEtGrid(); } catch(_){ alert('Network error'); }
+                        return;
+                    }
+                });
+
+                etForm?.addEventListener('submit', async (e)=>{
+                    e.preventDefault();
+                    if (!etName?.value.trim()) { alert('Name is required'); etName?.focus(); return; }
+                    const minVal = etMin && etMin.value !== '' ? Number(etMin.value) : null;
+                    const maxVal = etMax && etMax.value !== '' ? Number(etMax.value) : null;
+                    if (minVal !== null && maxVal !== null && minVal > maxVal) { alert('Min pax cannot exceed max pax'); return; }
+                    const fd = new FormData(etForm);
+                    selectedPackageIds.forEach(id => fd.append('package_ids[]', String(id)));
+                    try {
+                        const r = await fetch('?section=eventtypes', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} });
+                        const j = await r.json(); if(!j.success){ alert(j.message||'Save failed'); return; }
+                        hideEt(); await refreshEtGrid();
+                    } catch(_){ alert('Network error'); }
                 });
             }
 

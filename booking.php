@@ -1,10 +1,3 @@
-<?php
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
-
-?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -530,7 +523,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         <div class="loader"></div>
     </div>
 
-    <?php include __DIR__ . '/../partials/navbar-user.php'; ?>
+    <?php include __DIR__ . '/partials/navbar-guest.php'; ?>
 
     <!-- Hero Section -->
     <section class="hero-section">
@@ -725,13 +718,13 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
                     <div class="form-group">
                         <label class="form-label">Contact Number *</label>
-                        <input type="tel" name="phone" class="form-input" placeholder="09XX XXX XXXX" maxlength="11" required>
+                        <input type="tel" name="phone" class="form-input" placeholder="09XX XXX XXXX" required>
                         <i class="fas fa-phone input-icon"></i>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Alternative Contact</label>
-                        <input type="tel" name="altPhone" class="form-input" placeholder="Optional" maxlength="11">
+                        <input type="tel" name="altPhone" class="form-input" placeholder="Optional">
                         <i class="fas fa-phone-alt input-icon"></i>
                     </div>
                 </div>
@@ -740,8 +733,16 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div class="form-group">
                         <label class="form-label">Event Type *</label>
-                        <select name="eventTypeId" id="bf-event-type" class="form-select" required>
-                            <option value="">Loading...</option>
+                        <select name="eventType" class="form-select" required>
+                            <option value="">Select Event Type</option>
+                            <option value="birthday">Birthday Party</option>
+                            <option value="wedding">Wedding</option>
+                            <option value="debut">Debut (18th Birthday)</option>
+                            <option value="corporate">Corporate Event</option>
+                            <option value="reunion">Family Reunion</option>
+                            <option value="anniversary">Anniversary</option>
+                            <option value="christening">Christening/Baptism</option>
+                            <option value="other">Other</option>
                         </select>
                     </div>
 
@@ -758,139 +759,109 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Preferred Package *</label>
-                        <select name="packageId" id="bf-package" class="form-select" required>
-                            <option value="">Select an event type first</option>
+                        <label class="form-label">Number of Guests *</label>
+                        <select name="guestCount" class="form-select" required>
+                            <option value="">Select Number of Guests</option>
+                            <option value="50">50 Persons</option>
+                            <option value="100">100 Persons</option>
+                            <option value="150">150 Persons</option>
+                            <option value="200">200 Persons</option>
+                            <option value="200+">More than 200 Persons</option>
                         </select>
                     </div>
                 </div>
 
                 <!-- Venue Information -->
+                <div class="form-group mt-6">
+                    <label class="form-label">Venue Address *</label>
+                    <input type="text" name="venue" class="form-input" placeholder="Complete event venue address" required>
+                    <i class="fas fa-map-marker-alt input-icon"></i>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div class="form-group">
-                        <label class="form-label">Venue Name *</label>
-                        <input type="text" name="venueName" class="form-input" placeholder="Venue or Hall name" required>
-                        <i class="fas fa-building input-icon"></i>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Street *</label>
-                        <input type="text" name="venueStreet" class="form-input" placeholder="Street / Block / Lot" required>
-                        <i class="fas fa-road input-icon"></i>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Barangay</label>
-                        <input type="text" name="venueBarangay" class="form-input" placeholder="Optional">
-                        <i class="fas fa-location-arrow input-icon"></i>
-                    </div>
-                    <div class="form-group">
                         <label class="form-label">City/Municipality *</label>
-                        <input type="text" name="venueCity" class="form-input" placeholder="e.g., Quezon City" required>
+                        <input type="text" name="city" class="form-input" placeholder="e.g., Quezon City" required>
                         <i class="fas fa-city input-icon"></i>
                     </div>
-                    <div class="form-group md:col-span-2">
-                        <label class="form-label">Province *</label>
-                        <input type="text" name="venueProvince" class="form-input" placeholder="e.g., Batangas" required>
-                        <i class="fas fa-map input-icon"></i>
+
+                    <div class="form-group">
+                        <label class="form-label">Barangay</label>
+                        <input type="text" name="barangay" class="form-input" placeholder="Optional">
+                        <i class="fas fa-location-arrow input-icon"></i>
                     </div>
                 </div>
 
-                <!-- Add-ons -->
+                <!-- Package Selection -->
                 <div class="form-group mt-6">
-                    <label class="form-label">Add-ons</label>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Pax">
-                                <span><i class="fas fa-user-friends gold-text mr-2"></i>Pax (+₱200/head)</span>
-                            </label>
-                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Pax">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <select name="addon[Pax][unit]" class="form-select">
-                                        <option value="head">Per Head</option>
-                                    </select>
-                                    <input type="number" min="1" name="addon[Pax][qty]" class="form-input" placeholder="Qty">
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Table">
-                                <span><i class="fas fa-th-large gold-text mr-2"></i>Table</span>
-                            </label>
-                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Table">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <select name="addon[Table][unit]" class="form-select">
-                                        <option value="table">Table</option>
-                                    </select>
-                                    <input type="number" min="1" name="addon[Table][qty]" class="form-input" placeholder="Qty">
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Chairs">
-                                <span><i class="fas fa-chair gold-text mr-2"></i>Chairs</span>
-                            </label>
-                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Chairs">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <select name="addon[Chairs][unit]" class="form-select">
-                                        <option value="chair">Chair</option>
-                                    </select>
-                                    <input type="number" min="1" name="addon[Chairs][qty]" class="form-input" placeholder="Qty">
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Utensils">
-                                <span><i class="fas fa-utensils gold-text mr-2"></i>Utensils</span>
-                            </label>
-                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Utensils">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <select name="addon[Utensils][unit]" class="form-select">
-                                        <option value="set">Set</option>
-                                    </select>
-                                    <input type="number" min="1" name="addon[Utensils][qty]" class="form-input" placeholder="Qty">
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Waiters">
-                                <span><i class="fas fa-concierge-bell gold-text mr-2"></i>Waiters</span>
-                            </label>
-                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Waiters">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <select name="addon[Waiters][unit]" class="form-select">
-                                        <option value="staff">Staff</option>
-                                    </select>
-                                    <input type="number" min="1" name="addon[Waiters][qty]" class="form-input" placeholder="Qty">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <label class="form-label">Preferred Package</label>
+                    <select name="package" class="form-select">
+                        <option value="">Select a package (Optional)</option>
+                        <option value="intimate">Intimate Gathering (50 Pax)</option>
+                        <option value="classic">Classic Celebration (100 Pax)</option>
+                        <option value="grand">Grand Festivity (150 Pax)</option>
+                        <option value="ultimate">Ultimate Experience (200 Pax)</option>
+                        <option value="custom">Custom Package</option>
+                    </select>
                 </div>
 
+                <!-- Additional Services -->
+                <div class="form-group mt-6">
+                    <label class="form-label mb-4">Additional Services</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="checkbox-group">
+                            <input type="checkbox" name="services[]" value="tables-chairs" class="checkbox-input">
+                            <span><i class="fas fa-chair gold-text mr-2"></i>Tables & Chairs</span>
+                        </label>
+                        
+                        <label class="checkbox-group">
+                            <input type="checkbox" name="services[]" value="decorations" class="checkbox-input">
+                            <span><i class="fas fa-palette gold-text mr-2"></i>Event Decorations</span>
+                        </label>
+                        
+                        <label class="checkbox-group">
+                            <input type="checkbox" name="services[]" value="waiters" class="checkbox-input">
+                            <span><i class="fas fa-concierge-bell gold-text mr-2"></i>Extra Waiters</span>
+                        </label>
+                        
+                        <label class="checkbox-group">
+                            <input type="checkbox" name="services[]" value="sound-system" class="checkbox-input">
+                            <span><i class="fas fa-volume-up gold-text mr-2"></i>Sound System</span>
+                        </label>
+                    </div>
+                </div>
 
                 <!-- Special Requests -->
                 <div class="form-group mt-6">
-                    <label class="form-label">Notes</label>
-                    <textarea name="notes" class="form-textarea" rows="6" placeholder="Any additional notes"></textarea>
+                    <label class="form-label">Menu Preferences & Special Requests</label>
+                    <textarea name="specialRequests" class="form-textarea" rows="6" 
+                              placeholder="Please let us know about:&#10;- Dietary restrictions or allergies&#10;- Preferred dishes or menu items&#10;- Event theme or color scheme&#10;- Any other special requirements"></textarea>
                 </div>
 
-                
+                <!-- Budget Range -->
+                <div class="form-group mt-6">
+                    <label class="form-label">Budget Range (Optional)</label>
+                    <select name="budget" class="form-select">
+                        <option value="">Select your budget range</option>
+                        <option value="10000-15000">₱10,000 - ₱15,000</option>
+                        <option value="15000-25000">₱15,000 - ₱25,000</option>
+                        <option value="25000-35000">₱25,000 - ₱35,000</option>
+                        <option value="35000-50000">₱35,000 - ₱50,000</option>
+                        <option value="50000+">₱50,000 and above</option>
+                    </select>
+                </div>
 
                 <!-- Terms and Conditions -->
                 <div class="form-group mt-8">
                     <label class="checkbox-group">
-                        <input type="checkbox" id="bf-agree" name="agree" class="checkbox-input" required>
-                        <span>I agree to the Terms and Agreement: 50% payment in person and contract signing before confirmation.</span>
+                        <input type="checkbox" name="terms" class="checkbox-input" required>
+                        <span>I agree to the <a href="#" class="gold-text hover:underline">Terms and Conditions</a> and understand that a 50% downpayment is required to confirm my booking.</span>
                     </label>
                 </div>
 
                 <!-- Submit Button -->
                 <div class="text-center mt-10">
-                    <button type="submit" id="bf-submit" class="btn-submit" disabled>
+                    <button type="submit" class="btn-submit">
                         <span><i class="fas fa-calendar-check mr-3"></i>Submit Booking Request</span>
                     </button>
                     <p class="mt-4 text-sm opacity-75">We'll review your request and contact you within 24 hours</p>
@@ -910,10 +881,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 <div>
                     <h4 class="font-semibold mb-4 gold-text">Quick Links</h4>
                     <ul class="space-y-2">
-                        <li><a href="index.php" class="hover-gold">Home</a></li>
+                        <li><a href="home.php" class="hover-gold">Home</a></li>
                         <li><a href="menu.php" class="hover-gold">Menu</a></li>
-                        <li><a href="packages.php" class="hover-gold">Packages</a></li>
-                        <li><a href="bookings.php" class="hover-gold">Book Event</a></li>
+                        <li><a href="cateringpackages.php" class="hover-gold">Packages</a></li>
+                        <li><a href="booking.php" class="hover-gold">Book Event</a></li>
                     </ul>
                 </div>
                 <div>
@@ -968,67 +939,11 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         window.addEventListener('scroll', handleScrollAnimation);
         handleScrollAnimation(); // Initial check
 
-        // Gate submit button by terms checkbox
-        const agreeEl = document.getElementById('bf-agree');
-        const submitBtn = document.getElementById('bf-submit');
-        if (agreeEl && submitBtn) {
-            const syncAgree = ()=> { submitBtn.disabled = !agreeEl.checked; submitBtn.style.opacity = agreeEl.checked ? '1' : '0.6'; };
-            agreeEl.addEventListener('change', syncAgree); syncAgree();
-        }
-
-        // Populate Event Types and Packages
-        const etSel = document.getElementById('bf-event-type');
-        const pkgSel = document.getElementById('bf-package');
-        async function loadEventTypes(){
-            try {
-                const r = await fetch('../admin/admin.php?section=eventtypes&ajax=1&action=list', { headers:{'X-Requested-With':'XMLHttpRequest'} });
-                const j = await r.json();
-                if (!j.success) throw new Error();
-                etSel.innerHTML = '<option value="">Select Event Type</option>' + (j.data||[]).map(et=>`<option value="${et.event_type_id}">${et.name}</option>`).join('');
-            } catch(_) { etSel.innerHTML = '<option value="">Failed to load</option>'; }
-        }
-        async function loadPackagesFor(etId){
-            pkgSel.innerHTML = '<option value="">Loading packages...</option>';
-            try {
-                // Filter allowed packages for this event type
-                const res = await fetch('../admin/admin.php?section=eventtypes&ajax=1&action=get&event_type_id='+encodeURIComponent(etId), { headers:{'X-Requested-With':'XMLHttpRequest'} });
-                const data = await res.json();
-                if (!data.success) throw new Error();
-                const allowed = new Set((data.package_ids||[]).map(Number));
-                const all = await fetch('../admin/admin.php?section=eventtypes&ajax=1&action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.json());
-                if (!all.success) throw new Error();
-                const opts = (all.data||[]).filter(p=>allowed.has(Number(p.package_id))).map(p=>{
-                    const label = (p.name||'') + (p.pax?(' - '+p.pax):'');
-                    return `<option value="${p.package_id}">${label}</option>`;
-                });
-                pkgSel.innerHTML = opts.length ? ('<option value="">Select Package</option>'+opts.join('')) : '<option value="">No packages available</option>';
-            } catch(_) { pkgSel.innerHTML = '<option value="">Failed to load packages</option>'; }
-        }
-        etSel?.addEventListener('change', (e)=>{ const v = e.target.value; if (v) loadPackagesFor(v); else { pkgSel.innerHTML = '<option value="">Select an event type first</option>'; } });
-        loadEventTypes();
-
-        // Add-ons UI: toggle fields when checked
-        const addonBoxes = document.querySelectorAll('.bf-addon');
-        function toggleAddonFields(cb){
-            const name = cb.getAttribute('data-addon');
-            const fields = document.querySelector(`.bf-addon-fields[data-addon-fields="${name}"]`);
-            if (!fields) return;
-            const qtyInput = fields.querySelector('input[name^="addon["]');
-            if (cb.checked){
-                fields.classList.remove('hidden');
-                if (qtyInput){ qtyInput.required = true; qtyInput.focus({preventScroll:true}); }
-            } else {
-                fields.classList.add('hidden');
-                if (qtyInput){ qtyInput.required = false; qtyInput.value = ''; }
-            }
-        }
-        addonBoxes.forEach(cb=>{ cb.addEventListener('change', ()=>toggleAddonFields(cb)); toggleAddonFields(cb); });
-
         // Form Validation and Submission (requires login)
         document.getElementById('bookingForm').addEventListener('submit', function(e) {
             if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
                 e.preventDefault();
-                window.location.href = '../login.php?next=' + encodeURIComponent('user/booking.php');
+                window.location.href = 'login.php?next=' + encodeURIComponent('user/booking.php');
                 return false;
             }
             e.preventDefault();
@@ -1036,52 +951,33 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
             // Show loading overlay
             document.getElementById('loadingOverlay').classList.add('active');
             
+            // Get form data
             const formData = new FormData(this);
-            // Serialize add-ons to addons[] entries expected by backend
-            const checked = Array.from(document.querySelectorAll('.bf-addon:checked'));
-            const addonLabels = [];
-            for (const cb of checked){
-                const name = cb.getAttribute('data-addon');
-                const fields = document.querySelector(`.bf-addon-fields[data-addon-fields="${name}"]`);
-                if (!fields) continue;
-                const unitSel = fields.querySelector('select[name^="addon["]');
-                const qtyInput = fields.querySelector('input[name^="addon["]');
-                const unit = unitSel ? unitSel.value : '';
-                const qty = qtyInput ? parseInt(qtyInput.value, 10) : 0;
-                if (!qty || qty < 1){
-                    document.getElementById('loadingOverlay').classList.remove('active');
-                    alert(`Please enter a valid quantity for ${name}.`);
-                    return;
-                }
-                const label = unit ? `${name} x ${qty} ${unit}` : `${name} x ${qty}`;
-                addonLabels.push(label);
-            }
-            // Remove any previous addons[] then append fresh
-            formData.delete('addons[]');
-            addonLabels.forEach(l=>formData.append('addons[]', l));
-            fetch('booking_api.php', { method:'POST', body: formData })
-                .then(async r=>{
-                    let data = null;
-                    try { data = await r.json(); }
-                    catch(_) { throw new Error('Invalid server response'); }
-                    if (!r.ok) { throw new Error(data && data.message ? data.message : 'Request failed'); }
-                    return data;
-                })
-                .then(j=>{
-                    document.getElementById('loadingOverlay').classList.remove('active');
-                    if (!j.success) { alert(j.message||'Failed to submit booking'); return; }
-                    alert('🎉 Thank you! Your booking has been submitted. We\'ll contact you for confirmation.');
-                    this.reset();
-                    // Reset dependent selects
-                    pkgSel.innerHTML = '<option value="">Select an event type first</option>';
-                    // Hide all addon fields after reset
-                    addonBoxes.forEach(cb=>toggleAddonFields(cb));
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                })
-                .catch((err)=>{
-                    document.getElementById('loadingOverlay').classList.remove('active');
-                    alert((err && err.message) ? err.message : 'Network error. Please try again.');
-                });
+            const data = Object.fromEntries(formData);
+            
+            // Get selected services
+            const services = [];
+            document.querySelectorAll('input[name="services[]"]:checked').forEach(checkbox => {
+                services.push(checkbox.value);
+            });
+            data.services = services;
+            
+            // Simulate form submission (replace with actual backend call)
+            setTimeout(() => {
+                console.log('Booking submitted:', data);
+                
+                // Hide loading overlay
+                document.getElementById('loadingOverlay').classList.remove('active');
+                
+                // Show success message
+                alert('🎉 Thank you for your booking request!\n\nWe have received your information and will contact you within 24 hours to confirm the details and discuss your event requirements.\n\nA confirmation email has been sent to ' + data.email);
+                
+                // Reset form
+                this.reset();
+                
+                // Scroll to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 2000);
         });
 
     // Require event date at least 14 days from now
@@ -1108,7 +1004,21 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
             });
         });
 
-        // Removed old static event type tip handler; now dynamic based on DB.
+        // Event type change handler
+        document.querySelector('select[name="eventType"]').addEventListener('change', function() {
+            const customPackages = {
+                'birthday': 'We recommend our Classic Celebration package for birthdays!',
+                'wedding': 'Our Ultimate Experience package is perfect for weddings!',
+                'debut': 'The Grand Festivity package is ideal for debut celebrations!',
+                'corporate': 'Professional catering packages available for corporate events!',
+                'reunion': 'Family-style packages perfect for reunions!',
+                'anniversary': 'Romantic and elegant packages for anniversaries!'
+            };
+            
+            if (customPackages[this.value]) {
+                console.log(customPackages[this.value]);
+            }
+        });
     </script>
 </body>
 </html>

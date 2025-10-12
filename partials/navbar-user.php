@@ -1,48 +1,39 @@
 <?php
-// Ensure session is active so navbar can read login state everywhere
-// Start session only if headers are not sent to avoid warnings when included after output
+// User navbar: renders with user controls and correct relative paths under /user
 if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
     session_start();
 }
 
-// DB access for fetching user photo if not in session
-require_once __DIR__ . '/../../classes/database.php';
+// This variant assumes logged-in user; fall back to session check
+$FORCE_NAV_MODE = 'user';
+$NAV_IS_LOGGED_IN = !empty($_SESSION['user_id']);
 
-// Normalize a stored DB path to a web path usable from /user/* pages; verify file exists if local
-function normalize_user_photo_path(?string $raw): ?string {
+require_once __DIR__ . '/../classes/database.php';
+
+function normalize_user_photo_path_user(?string $raw): ?string {
     if ($raw === null) return null;
     $raw = trim((string)$raw);
     if ($raw === '') return null;
     $raw = str_replace('\\', '/', $raw);
-    // External URLs are used as-is
     if (preg_match('~^https?://~i', $raw)) return $raw;
-
-    // Build filesystem path from project root
-    $root = realpath(__DIR__ . '/../../');
-    // Strip leading ./, ../, or / for FS existence check
-    $rel = preg_replace('~^(\./|\.\./|/)+~', '', $raw);
+    $root = realpath(__DIR__ . '/..');
+    $rel = preg_replace('~^([./\\]+)~', '', $raw);
     $fs = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
     if (is_file($fs)) {
-        // Web path relative to /user pages
+        // from /user pages, going up one level not needed; keep relative to repo root
         return '../' . $rel;
     }
-    // If not found, try original form assuming it's already relative to /user
     return null;
 }
 
-// Helper: resolve profile image (DB -> session -> default)
-function current_user_avatar(): string {
+function current_user_avatar_user(): string {
     $default = '../images/logo.png';
     $id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     if ($id <= 0) return $default;
-
-    // 1) Session photo first
     if (!empty($_SESSION['user_photo'])) {
-        $web = normalize_user_photo_path((string)$_SESSION['user_photo']);
+        $web = normalize_user_photo_path_user((string)$_SESSION['user_photo']);
         if ($web !== null) return $web;
     }
-
-    // 2) Fetch from DB and cache in session
     try {
         $db = new database();
         $pdo = $db->opencon();
@@ -51,18 +42,14 @@ function current_user_avatar(): string {
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row && !empty($row['user_photo'])) {
             $_SESSION['user_photo'] = (string)$row['user_photo'];
-            $web = normalize_user_photo_path((string)$row['user_photo']);
+            $web = normalize_user_photo_path_user((string)$row['user_photo']);
             if ($web !== null) return $web;
         }
-    } catch (Throwable $e) {
-        // ignore and fallback
-    }
-
-    // 3) Default logo
+    } catch (Throwable $e) {}
     return $default;
 }
 
-function current_user_display_name() {
+function current_user_display_name_user() {
     if (!empty($_SESSION['user_username'])) return (string)$_SESSION['user_username'];
     $fn = isset($_SESSION['user_fn']) ? trim((string)$_SESSION['user_fn']) : '';
     $ln = isset($_SESSION['user_ln']) ? trim((string)$_SESSION['user_ln']) : '';
@@ -115,11 +102,11 @@ function current_user_display_name() {
                     <span class="sr-only">Cart</span>
                     <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
                 </button>
-                <?php if (!empty($_SESSION['user_id'])): ?>
+                <?php if ($NAV_IS_LOGGED_IN): ?>
                     <div class="relative" id="nav-profile">
                         <button id="profile-btn" class="flex items-center gap-2 text-white hover:text-yellow-400 transition-colors">
-                            <img src="<?php echo htmlspecialchars(current_user_avatar()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" />
-                            <span class="max-w-[200px] truncate">Welcome, <?php echo htmlspecialchars(current_user_display_name()); ?></span>
+                            <img src="<?php echo htmlspecialchars(current_user_avatar_user()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" />
+                            <span class="max-w-[200px] truncate">Welcome, <?php echo htmlspecialchars(current_user_display_name_user()); ?></span>
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd"/></svg>
                         </button>
                         <div id="profile-menu" class="absolute right-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/5 py-1 hidden">
@@ -128,7 +115,7 @@ function current_user_display_name() {
                         </div>
                     </div>
                 <?php else: ?>
-                    <a id="login-btn-nav" href="../login" class="px-4 py-2 rounded-full bg-amber-400 text-green-900 hover:bg-amber-300 transition flex items-center gap-2 font-medium">
+                    <a id="login-btn-nav" href="../login.php" class="px-4 py-2 rounded-full bg-amber-400 text-green-900 hover:bg-amber-300 transition flex items-center gap-2 font-medium">
                         <i class="fas fa-user"></i>
                         Login
                     </a>
@@ -155,7 +142,7 @@ function current_user_display_name() {
                 <a href="menu.php" class="block nav-link transition-colors duration-300">Menu</a>
                 <a href="cateringpackages.php" class="block nav-link transition-colors duration-300">Packages</a>
                 <a href="booking.php" class="block nav-link transition-colors duration-300">Bookings</a>
-                <?php if (!empty($_SESSION['user_id'])): ?>
+                <?php if ($NAV_IS_LOGGED_IN): ?>
                     <a href="profile.php" class="block nav-link transition-colors duration-300">Profile</a>
                     <a href="../logout.php" class="block nav-link transition-colors duration-300">Logout</a>
                 <?php else: ?>
@@ -168,7 +155,6 @@ function current_user_display_name() {
 </header>
 
 <script>
-    // Navbar behaviors (self-contained)
     (function(){
         const navRoot = document.querySelector('header.nav-root');
         const loginBtn = document.getElementById('login-btn-nav');
@@ -178,12 +164,9 @@ function current_user_display_name() {
         const mobileMenu = document.getElementById('mobile-menu');
         const cartBtns = Array.from(document.querySelectorAll('#nav-cart-btn, #nav-cart-btn-mobile'));
 
-        // Toggle nav scheme based on backdrop (clear on dark/green, solid on white)
         const setScheme = (solid) => {
             if (!navRoot) return;
-            // Header container styles
             navRoot.classList.toggle('nav-solid', solid);
-            // Apply background/border via utility classes
             if (solid) {
                 navRoot.classList.add('bg-white/95','backdrop-blur','border-b','border-green-200','shadow');
                 navRoot.classList.remove('bg-transparent','border-transparent','shadow-none');
@@ -191,12 +174,10 @@ function current_user_display_name() {
                 navRoot.classList.add('bg-transparent');
                 navRoot.classList.remove('bg-white/95','border-b','border-green-200','shadow');
             }
-            // Links color
             links.forEach(a => {
                 a.classList.remove('text-white','text-green-900');
                 a.classList.add(solid ? 'text-green-900' : 'text-white');
             });
-            // Profile button color (text)
             if (profileBtn) {
                 profileBtn.classList.remove('text-white','hover:text-yellow-400','text-green-900','hover:text-green-700');
                 if (solid) {
@@ -205,17 +186,11 @@ function current_user_display_name() {
                     profileBtn.classList.add('text-white','hover:text-yellow-400');
                 }
             }
-            // Mobile menu button color
             if (mobileBtn) {
                 mobileBtn.classList.remove('text-white');
                 mobileBtn.classList.remove('text-green-900');
                 mobileBtn.classList.add(solid ? 'text-green-900' : 'text-white');
             }
-            // Login button: stays gold; ensure readable text color
-            if (loginBtn) {
-                // No dynamic class swap needed; gold pill remains
-            }
-            // Sign up button style depends on scheme
             const signupBtn = document.getElementById('signup-btn-nav');
             if (signupBtn) {
                 signupBtn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
@@ -226,7 +201,6 @@ function current_user_display_name() {
                     signupBtn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
                 }
             }
-            // Cart button style
             cartBtns.forEach(btn => {
                 btn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
                 btn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
@@ -238,7 +212,6 @@ function current_user_display_name() {
             });
         };
 
-        // Observe page-provided contrast targets (e.g., hero + green search spacer)
         const targets = Array.from(document.querySelectorAll('[data-nav-contrast="dark"]'));
         if (targets.length && 'IntersectionObserver' in window) {
             const vis = new Map();
@@ -254,7 +227,6 @@ function current_user_display_name() {
                 recompute();
             }, { root: null, threshold: [0, 0.05, 0.1], rootMargin: '-80px 0px 0px 0px' });
             targets.forEach(t => {
-                // seed initial
                 const r = t.getBoundingClientRect();
                 const initiallyVisible = r.top <= 80 && r.bottom > 0;
                 vis.set(t, initiallyVisible);
@@ -262,8 +234,7 @@ function current_user_display_name() {
             });
             recompute();
         } else {
-            // Fallback: make nav clear (green-transparent) near top of page, then white-transparent after scrolling
-            const threshold = 140; // px from top before switching to white-transparent
+            const threshold = 140;
             let ticking = false;
             const onScroll = () => {
                 if (!ticking) {
@@ -275,22 +246,20 @@ function current_user_display_name() {
                     ticking = true;
                 }
             };
-            // Initial state and listeners
             setScheme(window.scrollY > threshold);
             window.addEventListener('scroll', onScroll, { passive: true });
             window.addEventListener('resize', onScroll);
         }
 
-        // Profile dropdown toggle
         const menu = document.getElementById('profile-menu');
-        if (profileBtn && menu) {
+        const profileBtnEl = document.getElementById('profile-btn');
+        if (profileBtnEl && menu) {
             const toggle = () => menu.classList.toggle('hidden');
-            const close = (e) => { if (!menu.contains(e.target) && !profileBtn.contains(e.target)) menu.classList.add('hidden'); };
-            profileBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggle(); });
+            const close = (e) => { if (!menu.contains(e.target) && !profileBtnEl.contains(e.target)) menu.classList.add('hidden'); };
+            profileBtnEl.addEventListener('click', (e)=>{ e.stopPropagation(); toggle(); });
             document.addEventListener('click', close);
         }
 
-        // Mobile menu toggle
         let isOpen = false;
         const setIcon = () => {
             if (!mobileBtn) return;
@@ -310,7 +279,6 @@ function current_user_display_name() {
             setIcon();
         }
 
-        // Cart button behavior: open cart on menu page if available; else navigate to menu with #cart
         const handleCartClick = (e) => {
             e.preventDefault();
             try {
@@ -321,12 +289,12 @@ function current_user_display_name() {
                     return;
                 }
             } catch (_) {}
-            // Go to menu and open cart via hash
             window.location.href = 'menu.php#cart';
         };
         cartBtns.forEach(btn => btn && btn.addEventListener('click', handleCartClick));
 
-        // Initialize lucide icons if available on page
+        window.SNB_USER = Object.assign({}, window.SNB_USER || {}, { loggedIn: <?php echo $NAV_IS_LOGGED_IN ? 'true' : 'false'; ?> });
+
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
         }

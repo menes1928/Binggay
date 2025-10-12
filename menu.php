@@ -1,10 +1,5 @@
 <?php
-
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
-
-require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/classes/database.php';
 $db = new database();
 
 
@@ -307,7 +302,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
     </script>
 </head>
 <body class="min-h-screen">
-    <?php include __DIR__ . '/../partials/navbar-user.php'; ?>
+    <?php include __DIR__ . '/partials/navbar-guest.php'; ?>
 
     <!-- Hero Banner -->
     <div class="bg-gradient-to-r from-primary to-green-800 text-white pt-32 pb-12 md:pt-36 animate-fade-in" data-nav-contrast="dark">
@@ -447,7 +442,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 btn.addEventListener('click', function(e){
                     if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
                         e.preventDefault();
-                        window.location.href = '../login.php?next=' + encodeURIComponent('user/menu.php#cart');
+                        window.location.href = 'login.php?next=' + encodeURIComponent('user/menu.php#cart');
                     }
                 });
             }

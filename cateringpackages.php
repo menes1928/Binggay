@@ -1,10 +1,5 @@
 <?php
-
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
-
-require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/classes/database.php';
 $db = new database();
 $pdo = $db->opencon();
 
@@ -477,7 +472,7 @@ try {
     </style>
 </head>
 <body class="min-h-screen">
-    <?php include __DIR__ . '/../partials/navbar-user.php'; ?>
+    <?php include __DIR__ . '/partials/navbar-guest.php'; ?>
 
     <!-- Hero Section -->
     <!-- Hero Section marked as dark backdrop for navbar contrast control -->
@@ -553,8 +548,8 @@ try {
                     <?php list($badgeLabel, $badgeIcon) = badge_for_pax((int)$pkg['pax']); ?>
                     <div class="package-card scroll-animate fade-reveal">
                         <div class="package-image">
-                            <img src="<?php echo htmlspecialchars($pkg['image']); ?>" alt="<?php echo htmlspecialchars($pkg['name']); ?>"
-                                 onerror="this.onerror=null;this.src='../images/logo.png';">
+                       <img src="<?php echo htmlspecialchars($pkg['image']); ?>" alt="<?php echo htmlspecialchars($pkg['name']); ?>"
+                           onerror="this.onerror=null;this.src='images/logo.png';">
                             <div class="package-badge">
                                 <i class="<?php echo $badgeIcon; ?> mr-2"></i><?php echo $badgeLabel; ?>
                             </div>
@@ -841,6 +836,18 @@ try {
     <script>
         // Removed page-specific navbar JS; shared partial controls nav behavior
 
+        // Guard: if guest, clicking any ".btn-inquire" should go to login instead of opening the modal
+        (function(){
+            document.addEventListener('click', function(e){
+                const btn = e.target.closest('.btn-inquire');
+                if (!btn) return;
+                if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
+                    e.preventDefault();
+                    window.location.href = 'login?next=' + encodeURIComponent('user/cateringpackages');
+                }
+            }, true); // capture to run before inline onclick
+        })();
+
         // Scroll Animation
         const scrollElements = document.querySelectorAll('.scroll-animate');
         
@@ -881,7 +888,7 @@ try {
         function openPackageModal(btn){
             // Require login before booking
             if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
-                window.location.href = '../login?next=' + encodeURIComponent('user/cateringpackages');
+                window.location.href = 'login.php?next=' + encodeURIComponent('user/cateringpackages.php');
                 return;
             }
             const modal = document.getElementById('inquiryModal');

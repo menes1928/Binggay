@@ -53,7 +53,7 @@ $collections = [
 $duplicatedCollections = array_merge($collections, $collections, $collections);
 
 // Load packages + items from DB for "Our Packages" section
-require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/classes/database.php';
 $db = new database();
 $packages = [];
 try {
@@ -379,7 +379,7 @@ try {
 </head>
 <body class="min-h-screen bg-gradient-to-b from-green-800 via-green-900 to-green-950">
     <!-- Header -->
-    <?php include __DIR__ . '/../partials/navbar-user.php'; ?>
+    <?php include __DIR__ . '/partials/navbar-guest.php'; ?>
 
     <!-- Hero Section -->
     <section id="home" class="min-h-screen flex items-center relative overflow-hidden">
@@ -471,7 +471,7 @@ try {
                         
                         <!-- Main Circle (Real Logo, Larger) -->
                         <div class="relative w-96 h-96 lg:w-[28rem] lg:h-[28rem] rounded-full overflow-hidden border-4 border-yellow-400/30 shadow-2xl hover-scale bg-white/5">
-                            <img src="../images/logo.png" alt="Sandok ni Binggay Logo" class="w-full h-full object-contain" />
+                            <img src="images/logo.png" alt="Sandok ni Binggay Logo" class="w-full h-full object-contain" />
                         </div>
                     </div>
                 </div>
@@ -767,7 +767,7 @@ try {
                 <?php
                     $title = htmlspecialchars($pkg['name']) . ' (' . htmlspecialchars($pkg['pax']) . ' pax)';
                     $price = $pkg['price'] !== null ? '₱' . number_format($pkg['price']) : '';
-                    $cover = $pkg['cover'] !== '' ? $pkg['cover'] : '../images/logo.png';
+                    $cover = $pkg['cover'] !== '' ? $pkg['cover'] : 'images/logo.png';
                     // Cache-bust local images to reflect admin edits immediately
                     $coverUrl = $cover;
                     if ($coverUrl !== '' && !preg_match('~^https?://~i', $coverUrl)) {
