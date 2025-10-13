@@ -7,6 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $remember = isset($_POST['remember']);
+    $next = isset($_POST['next']) ? trim($_POST['next']) : '';
 
     if ($email === '' || $password === '') {
         $error = 'Email and password are required';
@@ -60,12 +61,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     $_SESSION['user_type'] = (int)$user['user_type'];
                     $_SESSION['user_photo'] = isset($user['user_photo']) ? (string)$user['user_photo'] : null;
 
+<<<<<<< HEAD
+                    // After login: prefer safe "next" redirect if provided
+                    $redirect = '';
+                    if ($next !== '') {
+                        // Only allow relative paths within this site to prevent open redirects
+                        if (preg_match('~^/[^\n\r]*$~', $next)) {
+                            $redirect = $next;
+                        }
+=======
                     // Simple role-based redirect: 1 = admin per sample data
                     if ((int)$user['user_type'] === 1) {
                         header('Location: admin/admin');
                     } else {
                         header('Location: user/home');
+>>>>>>> cdc43894b23e156f244af3a18cab1421c624bf0a
                     }
+                    if ($redirect === '') {
+                        // Simple role-based fallback: 1 = admin
+                        $redirect = ((int)$user['user_type'] === 1) ? '/Binggay/admin/admin_homepage.php' : '/Binggay/user/home.php';
+                    }
+                    header('Location: ' . $redirect);
                     exit;
                 }
             }
@@ -409,6 +425,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     </div>
                     <?php unset($_SESSION['registration_success']); endif; ?>
 
+                    <?php if (!empty($_GET['msg']) && $_GET['msg'] === 'login_required'): ?>
+                    <div class="mb-6 p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg flex items-center gap-2 animate-fade-in-up">
+                        <i class="fas fa-info-circle"></i>
+                        <span>You must log in before ordering.</span>
+                    </div>
+                    <?php endif; ?>
+
                     <?php if (isset($error)): ?>
                     <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-2 animate-fade-in-up">
                         <i class="fas fa-exclamation-circle"></i>
@@ -418,6 +441,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
                     <!-- Login Form -->
                     <form method="POST" action="" onsubmit="validateForm(event)" class="space-y-6">
+                        <input type="hidden" name="next" value="<?php echo isset($_GET['next']) ? htmlspecialchars($_GET['next']) : ''; ?>">
                         <!-- Email Input -->
                         <div class="animate-fade-in-up delay-100">
                             <label for="email" class="block text-sm font-medium text-gray-700 mb-2 transition-colors">

@@ -140,6 +140,7 @@ if ($sectionEarly === 'orders') {
     $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
         || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
         || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+
     if ($action && $oid > 0) {
         $pdo = $db->opencon();
         if ($action === 'get_order' && $isAjaxAction) {
@@ -1886,7 +1887,23 @@ if ($sectionEarly === 'eventtypes') {
                                 <h3 class="text-sm font-medium">Total Revenue</h3>
                                 <i class="fas fa-dollar-sign text-primary"></i>
                             </div>
-                            <div class="text-2xl font-bold text-primary">₱328,000</div>
+                            <?php
+                                // Compute real-time total revenue from payments marked as Paid for the current month only
+                                $totalRevenuePaid = 0.0;
+                                try {
+                                    $pdo = $db->opencon();
+                                    $stmt = $pdo->prepare("SELECT COALESCE(SUM(pay_amount), 0)
+                                                           FROM payments
+                                                           WHERE pay_status = 'Paid'
+                                                             AND pay_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+                                                             AND pay_date <  DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')");
+                                    $stmt->execute();
+                                    $totalRevenuePaid = (float)$stmt->fetchColumn();
+                                } catch (Throwable $e) {
+                                    $totalRevenuePaid = 0.0;
+                                }
+                            ?>
+                            <div class="text-2xl font-bold text-primary">₱<?= number_format($totalRevenuePaid, 0) ?></div>
                             <div class="flex items-center text-sm text-muted-foreground">
                                 <i class="fas fa-arrow-up text-green-600 mr-1"></i>
                                 <span class="text-green-600">+12.5%</span>
@@ -1912,7 +1929,20 @@ if ($sectionEarly === 'eventtypes') {
                                 <h3 class="text-sm font-medium">Active Bookings</h3>
                                 <i class="fas fa-calendar text-green-700"></i>
                             </div>
-                            <div class="text-2xl font-bold text-primary">23</div>
+                            <?php
+                                // Query for active bookings: treat bookings that are not Completed or Canceled as active
+                                $activeBookingsCount = 0;
+                                try {
+                                    $pdo = $db->opencon();
+                                    $stmt = $pdo->prepare("SELECT COUNT(*) FROM eventbookings WHERE eb_status NOT IN ('Completed','Canceled')");
+                                    $stmt->execute();
+                                    $activeBookingsCount = (int)$stmt->fetchColumn();
+                                } catch (Throwable $e) {
+                                    // On error, keep the count at 0
+                                    $activeBookingsCount = 0;
+                                }
+                            ?>
+                            <div class="text-2xl font-bold text-primary"><?= (int)$activeBookingsCount ?></div>
                             <div class="flex items-center text-sm text-muted-foreground">
                                 <i class="fas fa-arrow-up text-green-600 mr-1"></i>
                                 <span class="text-green-600">+15.1%</span>
@@ -1920,18 +1950,7 @@ if ($sectionEarly === 'eventtypes') {
                             </div>
                         </div>
 
-                        <div class="card p-6 border-l-4 border-l-yellow-500 hover:shadow-lg transition-shadow">
-                            <div class="flex items-center justify-between mb-2">
-                                <h3 class="text-sm font-medium">Menu Items</h3>
-                                <i class="fas fa-utensils text-yellow-500"></i>
-                            </div>
-                            <div class="text-2xl font-bold text-primary">147</div>
-                            <div class="flex items-center text-sm text-muted-foreground">
-                                <i class="fas fa-arrow-up text-green-600 mr-1"></i>
-                                <span class="text-green-600">+3</span>
-                                <span class="ml-1">new this week</span>
-                            </div>
-                        </div>
+                        
                     </div>
 
                     <!-- Charts Row -->
@@ -3348,6 +3367,7 @@ if ($sectionEarly === 'eventtypes') {
             })();
 
             const initialSection = '<?php echo htmlspecialchars($section); ?>';
+            // Dashboard: (Top items modal removed)
             // Bookings: handle Confirmed/Completed actions on card buttons
             if (initialSection === 'bookings') {
                 const bookingsContainer = document.getElementById('bookings-content');
@@ -5345,29 +5365,7 @@ if ($sectionEarly === 'eventtypes') {
         });
     </script>
     
-    <!-- Add Menu Modal -->
-    <div id="add-menu-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
-    <div id="add-menu-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
-        <div class="dialog w-full max-w-xl mx-4 scale-95 transition-transform duration-200">
-            <div class="bg-white rounded-lg shadow-xl">
-                <div class="flex items-center justify-between px-4 py-3 border-b">
-                    <h3 class="text-lg font-semibold text-primary">Add New Menu Item</h3>
-                    <button type="button" class="close-add-menu p-2 hover:bg-gray-100 rounded">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <form id="add-menu-form" class="p-4 space-y-4" enctype="multipart/form-data">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-sm text-muted-foreground">Name</label>
-                            <input name="name" type="text" required class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
-                            <p class="text-xs text-red-600 mt-1" data-error="name"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm text-muted-foreground">PAX</label>
-                            <select name="pax_category" id="pax-category" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
-                                <option value="6-8">6-8 pax</option>
-                                <option value="10-15">10-15 pax</option>
+                    
                                 <option value="per">per pieces</option>
                             </select>
                             <p class="text-xs text-red-600 mt-1" data-error="pax"></p>
