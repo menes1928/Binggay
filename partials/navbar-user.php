@@ -232,32 +232,7 @@ function current_user_display_name_user() {
         if (notifBadge) notifBadge.classList.add('hidden');
         notifBadges.forEach(el => el && el.classList.add('hidden'));
     };
-    // Toast popup container for new notifications
-    let notifToast = document.getElementById('notifToast');
-    if (!notifToast) {
-        notifToast = document.createElement('div');
-        notifToast.id = 'notifToast';
-        notifToast.className = 'fixed bottom-6 right-6 z-[1002] hidden';
-        notifToast.innerHTML = `
-            <div class="max-w-sm w-[340px] bg-white border border-amber-200 shadow-2xl rounded-lg overflow-hidden ring-1 ring-amber-100 animate-fade-in">
-                <div class="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
-                    <i class="fas fa-bell text-amber-600"></i>
-                    <span class="text-sm font-semibold text-amber-700">New update</span>
-                </div>
-                <div class="px-4 py-3 text-sm text-gray-700">
-                    You have a new order update. Click view to check your notifications.
-                </div>
-                <div class="px-4 py-2 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
-                    <button id="notifToastDismiss" class="px-3 py-1.5 text-xs rounded border border-gray-300 hover:bg-gray-100">Dismiss</button>
-                    <button id="notifToastView" class="px-3 py-1.5 text-xs rounded bg-amber-500 text-white hover:bg-amber-600">View</button>
-                </div>
-            </div>`;
-        document.body.appendChild(notifToast);
-        const dismissBtn = document.getElementById('notifToastDismiss');
-        const viewBtn = document.getElementById('notifToastView');
-        if (dismissBtn) dismissBtn.addEventListener('click', () => hideNotifToast());
-        if (viewBtn) viewBtn.addEventListener('click', () => { hideNotifToast(); if (notifBtn) notifBtn.click(); });
-    }
+    // No toast UI; badge-only UX
 
         const setScheme = (solid) => {
             if (!navRoot) return;
@@ -460,7 +435,7 @@ function current_user_display_name_user() {
                 return;
             }
             const frag = document.createDocumentFragment();
-            let pendingCount = 0;
+            let unreadCount = 0;
             let latestTs = 0;
             items.forEach(it => {
                 const li = document.createElement('div');
@@ -486,19 +461,20 @@ function current_user_display_name_user() {
                         <a href="order_details.php?id=${encodeURIComponent(it.order_id)}" class="text-xs text-amber-600 hover:text-amber-700 whitespace-nowrap ml-2">View</a>
                     </div>
                 `;
-                if (String(it.order_status) === 'pending' || String(it.order_status) === 'in-progress') pendingCount++;
                 const ts = safeParseDate(it.updated_at) || safeParseDate(it.order_date) || 0;
                 if (ts > latestTs) latestTs = ts;
+                const lastSeenLocal = (typeof window.__binggay_notif_last_seen === 'number') ? window.__binggay_notif_last_seen : 0;
+                if (ts > lastSeenLocal) unreadCount++;
                 frag.appendChild(li);
             });
             notifList.innerHTML = '';
             notifList.appendChild(frag);
             const lastSeen = (typeof window.__binggay_notif_last_seen === 'number') ? window.__binggay_notif_last_seen : 0;
-            const shouldShow = latestTs > lastSeen;
+            const shouldShow = latestTs > lastSeen && unreadCount > 0;
             const updateBadge = (el) => {
                 if (!el) return;
-                if (shouldShow && pendingCount > 0) {
-                    el.textContent = String(pendingCount);
+                if (shouldShow) {
+                    el.textContent = String(unreadCount);
                     el.classList.remove('hidden');
                     el.classList.add('flex');
                 } else {
@@ -536,7 +512,7 @@ function current_user_display_name_user() {
             window.lucide.createIcons();
         }
 
-        // Polling and seen tracking
+        // Background badge updater (no toast)
         try {
             const userId = <?php echo $NAV_IS_LOGGED_IN ? (int)$_SESSION['user_id'] : 0; ?>;
             if (userId) {
@@ -544,19 +520,32 @@ function current_user_display_name_user() {
                 let lastSeen = safeParseDate(localStorage.getItem(LS_KEY));
                 window.__binggay_notif_last_seen = lastSeen;
 
+                const applyBadge = (unread) => {
+                    const set = (el) => {
+                        if (!el) return;
+                        if (unread > 0) {
+                            el.textContent = String(unread);
+                            el.classList.remove('hidden');
+                            el.classList.add('flex');
+                        } else {
+                            el.classList.add('hidden');
+                        }
+                    };
+                    set(notifBadge);
+                    notifBadges.forEach(set);
+                };
+
                 const checkForUpdates = async () => {
                     try {
-                        const res = await fetch('api_notifications.php', { credentials: 'same-origin' });
+                        const res = await fetch('api_notifications.php?all=1', { credentials: 'same-origin' });
                         if (!res.ok) return;
                         const data = await res.json();
-                        if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
-                        const latest = data.items.reduce((acc, it) => {
-                            const d = safeParseDate(it.updated_at) || safeParseDate(it.order_date) || 0;
-                            return Math.max(acc, d);
+                        if (!data || !Array.isArray(data.items)) return;
+                        const unseen = data.items.reduce((count, it) => {
+                            const ts = safeParseDate(it.updated_at) || safeParseDate(it.order_date) || 0;
+                            return (lastSeen && ts <= lastSeen) ? count : count + 1;
                         }, 0);
-                        if (latest && (!lastSeen || latest > lastSeen)) {
-                            showNotifToast();
-                        }
+                        applyBadge(unseen);
                     } catch (_) {}
                 };
 
@@ -565,7 +554,6 @@ function current_user_display_name_user() {
                     localStorage.setItem(LS_KEY, String(nowTs));
                     lastSeen = nowTs;
                     window.__binggay_notif_last_seen = nowTs;
-                    hideNotifToast();
                 }
                 // expose locally
                 window.__binggay_mark_notif_seen = markSeen;
@@ -582,7 +570,6 @@ function current_user_display_name_user() {
                 return isNaN(t) ? 0 : t;
             } catch(_) { return 0; }
         }
-        function showNotifToast(){ if (notifToast) notifToast.classList.remove('hidden'); }
-        function hideNotifToast(){ if (notifToast) notifToast.classList.add('hidden'); }
+        // No toast functions; badge-only UX
     })();
 </script>
