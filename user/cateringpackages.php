@@ -591,11 +591,11 @@ try {
     <section class="container mx-auto px-4 py-16">
         <h2 class="text-4xl md:text-5xl font-bold text-center mb-16 gold-text">Available Packages</h2>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8" data-reveal-group>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8 items-stretch" data-reveal-group>
             <?php if (!empty($packages)): ?>
                 <?php foreach ($packages as $pkg): ?>
                     <?php list($badgeLabel, $badgeIcon) = badge_for_pax((int)$pkg['pax']); ?>
-                    <div class="package-card scroll-animate fade-reveal h-full">
+                    <div class="package-card scroll-animate fade-reveal h-full flex flex-col">
                         <div class="package-image">
                             <img src="<?php echo htmlspecialchars($pkg['image']); ?>" alt="<?php echo htmlspecialchars($pkg['name']); ?>"
                                  onerror="this.onerror=null;this.src='../images/logo.png';">
@@ -603,7 +603,7 @@ try {
                                 <i class="<?php echo $badgeIcon; ?> mr-2"></i><?php echo $badgeLabel; ?>
                             </div>
                         </div>
-                        <div class="package-content flex flex-col h-full">
+                        <div class="package-content flex flex-col flex-1">
                             <h3 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars($pkg['name']); ?></h3>
                             <p class="gold-text text-xl mb-4"><?php echo (int)$pkg['pax']; ?> Persons</p>
                             <p class="opacity-90 mb-6"><?php echo $pkg['active'] ? 'Carefully curated for your celebration.' : 'Inactive • Not available for booking currently.'; ?></p>
