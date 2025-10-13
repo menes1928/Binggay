@@ -8,6 +8,36 @@ require_once __DIR__ . '/../classes/database.php';
 $db = new database();
 $pdo = $db->opencon();
 
+// Prefill identity fields for logged-in users
+$CP_IS_LOGGED_IN = !empty($_SESSION['user_id']);
+$CP_FULLNAME = '';
+$CP_EMAIL = '';
+$CP_PHONE = '';
+if ($CP_IS_LOGGED_IN) {
+    $fn = isset($_SESSION['user_fn']) ? trim((string)$_SESSION['user_fn']) : '';
+    $ln = isset($_SESSION['user_ln']) ? trim((string)$_SESSION['user_ln']) : '';
+    $CP_FULLNAME = trim((string)($_SESSION['user_name'] ?? (trim($fn . ' ' . $ln))));
+    $CP_EMAIL = isset($_SESSION['user_email']) ? (string)$_SESSION['user_email'] : '';
+    $CP_PHONE = isset($_SESSION['user_phone']) ? trim((string)$_SESSION['user_phone']) : '';
+    if ($CP_PHONE === '') {
+        try {
+            $stmt = $pdo->prepare('SELECT user_phone FROM users WHERE user_id = ? LIMIT 1');
+            $stmt->execute([ (int)($_SESSION['user_id'] ?? 0) ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row && !empty($row['user_phone'])) {
+                $CP_PHONE = trim((string)$row['user_phone']);
+                $_SESSION['user_phone'] = $CP_PHONE;
+            }
+        } catch (Throwable $e) { /* ignore */ }
+    }
+    // Normalize to PH 11-digit local if possible
+    if ($CP_PHONE !== '') {
+        $d = preg_replace('/\D+/', '', $CP_PHONE);
+        if (strlen($d) === 12 && substr($d, 0, 2) === '63') { $d = '0' . substr($d, 2); }
+        if ($d !== '') { $CP_PHONE = $d; }
+    }
+}
+
 function normalize_pkg_pic($raw, $fallback = '../images/logo.png') {
     $raw = trim((string)$raw);
     if ($raw === '') return $fallback;
@@ -446,6 +476,20 @@ try {
             color: #1B4332;
             background-color: #fff;
         }
+        /* Two-column includes cleanup */
+        .features-grid .feature-item {
+            border-bottom: none;
+            padding: 6px 0;
+        }
+        /* Hide number input spinners to allow free typing */
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
         
         /* Responsive */
         @media (max-width: 768px) {
@@ -551,7 +595,7 @@ try {
             <?php if (!empty($packages)): ?>
                 <?php foreach ($packages as $pkg): ?>
                     <?php list($badgeLabel, $badgeIcon) = badge_for_pax((int)$pkg['pax']); ?>
-                    <div class="package-card scroll-animate fade-reveal">
+                    <div class="package-card scroll-animate fade-reveal h-full">
                         <div class="package-image">
                             <img src="<?php echo htmlspecialchars($pkg['image']); ?>" alt="<?php echo htmlspecialchars($pkg['name']); ?>"
                                  onerror="this.onerror=null;this.src='../images/logo.png';">
@@ -559,13 +603,13 @@ try {
                                 <i class="<?php echo $badgeIcon; ?> mr-2"></i><?php echo $badgeLabel; ?>
                             </div>
                         </div>
-                        <div class="package-content">
+                        <div class="package-content flex flex-col h-full">
                             <h3 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars($pkg['name']); ?></h3>
                             <p class="gold-text text-xl mb-4"><?php echo (int)$pkg['pax']; ?> Persons</p>
                             <p class="opacity-90 mb-6"><?php echo $pkg['active'] ? 'Carefully curated for your celebration.' : 'Inactive • Not available for booking currently.'; ?></p>
 
                             <h4 class="font-semibold mb-3 text-lg gold-text">Package Includes:</h4>
-                            <div class="space-y-2 mb-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 features-grid">
                                 <?php if (!empty($pkg['items'])): ?>
                                     <?php foreach ($pkg['items'] as $it): ?>
                                         <div class="feature-item">
@@ -582,32 +626,34 @@ try {
                                         </div>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <div class="feature-item"><i class="fas fa-circle-info"></i><span>Items coming soon.</span></div>
+                                    <div class="feature-item col-span-2"><i class="fas fa-circle-info"></i><span>Items coming soon.</span></div>
                                 <?php endif; ?>
                             </div>
 
-                            <div class="price-tag">
-                                <p class="text-sm mb-1">Starting at</p>
-                                <p class="text-4xl font-bold">₱<?php echo number_format(max(0,(float)$pkg['price'])); ?></p>
-                                <?php if ((int)$pkg['pax'] > 0 && (float)$pkg['price'] > 0): ?>
-                                    <p class="text-sm mt-1 opacity-80">₱<?php echo number_format(ceil($pkg['price'] / max(1,(int)$pkg['pax']))); ?> per person</p>
+                            <div class="mt-auto">
+                                <div class="price-tag">
+                                    <p class="text-sm mb-1">Starting at</p>
+                                    <p class="text-4xl font-bold">₱<?php echo number_format(max(0,(float)$pkg['price']), 2); ?></p>
+                                    <?php if ((int)$pkg['pax'] > 0 && (float)$pkg['price'] > 0): ?>
+                                        <p class="text-sm mt-1 opacity-80">₱<?php echo number_format(ceil($pkg['price'] / max(1,(int)$pkg['pax'])), 2); ?> per person</p>
+                                    <?php endif; ?>
+                                </div>
+
+                                <?php if ($pkg['active']): ?>
+                                    <button class="btn-inquire w-full mt-6"
+                                            data-package-id="<?php echo (int)$pkg['id']; ?>"
+                                            data-package-name="<?php echo htmlspecialchars($pkg['name']); ?>"
+                                            data-package-pax="<?php echo (int)$pkg['pax']; ?>"
+                                            data-package-price="<?php echo (float)$pkg['price']; ?>"
+                                            onclick="openPackageModal(this)">
+                                        <span><i class="fas fa-envelope mr-2"></i>Inquire Now</span>
+                                    </button>
+                                <?php else: ?>
+                                    <button class="btn-inquire w-full mt-6" disabled style="opacity:.6;cursor:not-allowed">
+                                        <span><i class="fas fa-ban mr-2"></i>Not Available</span>
+                                    </button>
                                 <?php endif; ?>
                             </div>
-
-                            <?php if ($pkg['active']): ?>
-                                <button class="btn-inquire w-full mt-6"
-                                        data-package-id="<?php echo (int)$pkg['id']; ?>"
-                                        data-package-name="<?php echo htmlspecialchars($pkg['name']); ?>"
-                                        data-package-pax="<?php echo (int)$pkg['pax']; ?>"
-                                        data-package-price="<?php echo (float)$pkg['price']; ?>"
-                                        onclick="openPackageModal(this)">
-                                    <span><i class="fas fa-envelope mr-2"></i>Inquire Now</span>
-                                </button>
-                            <?php else: ?>
-                                <button class="btn-inquire w-full mt-6" disabled style="opacity:.6;cursor:not-allowed">
-                                    <span><i class="fas fa-ban mr-2"></i>Not Available</span>
-                                </button>
-                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -750,6 +796,7 @@ try {
                             <input id="cp_addon_pax" type="number" min="0" value="0"
                                    class="w-full px-4 py-3 rounded-lg bg-white/10 border border-gold/30 focus:border-gold outline-none transition-all" placeholder="0">
                             <p class="text-xs opacity-80 mt-1">+₱200 per added person</p>
+                            <p id="cp_pax_limit" class="text-xs opacity-80 mt-1 hidden"></p>
                         </div>
                         <div>
                             <label class="block mb-2 font-semibold">Chairs</label>
@@ -830,7 +877,8 @@ try {
                         </div>
                         <div>
                             <label class="block mb-2 font-semibold">Enter Exact Amount</label>
-                            <input id="cp_amount_input" type="number" step="0.01" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-gold/30 outline-none" placeholder="0.00">
+                            <input id="cp_amount_input" type="number" step="0.01" inputmode="decimal" class="w-full px-4 py-3 rounded-lg bg-white/10 border border-gold/30 outline-none" placeholder="0.00">
+                            <p id="cp_amount_hint" class="text-xs opacity-80 mt-1"></p>
                         </div>
                     </div>
                     <div class="flex gap-3 mt-6">
@@ -845,6 +893,13 @@ try {
     <?php include __DIR__ . '/../partials/footer.php'; ?>
 
     <script>
+        // Expose minimal user info for modal prefill
+        window.CP_USER = {
+            loggedIn: <?php echo $CP_IS_LOGGED_IN ? 'true' : 'false'; ?>,
+            name: <?php echo json_encode((string)$CP_FULLNAME); ?>,
+            email: <?php echo json_encode((string)$CP_EMAIL); ?>,
+            phone: <?php echo json_encode((string)$CP_PHONE); ?>
+        };
         // Removed page-specific navbar JS; shared partial controls nav behavior
 
         // Scroll Animation
@@ -882,7 +937,34 @@ try {
             amounts: { total: 0, deposit: 0 }
         };
 
-        function peso(n){ return `₱${Number(n).toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:2})}`; }
+    function peso(n){ return `₱${Number(n).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`; }
+
+        // Venue capacity and pax limit logic
+        const CP_VENUE_CAPACITY = 250;
+        function computeAddonPaxMax(pkgPax){
+            const p = Number(pkgPax)||0;
+            if (p <= 0) return null; // unknown until package is selected
+            if (p === 50) return 50; // special case
+            return Math.max(0, CP_VENUE_CAPACITY - p);
+        }
+        function updatePaxLimitUI(){
+            const max = computeAddonPaxMax(bookingState.pkg.pax);
+            const limitEl = document.getElementById('cp_pax_limit');
+            const inputEl = document.getElementById('cp_addon_pax');
+            if (!limitEl || !inputEl) return;
+            if (max == null){
+                limitEl.classList.add('hidden');
+                inputEl.removeAttribute('max');
+                return;
+            }
+            limitEl.textContent = `You can add up to ${max} additional pax for this venue/package.`;
+            limitEl.classList.remove('hidden');
+            inputEl.setAttribute('max', String(max));
+            // Clamp current value
+            const cur = Number(inputEl.value||0);
+            if (cur > max) { inputEl.value = String(max); }
+            if (cur < 0) { inputEl.value = '0'; }
+        }
 
         function openPackageModal(btn){
             // Require login before booking
@@ -910,6 +992,23 @@ try {
                 dateEl.min = minStr;
                 if (!dateEl.value || dateEl.value < minStr) dateEl.value = minStr;
             }
+            // Prefill and lock user identity fields when logged in
+            try {
+                const nameEl = document.getElementById('cp_fullName');
+                const emailEl = document.getElementById('cp_email');
+                const phoneEl = document.getElementById('cp_phone');
+                if (window.CP_USER && window.CP_USER.loggedIn) {
+                    if (nameEl) { nameEl.value = (window.CP_USER.name||''); nameEl.readOnly = true; }
+                    if (emailEl) { emailEl.value = (window.CP_USER.email||''); emailEl.readOnly = true; }
+                    if (phoneEl) { phoneEl.value = (window.CP_USER.phone||''); phoneEl.readOnly = true; }
+                } else {
+                    if (nameEl) nameEl.readOnly = false;
+                    if (emailEl) emailEl.readOnly = false;
+                    if (phoneEl) phoneEl.readOnly = false;
+                }
+            } catch (_) {}
+            // Initialize Pax limit UI now that package is known
+            updatePaxLimitUI();
             modal.style.display = 'block';
         }
 
@@ -950,6 +1049,13 @@ try {
                 bookingState.addons.chairs = parseInt(document.getElementById('cp_chairs').value||'0');
                 bookingState.addons.tables = parseInt(document.getElementById('cp_tables').value||'0');
                 bookingState.addons.notes = document.getElementById('cp_notes').value.trim();
+                // Enforce max additional pax based on venue capacity rule
+                const maxAdd = computeAddonPaxMax(bookingState.pkg.pax);
+                if (maxAdd != null && bookingState.addons.addonPax > maxAdd) {
+                    alert(`Maximum additional pax allowed is ${maxAdd}. Please adjust your Additional Pax quantity.`);
+                    document.getElementById('cp_addon_pax').focus();
+                    return gotoStep(2);
+                }
                 // validations minimal for required fields
                 if(!bookingState.details.fullName || !bookingState.details.phone || !bookingState.details.email || !bookingState.details.date || !bookingState.details.street || !bookingState.details.barangay || !bookingState.details.municipality || !bookingState.details.province){
                     alert('Please complete your details and address.');
@@ -960,20 +1066,48 @@ try {
                     alert('Please enter a valid email address.');
                     return gotoStep(1);
                 }
-                const total = (bookingState.pkg.basePrice) + (bookingState.addons.addonPax*200);
+                const total = (Number(bookingState.pkg.basePrice)||0) + ((Number(bookingState.addons.addonPax)||0) * 200);
                 const deposit = total*0.5;
                 bookingState.amounts.total = total;
                 bookingState.amounts.deposit = deposit;
                 document.getElementById('sum_pkg_name').textContent = `${bookingState.pkg.name} (${bookingState.pkg.pax} pax)`;
                 document.getElementById('sum_base_price').textContent = peso(bookingState.pkg.basePrice);
-                document.getElementById('sum_addon').textContent = `${bookingState.addons.addonPax} x ₱200 = ${peso(bookingState.addons.addonPax*200)}`;
+                document.getElementById('sum_addon').textContent = `${bookingState.addons.addonPax} x ₱200.00 = ${peso((Number(bookingState.addons.addonPax)||0)*200)}`;
                 document.getElementById('sum_total').textContent = peso(total);
                 document.getElementById('sum_deposit').textContent = peso(deposit);
             }
             if(step===5){
-                document.getElementById('cp_pay_amount').value = bookingState.amounts.deposit.toFixed(2);
+                // Keep the display field fixed at 50% (deposit)
+                const deposit = Number(bookingState.amounts.deposit||0);
+                const total = Number(bookingState.amounts.total||0);
+                const depositStr = deposit.toFixed(2);
+                document.getElementById('cp_pay_amount').value = depositStr;
+                // Prefill the typeable exact amount with 50% and constrain to [50%, 100%]
+                const amtEl = document.getElementById('cp_amount_input');
+                const hintEl = document.getElementById('cp_amount_hint');
+                if (amtEl){
+                    const minPay = Math.round(deposit*100)/100;
+                    const maxPay = Math.round(total*100)/100;
+                    amtEl.min = String(minPay);
+                    amtEl.max = String(maxPay);
+                    // If user hasn't typed a value yet or it's out of bounds, reset to 50%
+                    const cur = parseFloat(amtEl.value||'NaN');
+                    if (Number.isNaN(cur) || cur < minPay || cur > maxPay) {
+                        amtEl.value = depositStr; // show 50% in the text field
+                    }
+                    if (hintEl) {
+                        hintEl.textContent = `You can pay any amount between 50% and 100% of the total (${peso(minPay)} – ${peso(maxPay)}).`;
+                    }
+                }
             }
         }
+
+        // Recompute pax limit when user edits Additional Pax
+        document.addEventListener('input', (e)=>{
+            if (e.target && e.target.id === 'cp_addon_pax') {
+                updatePaxLimitUI();
+            }
+        });
 
         // Terms checkbox gating
         document.addEventListener('change', (e)=>{
@@ -1002,11 +1136,19 @@ try {
 
         async function submitBooking(ev){
             ev.preventDefault();
-            // validate exact amount
+            // validate exact amount: allow between 50% and 100% of total
             const entered = parseFloat(document.getElementById('cp_amount_input').value||'0');
-            const mustPay = Math.round(bookingState.amounts.deposit*100)/100; // 2 decimals
-            if(Number.isNaN(entered) || Math.round(entered*100) !== Math.round(mustPay*100)){
-                alert(`Please enter the exact amount: ₱${mustPay.toFixed(2)}`);
+            const mustPay = Math.round(bookingState.amounts.deposit*100)/100; // 50%
+            const total = Math.round(bookingState.amounts.total*100)/100;
+            const minPay = mustPay;
+            const maxPay = total;
+            if (Number.isNaN(entered)){
+                alert('Please enter the amount you wish to pay now.');
+                return;
+            }
+            const entered2 = Math.round(entered*100)/100;
+            if (entered2 < minPay || entered2 > maxPay){
+                alert(`Amount must be between ${peso(minPay)} and ${peso(maxPay)}.`);
                 return;
             }
             const payType = document.getElementById('cp_pay_type').value;
@@ -1032,6 +1174,7 @@ try {
                 event_date: bookingState.details.date,
                 total_price: bookingState.amounts.total,
                 deposit_amount: mustPay,
+                pay_now: entered2,
                 pay_type: payType,
                 pay_number: number
             };

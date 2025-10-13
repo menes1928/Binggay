@@ -81,8 +81,8 @@ function current_user_display_name_user() {
                     $links = [
                         ['href' => 'home', 'label' => 'Home', 'key' => 'home'],
                         ['href' => 'menu', 'label' => 'Menu', 'key' => 'menu'],
-                        ['href' => 'cateringpackages', 'label' => 'Packages', 'key' => 'cateringpackages'],
-                        ['href' => 'booking', 'label' => 'Bookings', 'key' => 'booking'],
+                        ['href' => 'cateringpackages', 'label' => 'Catering', 'key' => 'cateringpackages'],
+                        ['href' => 'booking', 'label' => 'Occasions', 'key' => 'booking'],
                     ];
                 ?>
                 <?php foreach ($links as $ln): $isActive = ($current === strtolower($ln['key'])); ?>
@@ -140,8 +140,8 @@ function current_user_display_name_user() {
             <div class="container mx-auto px-6 py-4 space-y-4">
                 <a href="home" class="block nav-link transition-colors duration-300">Home</a>
                 <a href="menu" class="block nav-link transition-colors duration-300">Menu</a>
-                <a href="cateringpackages" class="block nav-link transition-colors duration-300">Packages</a>
-                <a href="booking" class="block nav-link transition-colors duration-300">Bookings</a>
+                <a href="cateringpackages" class="block nav-link transition-colors duration-300">Catering</a>
+                <a href="booking" class="block nav-link transition-colors duration-300">Occasions</a>
                 <?php if ($NAV_IS_LOGGED_IN): ?>
                     <a href="profile" class="block nav-link transition-colors duration-300">Profile</a>
                     <a href="../logout" class="block nav-link transition-colors duration-300">Logout</a>

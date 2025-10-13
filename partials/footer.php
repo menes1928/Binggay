@@ -66,9 +66,9 @@
 				<ul class="list">
 					<li><a href="home.php">Home</a></li>
 					<li><a href="menu.php">Menu</a></li>
-					<li><a href="cateringpackages.php">Packages</a></li>
+					<li><a href="cateringpackages.php">Catering</a></li>
 					<li><a href="homepage.php">About Us</a></li>
-					<li><a href="booking.php">Bookings</a></li>
+					<li><a href="booking.php">Occasions</a></li>
 				</ul>
 			</div>
 
