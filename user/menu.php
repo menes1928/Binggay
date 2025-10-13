@@ -9,33 +9,44 @@ $db = new database();
 
 function normalize_menu_pic($raw) {
     $raw = trim((string)$raw);
-    if ($raw === '') {
+    if ($raw === '' || strcasecmp($raw, 'default.jpg') === 0) {
+        // Use a stable placeholder for missing or default images
         return 'https://placehold.co/800x600?text=Menu+Photo';
     }
- 
+
+    // Normalize slashes
     $raw = str_replace('\\', '/', $raw);
 
-   
+    // Absolute URL
     if (preg_match('~^https?://~i', $raw)) {
         return $raw;
     }
 
- 
-    if (strpos($raw, '/') === false) {
-        return '/Binggay/menu/' . $raw;
-    }
-
-  
-    if (preg_match('~^(menu|images|uploads)(/|$)~i', $raw)) {
-        return '/Binggay/' . ltrim($raw, '/');
-    }
-
-
+    // If path contains the project root once, cut to web path
     if (preg_match('~(?:^|/)Binggay/(.+)$~i', $raw, $m)) {
         return '/Binggay/' . ltrim($m[1], '/');
     }
 
+    // Windows absolute path without Binggay segment: use basename under images/menu
+    if (preg_match('~^[A-Za-z]:/|^/~', $raw)) {
+        $base = basename($raw);
+        if ($base === '' || strcasecmp($base, 'default.jpg') === 0) {
+            return 'https://placehold.co/800x600?text=Menu+Photo';
+        }
+        return '/Binggay/images/menu/' . $base;
+    }
 
+    // If already starts with a known web-rooted segment
+    if (preg_match('~^(images|uploads|FINALS)(/|$)~i', $raw)) {
+        return '/Binggay/' . ltrim($raw, '/');
+    }
+
+    // Bare filename -> assume images/menu/
+    if (strpos($raw, '/') === false) {
+        return '/Binggay/images/menu/' . $raw;
+    }
+
+    // Fallback: ensure it is under site root
     return '/Binggay/' . ltrim($raw, '/');
 }
 
@@ -519,6 +530,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
         const pageSize = 20;
         // Auth state from PHP session
         const isLoggedIn = <?php echo isset($_SESSION['user_id']) ? 'true' : 'false'; ?>;
+        const currentUserId = <?php echo isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0; ?>;
+        const CART_KEY = currentUserId ? `binggay_cart_v1_u${currentUserId}` : 'binggay_cart_v1_guest';
     // pending payload holder for double confirmation
     let pendingOrderPayload = null;
 
@@ -526,23 +539,36 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
         document.addEventListener('DOMContentLoaded', function() {
             // Load persisted cart from localStorage
             try {
-                const raw = localStorage.getItem('binggay_cart_v1');
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed)) {
-                        // Basic validation and normalization
-                        cart = parsed.filter(it => it && typeof it.id === 'number' && typeof it.quantity === 'number' && it.quantity > 0)
-                                     .map(it => ({
-                                         id: it.id,
-                                         quantity: Math.max(1, Math.floor(it.quantity)),
-                                         price: typeof it.price === 'number' ? it.price : 0,
-                                         name: typeof it.name === 'string' ? it.name : '',
-                                         image: typeof it.image === 'string' ? it.image : '',
-                                         servings: typeof it.servings === 'string' ? it.servings : '',
-                                         prepTime: typeof it.prepTime === 'string' ? it.prepTime : '',
-                                         available: !!it.available
-                                     }));
+                // Do not allow a shared/global cart. Remove legacy key if present.
+                if (isLoggedIn) {
+                    try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
+                } else {
+                    // Guests shouldn't have a cart; ensure guest key is cleared
+                    try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
+                    try { localStorage.removeItem('binggay_cart_v1_guest'); } catch (_) {}
+                }
+
+                if (isLoggedIn) {
+                    const raw = localStorage.getItem(CART_KEY);
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            // Basic validation and normalization
+                            cart = parsed.filter(it => it && typeof it.id === 'number' && typeof it.quantity === 'number' && it.quantity > 0)
+                                         .map(it => ({
+                                             id: it.id,
+                                             quantity: Math.max(1, Math.floor(it.quantity)),
+                                             price: typeof it.price === 'number' ? it.price : 0,
+                                             name: typeof it.name === 'string' ? it.name : '',
+                                             image: typeof it.image === 'string' ? it.image : '',
+                                             servings: typeof it.servings === 'string' ? it.servings : '',
+                                             prepTime: typeof it.prepTime === 'string' ? it.prepTime : '',
+                                             available: !!it.available
+                                         }));
+                        }
                     }
+                } else {
+                    cart = [];
                 }
             } catch (e) { /* ignore parse errors */ }
 
@@ -567,7 +593,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
 
             // Cross-tab sync
             window.addEventListener('storage', (ev) => {
-                if (ev.key === 'binggay_cart_v1') {
+                if (ev.key === CART_KEY) {
                     try {
                         const parsed = ev.newValue ? JSON.parse(ev.newValue) : [];
                         if (Array.isArray(parsed)) {
@@ -1053,7 +1079,9 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
 
             // Persist to localStorage
             try {
-                localStorage.setItem('binggay_cart_v1', JSON.stringify(cart));
+                if (isLoggedIn) {
+                    localStorage.setItem(CART_KEY, JSON.stringify(cart));
+                }
             } catch (_) {}
         }
 
@@ -1139,7 +1167,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 // success: clear cart, close modals, show alert
                 cart = [];
                 updateCart();
-                try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
+                try { if (isLoggedIn) { localStorage.removeItem(CART_KEY); } } catch (_) {}
                 toggleSummary(false);
                 toggleCheckout(false);
                 try { if (document.getElementById('cartSidebar')?.classList.contains('active')) toggleCart(); } catch(_) {}
