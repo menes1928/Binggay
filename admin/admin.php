@@ -245,7 +245,12 @@ if ($sectionEarly === 'bookings') {
     if ($action === 'get_booking' && $bid > 0) {
         header('Content-Type: application/json');
         try {
-            $stmt = $pdo->prepare("SELECT eb.* FROM eventbookings eb WHERE eb.eb_id=?");
+            // Join event_types and packages to expose readable aliases expected by frontend (eb_type, eb_package_pax)
+            $stmt = $pdo->prepare("SELECT eb.*, et.name AS eb_type, pk.pax AS eb_package_pax, pk.name AS package_name
+                                   FROM eventbookings eb
+                                   LEFT JOIN event_types et ON et.event_type_id = eb.event_type_id
+                                   LEFT JOIN packages pk ON pk.package_id = eb.package_id
+                                   WHERE eb.eb_id=?");
             $stmt->execute([$bid]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
@@ -263,23 +268,86 @@ if ($sectionEarly === 'bookings') {
     if ($action === 'update' && $bid > 0) {
         header('Content-Type: application/json');
         try {
+            // Read incoming fields (backward compatible names)
             $name = trim((string)($_POST['eb_name'] ?? ''));
             $contact = trim((string)($_POST['eb_contact'] ?? ''));
-            $type = trim((string)($_POST['eb_type'] ?? ''));
             $venue = trim((string)($_POST['eb_venue'] ?? ''));
             $dateStr = (string)($_POST['eb_date'] ?? '');
             $order = trim((string)($_POST['eb_order'] ?? ''));
             $status = trim((string)($_POST['eb_status'] ?? 'Pending'));
-            $pax = isset($_POST['eb_package_pax']) ? (string)$_POST['eb_package_pax'] : null;
-            $addon = isset($_POST['eb_addon_pax']) ? (int)$_POST['eb_addon_pax'] : null;
+            $addon = isset($_POST['eb_addon_pax']) && $_POST['eb_addon_pax']!=='' ? (int)$_POST['eb_addon_pax'] : null;
             $notes = isset($_POST['eb_notes']) ? trim((string)$_POST['eb_notes']) : null;
-            if ($name === '' || $contact === '' || $type === '' || $venue === '' || $dateStr === '' || $order === '') {
-                echo json_encode(['success'=>false,'message'=>'All fields are required']); exit;
+
+            // Fetch current row to preserve IDs when not provided
+            $cur = $pdo->prepare("SELECT event_type_id, package_id FROM eventbookings WHERE eb_id=?");
+            $cur->execute([$bid]);
+            $currRow = $cur->fetch(PDO::FETCH_ASSOC) ?: [];
+            $eventTypeId = isset($_POST['event_type_id']) ? (int)$_POST['event_type_id'] : (int)($currRow['event_type_id'] ?? 0);
+            $packageId = isset($_POST['package_id']) ? (int)$_POST['package_id'] : (int)($currRow['package_id'] ?? 0);
+
+            // Map legacy eb_type (name) -> event_type_id if provided
+            $legacyType = trim((string)($_POST['eb_type'] ?? ''));
+            if ($legacyType !== '') {
+                $gt = $pdo->prepare("SELECT event_type_id FROM event_types WHERE name=? LIMIT 1");
+                $gt->execute([$legacyType]);
+                $found = (int)($gt->fetchColumn() ?: 0);
+                if ($found > 0) { $eventTypeId = $found; }
+            }
+            // Map legacy eb_package_pax (enum value) -> package_id (prefer match allowed for selected event type)
+            if (isset($_POST['eb_package_pax']) && $_POST['eb_package_pax'] !== '') {
+                $paxVal = (string)$_POST['eb_package_pax'];
+                $foundPkg = 0;
+                if ($eventTypeId > 0) {
+                    $gp = $pdo->prepare("SELECT p.package_id FROM event_type_packages ep JOIN packages p ON p.package_id=ep.package_id WHERE ep.event_type_id=? AND p.pax=? ORDER BY p.package_id DESC LIMIT 1");
+                    $gp->execute([$eventTypeId, $paxVal]);
+                    $foundPkg = (int)($gp->fetchColumn() ?: 0);
+                }
+                if ($foundPkg === 0) {
+                    $gp = $pdo->prepare("SELECT package_id FROM packages WHERE pax=? ORDER BY package_id DESC LIMIT 1");
+                    $gp->execute([$paxVal]);
+                    $foundPkg = (int)($gp->fetchColumn() ?: 0);
+                }
+                if ($foundPkg > 0) { $packageId = $foundPkg; }
+            }
+
+            // Minimal validation: require essential fields
+            if ($name === '' || $contact === '' || $venue === '' || $dateStr === '' || $order === '') {
+                echo json_encode(['success'=>false,'message'=>'All required fields must be filled']); exit;
             }
             // Coerce datetime-local to timestamp (assume local timezone)
             $dt = date('Y-m-d H:i:s', strtotime($dateStr));
-            $sql = "UPDATE eventbookings SET eb_name=?, eb_contact=?, eb_type=?, eb_venue=?, eb_date=?, eb_order=?, eb_status=?, eb_package_pax=?, eb_addon_pax=?, eb_notes=? WHERE eb_id=?";
-            $pdo->prepare($sql)->execute([$name,$contact,$type,$venue,$dt,$order,$status, $pax !== '' ? $pax : null, $addon, $notes, $bid]);
+
+            // Build update with existing columns only
+            $sql = "UPDATE eventbookings
+                    SET eb_name=?, eb_contact=?, eb_venue=?, eb_date=?, eb_order=?, eb_status=?, eb_addon_pax=?, eb_notes=?, event_type_id=?, package_id=?
+                    WHERE eb_id=?";
+            $pdo->prepare($sql)->execute([$name, $contact, $venue, $dt, $order, $status, $addon, $notes, $eventTypeId>0?$eventTypeId:null, $packageId>0?$packageId:null, $bid]);
+            // Email user when certain statuses
+            try {
+                require_once __DIR__ . '/../classes/Mailer.php';
+                $mailer = new Mailer();
+                // Fetch user's email and names
+                $uq = $pdo->prepare("SELECT eb.*, u.user_email, u.user_fn, u.user_ln, et.name AS et_name FROM eventbookings eb LEFT JOIN users u ON u.user_id=eb.user_id LEFT JOIN event_types et ON et.event_type_id=eb.event_type_id WHERE eb.eb_id=?");
+                $uq->execute([$bid]);
+                $brow = $uq->fetch(PDO::FETCH_ASSOC) ?: [];
+                $toEmail = (string)($brow['user_email'] ?? '');
+                $toName = trim(((string)($brow['user_fn'] ?? '')) . ' ' . ((string)($brow['user_ln'] ?? '')));
+                $data = [
+                    'fullName'   => $name ?: $toName,
+                    'event_type' => (string)($brow['et_name'] ?? 'Event Booking'),
+                    'package'    => $order,
+                    'event_date' => $dt,
+                    'venue'      => $venue,
+                    'contact'    => $contact,
+                    'addons'     => is_null($addon)?'':(string)$addon,
+                    'notes'      => $notes,
+                ];
+                if ($toEmail && in_array(strtolower($status), ['confirmed','completed','paid'])) {
+                    $label = ucfirst(strtolower($status));
+                    [$subject, $html] = $mailer->renderBookingEmail($data, $label);
+                    $mailer->send($toEmail, $toName ?: $name, $subject, $html);
+                }
+            } catch (Throwable $e) { /* ignore email errors */ }
             echo json_encode(['success'=>true]);
         } catch (Throwable $e) {
             echo json_encode(['success'=>false,'message'=>'Update failed']);
@@ -293,15 +361,34 @@ if ($sectionEarly === 'bookings') {
             $method = (string)($_POST['pay_method'] ?? 'Cash');
             $amount = (float)($_POST['pay_amount'] ?? 0);
             // Get booking to read user_id
-            $b = $pdo->prepare("SELECT user_id FROM eventbookings WHERE eb_id=?");
+            $b = $pdo->prepare("SELECT eb.*, u.user_email, u.user_fn, u.user_ln, et.name AS et_name FROM eventbookings eb LEFT JOIN users u ON u.user_id=eb.user_id LEFT JOIN event_types et ON et.event_type_id=eb.event_type_id WHERE eb.eb_id=?");
             $b->execute([$bid]);
-            $userId = (int)$b->fetchColumn();
+            $brow = $b->fetch(PDO::FETCH_ASSOC) ?: [];
+            $userId = (int)($brow['user_id'] ?? 0);
             if ($userId <= 0) { echo json_encode(['success'=>false,'message'=>'User not found for booking']); exit; }
             // Insert a payment row reserved for bookings (order_id and cp_id are NULL)
             $ins = $pdo->prepare("INSERT INTO payments (order_id, cp_id, user_id, pay_date, pay_amount, pay_method, pay_status) VALUES (NULL, NULL, ?, CURDATE(), ?, ?, 'Paid')");
             $ins->execute([$userId, $amount, $method]);
             // Update booking status to Paid
             $pdo->prepare("UPDATE eventbookings SET eb_status='Paid' WHERE eb_id=?")->execute([$bid]);
+            // Email notification
+            try {
+                require_once __DIR__ . '/../classes/Mailer.php';
+                $mailer = new Mailer();
+                $toEmail = (string)($brow['user_email'] ?? '');
+                $toName = trim(((string)($brow['user_fn'] ?? '')) . ' ' . ((string)($brow['user_ln'] ?? '')));
+                $data = [
+                    'fullName'   => (string)($brow['eb_name'] ?? $toName),
+                    'event_type' => (string)($brow['et_name'] ?? 'Event Booking'),
+                    'package'    => (string)($brow['eb_order'] ?? ''),
+                    'event_date' => (string)($brow['eb_date'] ?? ''),
+                    'venue'      => (string)($brow['eb_venue'] ?? ''),
+                    'contact'    => (string)($brow['eb_contact'] ?? ''),
+                    'addons'     => (string)($brow['eb_addon_pax'] ?? ''),
+                    'notes'      => (string)($brow['eb_notes'] ?? ''),
+                ];
+                if ($toEmail) { [$subject,$html]=$mailer->renderBookingEmail($data,'Paid'); $mailer->send($toEmail,$toName?:$data['fullName'],$subject,$html); }
+            } catch (Throwable $e) {}
             echo json_encode(['success'=>true]);
         } catch (Throwable $e) {
             echo json_encode(['success'=>false,'message'=>'Mark paid failed']);
@@ -390,7 +477,7 @@ if ($sectionEarly === 'catering') {
         try {
             $method = (string)($_POST['pay_method'] ?? 'Cash');
             // Get cp to read user_id and price for status computation
-            $c = $pdo->prepare("SELECT user_id, cp_price FROM cateringpackages WHERE cp_id=?");
+            $c = $pdo->prepare("SELECT c.*, u.user_email, u.user_fn, u.user_ln FROM cateringpackages c LEFT JOIN users u ON u.user_id=c.user_id WHERE c.cp_id=?");
             $c->execute([$cpid]);
             $cpRow = $c->fetch(PDO::FETCH_ASSOC);
             $userId = (int)($cpRow['user_id'] ?? 0);
@@ -411,6 +498,25 @@ if ($sectionEarly === 'catering') {
                 $ins = $pdo->prepare("INSERT INTO payments (order_id, cp_id, user_id, pay_date, pay_amount, pay_method, pay_status) VALUES (NULL, ?, ?, CURDATE(), ?, ?, ?)");
                 $ins->execute([$cpid, $userId, $amount, $method, $status]);
             }
+            // Email Paid receipt
+            try {
+                require_once __DIR__ . '/../classes/Mailer.php';
+                $mailer = new Mailer();
+                $toEmail = (string)($cpRow['user_email'] ?? '');
+                $toName = trim(((string)($cpRow['user_fn'] ?? '')) . ' ' . ((string)($cpRow['user_ln'] ?? '')));
+                $data = [
+                    'full_name'   => (string)($cpRow['cp_name'] ?? $toName),
+                    'event_date'  => (string)($cpRow['cp_date'] ?? ''),
+                    'place'       => (string)($cpRow['cp_place'] ?? ''),
+                    'phone'       => (string)($cpRow['cp_phone'] ?? ''),
+                    'total_price' => $cpPrice,
+                    'deposit'     => $cpPrice, // fully paid
+                    'addons'      => (string)($cpRow['cp_addon_pax'] ?? ''),
+                    'notes'       => (string)($cpRow['cp_notes'] ?? ''),
+                ];
+                if ($toEmail) { [$subject,$html] = $mailer->renderCateringEmail($data, 'Paid'); $mailer->send($toEmail, $toName ?: $data['full_name'], $subject, $html); }
+            } catch (Throwable $e) {}
+
             echo json_encode(['success'=>true]);
         } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Mark paid failed']); }
         exit;
@@ -860,6 +966,127 @@ if ($sectionEarly === 'employees') {
         try { $pdo->prepare("DELETE FROM employee WHERE emp_id=?")->execute([$eid]); } catch (Throwable $e) {}
         if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
         header('Location: ?section=employees'); exit;
+    }
+}
+
+// Event Types early actions (AJAX endpoints)
+if ($sectionEarly === 'eventtypes') {
+    $action = $_GET['action'] ?? '';
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    $etId = isset($_GET['event_type_id']) ? (int)$_GET['event_type_id'] : 0;
+    if ($etId <= 0 && isset($_POST['event_type_id'])) { $etId = (int)$_POST['event_type_id']; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    $pdo = $db->opencon();
+
+    // List event types with package counts
+    if ($action === 'list') {
+        header('Content-Type: application/json');
+        try {
+            $stmt = $pdo->query("SELECT et.event_type_id, et.name, et.min_package_pax, et.max_package_pax, et.notes, et.created_at, et.updated_at,
+                                        COALESCE((SELECT COUNT(*) FROM event_type_packages ep WHERE ep.event_type_id=et.event_type_id),0) AS package_count
+                                 FROM event_types et
+                                 ORDER BY et.updated_at DESC, et.event_type_id DESC");
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            echo json_encode(['success'=>true,'data'=>$rows]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'List failed']); }
+        exit;
+    }
+
+    // List packages for selection
+    if ($action === 'list_packages') {
+        header('Content-Type: application/json');
+        try {
+            $rows = $pdo->query("SELECT package_id, name, pax, base_price, is_active FROM packages ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            echo json_encode(['success'=>true,'data'=>$rows]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'List failed']); }
+        exit;
+    }
+
+    // Get a single event type with its package ids
+    if ($action === 'get' && $etId > 0) {
+        header('Content-Type: application/json');
+        try {
+            $g = $pdo->prepare("SELECT * FROM event_types WHERE event_type_id=?");
+            $g->execute([$etId]);
+            $row = $g->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { echo json_encode(['success'=>false,'message'=>'Not found']); exit; }
+            $m = $pdo->prepare("SELECT package_id FROM event_type_packages WHERE event_type_id=? ORDER BY package_id");
+            $m->execute([$etId]);
+            $pkgIds = array_map('intval', array_column($m->fetchAll(PDO::FETCH_ASSOC) ?: [], 'package_id'));
+            echo json_encode(['success'=>true,'data'=>$row,'package_ids'=>$pkgIds]);
+        } catch (Throwable $e) { echo json_encode(['success'=>false,'message'=>'Fetch failed']); }
+        exit;
+    }
+
+    // Create
+    if ($action === 'create') {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $minP = trim((string)($_POST['min_package_pax'] ?? ''));
+            $maxP = trim((string)($_POST['max_package_pax'] ?? ''));
+            $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
+            $pkgIds = isset($_POST['package_ids']) ? (array)$_POST['package_ids'] : [];
+            $pkgIds = array_values(array_unique(array_map('intval', $pkgIds)));
+            if ($name === '') { echo json_encode(['success'=>false,'message'=>'Name is required']); exit; }
+            // Validate enum range if both provided
+            $toInt = function($v){ return ctype_digit($v) ? (int)$v : null; };
+            $mi = $minP!=='' ? $toInt($minP) : null; $ma = $maxP!=='' ? $toInt($maxP) : null;
+            if ($mi !== null && $ma !== null && $mi > $ma) { echo json_encode(['success'=>false,'message'=>'Min pax cannot exceed max pax']); exit; }
+            $pdo->beginTransaction();
+            $ins = $pdo->prepare("INSERT INTO event_types (name, min_package_pax, max_package_pax, notes) VALUES (?, ?, ?, ?)");
+            $ins->execute([$name, $minP!=='' ? $minP : null, $maxP!=='' ? $maxP : null, $notes !== '' ? $notes : null]);
+            $newId = (int)$pdo->lastInsertId();
+            if ($pkgIds) {
+                $ip = $pdo->prepare("INSERT INTO event_type_packages (event_type_id, package_id) VALUES (?, ?)");
+                foreach ($pkgIds as $pid) { if ($pid > 0) { try { $ip->execute([$newId, $pid]); } catch (Throwable $e) {} } }
+            }
+            $pdo->commit();
+            echo json_encode(['success'=>true,'event_type_id'=>$newId]);
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} echo json_encode(['success'=>false,'message'=>'Create failed']); }
+        exit;
+    }
+
+    // Update
+    if ($action === 'update' && $etId > 0) {
+        header('Content-Type: application/json');
+        try {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $minP = trim((string)($_POST['min_package_pax'] ?? ''));
+            $maxP = trim((string)($_POST['max_package_pax'] ?? ''));
+            $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : null;
+            $pkgIds = isset($_POST['package_ids']) ? (array)$_POST['package_ids'] : [];
+            $pkgIds = array_values(array_unique(array_map('intval', $pkgIds)));
+            if ($name === '') { echo json_encode(['success'=>false,'message'=>'Name is required']); exit; }
+            $toInt = function($v){ return ctype_digit($v) ? (int)$v : null; };
+            $mi = $minP!=='' ? $toInt($minP) : null; $ma = $maxP!=='' ? $toInt($maxP) : null;
+            if ($mi !== null && $ma !== null && $mi > $ma) { echo json_encode(['success'=>false,'message'=>'Min pax cannot exceed max pax']); exit; }
+            $pdo->beginTransaction();
+            $pdo->prepare("UPDATE event_types SET name=?, min_package_pax=?, max_package_pax=?, notes=? WHERE event_type_id=?")
+                ->execute([$name, $minP!=='' ? $minP : null, $maxP!=='' ? $maxP : null, $notes !== '' ? $notes : null, $etId]);
+            $pdo->prepare("DELETE FROM event_type_packages WHERE event_type_id=?")->execute([$etId]);
+            if ($pkgIds) {
+                $ip = $pdo->prepare("INSERT INTO event_type_packages (event_type_id, package_id) VALUES (?, ?)");
+                foreach ($pkgIds as $pid) { if ($pid > 0) { try { $ip->execute([$etId, $pid]); } catch (Throwable $e) {} } }
+            }
+            $pdo->commit();
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} echo json_encode(['success'=>false,'message'=>'Update failed']); }
+        exit;
+    }
+
+    // Delete
+    if ($action === 'delete' && $etId > 0) {
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare("DELETE FROM event_type_packages WHERE event_type_id=?")->execute([$etId]);
+            $pdo->prepare("DELETE FROM event_types WHERE event_type_id=?")->execute([$etId]);
+            $pdo->commit();
+        } catch (Throwable $e) { try { $pdo->rollBack(); } catch (Throwable $e2) {} }
+        if ($isAjaxAction) { header('Content-Type: application/json'); echo json_encode(['success'=>true]); exit; }
+        header('Location: ?section=eventtypes'); exit;
     }
 }
 ?>
@@ -1365,6 +1592,13 @@ if ($sectionEarly === 'employees') {
                     </div>
                 </a>
 
+                <a class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'eventtypes') ? 'active' : ''; ?>" href="?section=eventtypes">
+                    <i class="fas fa-clipboard-list flex-shrink-0 w-5 h-5"></i>
+                    <div class="sidebar-text text-left">
+                        <div class="font-medium text-sm">Event Types</div>
+                    </div>
+                </a>
+
                 <!-- New: Packages section -->
                 <a class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg <?php echo ($section === 'packages') ? 'active' : ''; ?>" href="?section=packages">
                     <i class="fas fa-boxes-stacked flex-shrink-0 w-5 h-5"></i>
@@ -1417,6 +1651,7 @@ if ($sectionEarly === 'employees') {
                                         'bookings' => 'Bookings Management',
                                         'catering' => 'Catering Packages',
                                         'categories' => 'Food Categories',
+                                        'eventtypes' => 'Event Types',
                                         'packages' => 'Packages',
                                         'settings' => 'Settings'
                                     ];
@@ -1440,18 +1675,49 @@ if ($sectionEarly === 'employees') {
                     <div class="flex items-center gap-4">
                         <!-- Notifications -->
                         <div class="relative">
-                            <button class="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                            <button class="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Notifications">
                                 <i class="fas fa-bell text-gray-600"></i>
                                 <span class="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
                             </button>
                         </div>
 
-                        <!-- User Menu -->
-                        <div class="flex items-center gap-2">
-                            <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-medium">
-                                A
+                        <!-- Admin User Dropdown -->
+                        <?php
+                            $adminName = trim((string)($_SESSION['user_name'] ?? ($_SESSION['user_fn'] ?? '')) . ' ' . (string)($_SESSION['user_ln'] ?? ''));
+                            $adminName = trim($adminName !== '' ? $adminName : (string)($_SESSION['user_username'] ?? 'Admin'));
+                            $adminEmail = trim((string)($_SESSION['user_email'] ?? ''));
+                            $adminPhoto = isset($_SESSION['user_photo']) ? (string)$_SESSION['user_photo'] : '';
+                            $adminInitial = strtoupper(mb_substr($adminName !== '' ? $adminName : 'A', 0, 1, 'UTF-8'));
+                        ?>
+                        <div id="admin-user-menu" class="relative">
+                            <button id="admin-user-button" class="flex items-center gap-2 hover:bg-gray-100 px-2 py-1.5 rounded-lg transition" aria-haspopup="true" aria-expanded="false">
+                                <?php if ($adminPhoto): ?>
+                                    <img src="<?= htmlspecialchars($adminPhoto) ?>" alt="Profile" class="w-8 h-8 rounded-full object-cover border" onerror="this.style.display='none'">
+                                <?php else: ?>
+                                    <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-medium">
+                                        <?= htmlspecialchars($adminInitial) ?>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="hidden sm:block text-left">
+                                    <div class="text-sm font-medium leading-4"><?= htmlspecialchars($adminName) ?></div>
+                                   
+                                </div>
+                                <i class="fas fa-chevron-down text-gray-500 text-xs"></i>
+                            </button>
+                            <div id="admin-user-dropdown" class="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-50">
+                                <div class="px-3 py-2 border-b">
+                                    <div class="text-sm font-medium truncate"><?= htmlspecialchars($adminName) ?></div>
+                                    
+                                </div>
+                                <a href="../user/profile.php" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm">
+                                    <i class="fas fa-user text-gray-600 w-4"></i>
+                                    <span>Profile</span>
+                                </a>
+                                <a href="../user/logout.php" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm text-rose-700">
+                                    <i class="fas fa-sign-out-alt w-4"></i>
+                                    <span>Logout</span>
+                                </a>
                             </div>
-                            <span class="text-sm font-medium">Admin</span>
                         </div>
                     </div>
                 </div>
@@ -2086,24 +2352,30 @@ if ($sectionEarly === 'employees') {
                 if ($section === 'bookings') {
                     try {
                         $pdo = $db->opencon();
-                        // Load distinct types for category filtering
-                        try { $bkTypesList = $pdo->query("SELECT DISTINCT eb_type FROM eventbookings WHERE eb_type IS NOT NULL AND eb_type<>'' ORDER BY eb_type ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) { $bkTypesList = []; }
+                        // Load distinct event type names from event_types
+                        try { $bkTypesList = $pdo->query("SELECT name FROM event_types ORDER BY name ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) { $bkTypesList = []; }
                         $w = []; $p = [];
                         if ($bkQ !== '') { $w[] = "(eb.eb_name LIKE ? OR eb.eb_contact LIKE ? OR eb.eb_venue LIKE ?)"; $p[] = '%'.$bkQ.'%'; $p[] = '%'.$bkQ.'%'; $p[] = '%'.$bkQ.'%'; }
-                        if ($bkType !== '') { $w[] = "eb.eb_type = ?"; $p[] = $bkType; }
+                        if ($bkType !== '') { $w[] = "et.name = ?"; $p[] = $bkType; }
                         if ($bkOrder !== '') { $w[] = "eb.eb_order = ?"; $p[] = $bkOrder; }
                         if ($bkStatus !== '') { $w[] = "eb.eb_status = ?"; $p[] = $bkStatus; }
                         if ($bkDate !== '') { $w[] = "DATE(eb.eb_date) = ?"; $p[] = $bkDate; }
                         $where = $w ? ('WHERE ' . implode(' AND ', $w)) : '';
-                        $bkTotal = (int)$pdo->prepare("SELECT COUNT(*) FROM eventbookings eb $where")
-                                            ->execute($p) ? (int)$pdo->prepare("SELECT COUNT(*) FROM eventbookings eb $where")->execute($p) : 0;
-                        // Re-run properly: count separately to fetch scalar
-                        $stmtC = $pdo->prepare("SELECT COUNT(*) FROM eventbookings eb $where"); $stmtC->execute($p); $bkTotal = (int)$stmtC->fetchColumn();
-                        $sql = "SELECT eb.*, u.user_fn, u.user_ln,
+                        // Count with join to event_types when filtering by type
+                        $stmtC = $pdo->prepare("SELECT COUNT(*)
+                                                 FROM eventbookings eb
+                                                 LEFT JOIN event_types et ON et.event_type_id = eb.event_type_id
+                                                 $where");
+                        $stmtC->execute($p); $bkTotal = (int)$stmtC->fetchColumn();
+            $sql = "SELECT eb.*, u.user_fn, u.user_ln, u.user_email, u.user_phone, et.name AS eb_type, pk.pax AS eb_package_pax, pk.name AS package_name,
                                 (SELECT pay_date FROM payments py WHERE py.user_id=eb.user_id AND py.order_id IS NULL AND py.cp_id IS NULL ORDER BY pay_date DESC, pay_id DESC LIMIT 1) AS last_pay_date,
                                 (SELECT pay_method FROM payments py WHERE py.user_id=eb.user_id AND py.order_id IS NULL AND py.cp_id IS NULL ORDER BY pay_date DESC, pay_id DESC LIMIT 1) AS last_pay_method,
                                 (SELECT pay_amount FROM payments py WHERE py.user_id=eb.user_id AND py.order_id IS NULL AND py.cp_id IS NULL ORDER BY pay_date DESC, pay_id DESC LIMIT 1) AS last_pay_amount
-                                FROM eventbookings eb LEFT JOIN users u ON u.user_id=eb.user_id $where
+                                FROM eventbookings eb
+                                LEFT JOIN users u ON u.user_id=eb.user_id
+                                LEFT JOIN event_types et ON et.event_type_id = eb.event_type_id
+                                LEFT JOIN packages pk ON pk.package_id = eb.package_id
+                                $where
                                 ORDER BY eb.created_at DESC LIMIT $bkLimit OFFSET $bkOffset";
                         $stmt = $pdo->prepare($sql); $stmt->execute($p); $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     } catch (Throwable $e) { $bookings = []; $bkTotal = 0; }
@@ -2159,49 +2431,82 @@ if ($sectionEarly === 'employees') {
                             </div>
                         </form>
                         <div id="bookings-list">
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200">
-                                    <thead class="bg-gray-50">
-                                        <tr>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Venue</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Package Pax</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Add ons</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="bg-white divide-y divide-gray-200" id="bookings-table">
-                                        <?php if ($bookings): foreach ($bookings as $b): ?>
-                                            <tr>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($b['eb_name']) ?></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($b['eb_contact']) ?></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><span class="<?= booking_chip_base_classes(); ?>" style="<?= booking_type_chip_style($b['eb_type']); ?>"><?= htmlspecialchars($b['eb_type']) ?></span></td>
-                                                <td class="px-3 py-2 text-sm"><span class="inline-block px-2 py-1 rounded border bg-violet-50 border-violet-300 text-violet-800 whitespace-normal break-words" title="<?= htmlspecialchars($b['eb_venue']) ?>"><?= htmlspecialchars($b['eb_venue']) ?></span></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= date('Y-m-d H:i', strtotime($b['eb_date'])) ?></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm capitalize"><span class="<?= booking_chip_base_classes().' '.booking_order_chip_classes($b['eb_order']); ?>"><?= htmlspecialchars($b['eb_order']) ?></span></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($b['eb_package_pax'] ?? '') ?></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars((string)$b['eb_addon_pax']) ?></td>
-                                                <td class="px-3 py-2 text-sm max-w-[240px] truncate" title="<?= htmlspecialchars((string)$b['eb_notes']) ?>"><?= htmlspecialchars((string)$b['eb_notes']) ?></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-sm"><span class="<?= booking_chip_base_classes().' '.booking_status_chip_classes($b['eb_status']); ?>"><?= htmlspecialchars((string)$b['eb_status']) ?></span></td>
-                                                <td class="px-3 py-2 whitespace-nowrap text-right text-sm">
-                                                    <button class="bk-edit inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50" title="Edit" data-bk-id="<?= (int)$b['eb_id'] ?>"><i class="fas fa-pen"></i></button>
-                                                    <button class="bk-paid inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50 ml-1" title="Mark Paid" data-bk-id="<?= (int)$b['eb_id'] ?>"><i class="fas fa-receipt"></i></button>
-                                                    <button class="bk-delete inline-flex items-center justify-center w-8 h-8 rounded border border-red-300 text-red-600 hover:bg-red-50 ml-1" title="Delete" data-bk-id="<?= (int)$b['eb_id'] ?>"><i class="fas fa-trash"></i></button>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; else: ?>
-                                            <tr><td colspan="11" class="px-3 py-10 text-center text-sm text-muted-foreground">No bookings found</td></tr>
-                                        <?php endif; ?>
-                                    </tbody>
-                                </table>
+                            <div id="bookings-cards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                <?php if ($bookings): foreach ($bookings as $b): ?>
+                                    <?php
+                                        // Compose customer and contacts
+                                        $custName = trim((string)($b['eb_name'] ?? ''));
+                                        // Prefer booking-provided email/phone, fallback to user profile if available
+                                        $email = trim((string)($b['eb_email'] ?? ($b['user_email'] ?? '')));
+                                        $phone = trim((string)($b['eb_contact'] ?? ($b['user_phone'] ?? '')));
+                                        // Package label using joined aliases when available
+                                        $pkgLabel = '—';
+                                        $paxVal = trim((string)($b['eb_package_pax'] ?? ''));
+                                        $pkgName = trim((string)($b['package_name'] ?? ''));
+                                        if ($pkgName !== '') {
+                                            $pkgLabel = $pkgName . ($paxVal!=='' ? (' - ' . $paxVal) : '');
+                                        } elseif ($paxVal !== '') {
+                                            $pkgLabel = $paxVal;
+                                        }
+                                        $addons = trim((string)($b['eb_addon_pax'] ?? ''));
+                                        $venue = trim((string)($b['eb_venue'] ?? ''));
+                                        $evtDate = $b['eb_date'] ? date('M d, Y g:i A', strtotime($b['eb_date'])) : '';
+                                        $notes = trim((string)($b['eb_notes'] ?? ''));
+                                        $status = trim((string)($b['eb_status'] ?? 'Pending'));
+                                        $id = (int)$b['eb_id'];
+                                    ?>
+                                    <div class="card border rounded-xl p-4 hover:shadow-lg transition group">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="text-base font-semibold text-primary"><?= htmlspecialchars($custName) ?></div>
+                                                <div class="text-xs text-muted-foreground">Booking #<?= $id ?></div>
+                                            </div>
+                                            <span class="<?= booking_chip_base_classes().' '.booking_status_chip_classes($status); ?>" data-bk-status><?= htmlspecialchars($status) ?></span>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                            <div>
+                                                <div class="text-xs text-muted-foreground">Contacts</div>
+                                                <?php $contactParts = []; if ($phone !== '') { $contactParts[] = $phone; } if ($email !== '') { $contactParts[] = $email; } $contacts = $contactParts ? implode(' • ', $contactParts) : '—'; ?>
+                                                <div><?= htmlspecialchars($contacts) ?></div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-muted-foreground">Event type</div>
+                                                <?php $etypeSafe = isset($b['eb_type']) ? (string)$b['eb_type'] : ''; ?>
+                                                <div><span class="<?= booking_chip_base_classes(); ?>" style="<?= booking_type_chip_style($etypeSafe); ?>"><?= htmlspecialchars($etypeSafe !== '' ? $etypeSafe : '—') ?></span></div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-muted-foreground">Package</div>
+                                                <div><?= htmlspecialchars($pkgLabel) ?></div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-muted-foreground">Add ons</div>
+                                                <div><?= htmlspecialchars($addons !== '' ? $addons : '—') ?></div>
+                                            </div>
+                                            <div class="sm:col-span-2">
+                                                <div class="text-xs text-muted-foreground">Venue</div>
+                                                <div><span class="inline-block px-2 py-1 rounded border bg-violet-50 border-violet-300 text-violet-800" title="<?= htmlspecialchars($venue) ?>"><?= htmlspecialchars($venue) ?></span></div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-muted-foreground">Event Date</div>
+                                                <div><?= htmlspecialchars($evtDate) ?></div>
+                                            </div>
+                                            <div class="sm:col-span-2">
+                                                <div class="text-xs text-muted-foreground">Notes</div>
+                                                <div class="truncate" title="<?= htmlspecialchars($notes) ?>"><?= htmlspecialchars($notes !== '' ? $notes : '—') ?></div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-4 pt-3 border-t flex flex-wrap items-center justify-end gap-2">
+                                            <button class="bk-edit h-9 px-3 rounded border border-gray-300 hover:bg-gray-50" title="Edit" data-bk-id="<?= $id ?>"><i class="fas fa-pen mr-2"></i>Edit</button>
+                                            <button class="bk-delete h-9 px-3 rounded border border-rose-300 text-rose-700 hover:bg-rose-50" title="Delete" data-bk-id="<?= $id ?>"><i class="fas fa-trash mr-2"></i>Delete</button>
+                                            <button class="bk-confirm h-9 px-3 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50" title="Mark Confirmed" data-bk-id="<?= $id ?>"><i class="fa-solid fa-circle-check mr-2"></i>Confirmed</button>
+                                            <button class="bk-complete h-9 px-3 rounded border border-blue-300 text-blue-700 hover:bg-blue-50" title="Mark Completed" data-bk-id="<?= $id ?>"><i class="fa-solid fa-flag-checkered mr-2"></i>Completed</button>
+                                        </div>
+                                    </div>
+                                <?php endforeach; else: ?>
+                                    <div class="col-span-full text-center text-sm text-muted-foreground py-10">No bookings found</div>
+                                <?php endif; ?>
                             </div>
-                            <div class="p-3 flex items-center justify-between border-t border-gray-100 text-sm">
+                            <div class="p-3 flex items-center justify-between border-t border-gray-100 text-sm mt-4">
                                 <div>Total: <?= (int)$bkTotal ?> bookings</div>
                                 <div class="flex items-center gap-1">
                                     <?php if ($bkPage > 1): $q=$_GET; $q['bk_page']=$bkPage-1; ?>
@@ -2278,7 +2583,16 @@ if ($sectionEarly === 'employees') {
                 $cpPages = max(1, (int)ceil(($cpTotal ?: 0)/$cpLimit));
                 function cp_chip_base(){ return 'inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium'; }
                 function cp_place_chip(){ return 'bg-violet-50 border-violet-300 text-violet-800'; }
-                function cp_method_chip($m){ $n=strtolower(trim((string)$m)); if($n==='cash')return 'bg-amber-50 border-amber-300 text-amber-800'; if($n==='online')return 'bg-sky-50 border-sky-300 text-sky-800'; if($n==='credit')return 'bg-indigo-50 border-indigo-300 text-indigo-800'; return 'bg-stone-50 border-stone-300'; }
+                function cp_method_chip($m){
+                    $n=strtolower(trim((string)$m));
+                    if($n==='cash') return 'bg-amber-50 border-amber-300 text-amber-800';
+                    if($n==='online') return 'bg-sky-50 border-sky-300 text-sky-800';
+                    if($n==='credit' || $n==='card') return 'bg-indigo-50 border-indigo-300 text-indigo-800';
+                    if($n==='gcash') return 'bg-cyan-50 border-cyan-300 text-cyan-800';
+                    if($n==='paymaya') return 'bg-emerald-50 border-emerald-300 text-emerald-800';
+                    if($n==='paypal') return 'bg-blue-50 border-blue-300 text-blue-800';
+                    return 'bg-stone-50 border-stone-300 text-stone-800';
+                }
                 function cp_status_chip($s){ $n=strtolower(trim((string)$s)); if($n==='paid')return 'bg-emerald-50 border-emerald-300 text-emerald-800'; if($n==='partial')return 'bg-blue-50 border-blue-300 text-blue-800'; if($n==='pending')return 'bg-gray-50 border-gray-300 text-gray-800'; return 'bg-stone-50 border-stone-300'; }
                 ?>
                 <div id="catering-content" class="section-content <?php echo ($section === 'catering') ? '' : 'hidden '; ?>p-6">
@@ -2302,9 +2616,7 @@ if ($sectionEarly === 'employees') {
                             <label class="text-xs text-muted-foreground">Payment Method</label>
                             <select id="cp-method" name="cp_method" class="w-full mt-1 px-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
                                 <option value="">All</option>
-                                <option value="Cash" <?= (($_GET['cp_method'] ?? '')==='Cash')?'selected':''; ?>>Cash</option>
-                                <option value="Online" <?= (($_GET['cp_method'] ?? '')==='Online')?'selected':''; ?>>Online</option>
-                                <option value="Credit" <?= (($_GET['cp_method'] ?? '')==='Credit')?'selected':''; ?>>Credit</option>
+                                <?php $mcur = $_GET['cp_method'] ?? ''; $methods = ['Cash','Online','Credit','Card','GCash','PayMaya','PayPal']; foreach($methods as $mopt){ $sel = ($mcur===$mopt)?'selected':''; echo "<option value=\"".htmlspecialchars($mopt)."\" $sel>".htmlspecialchars($mopt)."</option>"; } ?>
                             </select>
                         </div>
                         <div>
@@ -2321,47 +2633,76 @@ if ($sectionEarly === 'employees') {
                         </div>
                     </form>
                     <div id="cp-list" class="card overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full text-sm">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Place</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Add ons</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Amount</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
-                                        <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="cp-table" class="bg-white divide-y divide-gray-200">
-                                    <?php if ($packages): foreach ($packages as $cp): ?>
-                                        <tr>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($cp['cp_name']) ?></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($cp['cp_phone']) ?></td>
-                                            <td class="px-3 py-2 text-sm"><span class="<?= cp_chip_base().' '.cp_place_chip(); ?>" title="<?= htmlspecialchars($cp['cp_place']) ?>"><?= htmlspecialchars($cp['cp_place']) ?></span></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars($cp['cp_date']) ?></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm">₱<?= number_format((float)$cp['cp_price'],2) ?></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= htmlspecialchars((string)$cp['cp_addon_pax']) ?></td>
-                                            <td class="px-3 py-2 text-sm max-w-[240px] truncate" title="<?= htmlspecialchars((string)$cp['cp_notes']) ?>"><?= htmlspecialchars((string)$cp['cp_notes']) ?></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?= $cp['pay_amount']!==null ? ('₱'.number_format((float)$cp['pay_amount'],2)) : '' ?></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?php $m=$cp['pay_method']??''; if($m!==''){ ?><span class="<?= cp_chip_base().' '.cp_method_chip($m); ?>"><?= htmlspecialchars($m) ?></span><?php } ?></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-sm"><?php $s=$cp['pay_status']??''; if($s!==''){ ?><span class="<?= cp_chip_base().' '.cp_status_chip($s); ?>"><?= htmlspecialchars($s) ?></span><?php } ?></td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-right text-sm">
-                                                <button class="cp-edit inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50" title="Edit" data-cp-id="<?= (int)$cp['cp_id'] ?>"><i class="fas fa-pen"></i></button>
-                                                <button class="cp-paid inline-flex items-center justify-center w-8 h-8 rounded border border-gray-300 hover:bg-gray-50 ml-1" title="Paid" data-cp-id="<?= (int)$cp['cp_id'] ?>"><i class="fa-solid fa-circle-check"></i></button>
-                                                <button class="cp-delete inline-flex items-center justify-center w-8 h-8 rounded border border-red-300 text-red-600 hover:bg-red-50 ml-1" title="Delete" data-cp-id="<?= (int)$cp['cp_id'] ?>"><i class="fas fa-trash"></i></button>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; else: ?>
-                                        <tr><td colspan="11" class="px-3 py-10 text-center text-sm text-muted-foreground">No catering packages found</td></tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
+                        <div id="cp-cards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
+                            <?php if ($packages): foreach ($packages as $cp): ?>
+                                <?php
+                                    $id = (int)$cp['cp_id'];
+                                    $name = trim((string)$cp['cp_name']);
+                                    $phone = trim((string)$cp['cp_phone']);
+                                    $email = trim((string)($cp['cp_email'] ?? ''));
+                                    $place = trim((string)$cp['cp_place']);
+                                    $date = trim((string)$cp['cp_date']);
+                                    $price = (float)$cp['cp_price'];
+                                    $addons = trim((string)($cp['cp_addon_pax'] ?? ''));
+                                    $notes = trim((string)($cp['cp_notes'] ?? ''));
+                                    $payAmount = isset($cp['pay_amount']) && $cp['pay_amount']!==null ? ('₱'.number_format((float)$cp['pay_amount'],2)) : '—';
+                                    $payMethod = trim((string)($cp['pay_method'] ?? ''));
+                                    $payStatus = trim((string)($cp['pay_status'] ?? ''));
+                                ?>
+                                <div class="card border rounded-xl p-4 hover:shadow-lg transition group">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div class="text-base font-semibold text-primary"><?= htmlspecialchars($name) ?></div>
+                                            <div class="text-xs text-muted-foreground">Package #<?= $id ?></div>
+                                        </div>
+                                        <?php if ($payStatus !== ''): ?>
+                                            <span class="<?= cp_chip_base().' '.cp_status_chip($payStatus); ?>"><?= htmlspecialchars($payStatus) ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                            <div class="text-xs text-muted-foreground">Contacts</div>
+                                            <?php $cpContactParts = []; if ($phone !== '') { $cpContactParts[] = $phone; } if ($email !== '') { $cpContactParts[] = $email; } $cpContacts = $cpContactParts ? implode(' • ', $cpContactParts) : '—'; ?>
+                                            <div><?= htmlspecialchars($cpContacts) ?></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-muted-foreground">Place</div>
+                                            <div><span class="<?= cp_chip_base().' '.cp_place_chip(); ?>" title="<?= htmlspecialchars($place) ?>"><?= htmlspecialchars($place) ?></span></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-muted-foreground">Date</div>
+                                            <div><?= htmlspecialchars($date) ?></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-muted-foreground">Price</div>
+                                            <div>₱<?= number_format($price,2) ?></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-muted-foreground">Addons</div>
+                                            <div><?= htmlspecialchars($addons !== '' ? $addons : '—') ?></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-muted-foreground">Payment Amount</div>
+                                            <div><?= $payAmount ?></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-muted-foreground">Payment Method</div>
+                                            <div><?php if ($payMethod !== '') { ?><span class="<?= cp_chip_base().' '.cp_method_chip($payMethod); ?>"><?= htmlspecialchars($payMethod) ?></span><?php } else { echo '—'; } ?></div>
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <div class="text-xs text-muted-foreground">Notes</div>
+                                            <div class="truncate" title="<?= htmlspecialchars($notes) ?>"><?= htmlspecialchars($notes !== '' ? $notes : '—') ?></div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 pt-3 border-t flex flex-wrap items-center justify-end gap-2">
+                                        <button class="cp-edit h-9 px-3 rounded border border-gray-300 hover:bg-gray-50" title="Edit" data-cp-id="<?= $id ?>"><i class="fas fa-pen mr-2"></i>Edit</button>
+                                        <button class="cp-delete h-9 px-3 rounded border border-rose-300 text-rose-700 hover:bg-rose-50" title="Delete" data-cp-id="<?= $id ?>"><i class="fas fa-trash mr-2"></i>Delete</button>
+                                        <button class="cp-paid h-9 px-3 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50" title="Paid" data-cp-id="<?= $id ?>"><i class="fa-solid fa-circle-check mr-2"></i>Paid</button>
+                                    </div>
+                                </div>
+                            <?php endforeach; else: ?>
+                                <div class="col-span-full text-center text-sm text-muted-foreground py-10">No catering packages found</div>
+                            <?php endif; ?>
                         </div>
                         <div class="p-3 flex items-center justify-between border-t border-gray-100 text-sm">
                             <div>Total: <?= (int)$cpTotal ?> items</div>
@@ -2536,6 +2877,131 @@ if ($sectionEarly === 'employees') {
                 </div>
 
                 <?php
+                // Event Types data (no pagination for now; small list expected)
+                $eventTypes = [];
+                if ($section === 'eventtypes') {
+                    try {
+                        $pdo = $db->opencon();
+                        $stmt = $pdo->query("SELECT et.event_type_id, et.name, et.min_package_pax, et.max_package_pax, et.notes, et.updated_at,
+                                                     COALESCE((SELECT COUNT(*) FROM event_type_packages ep WHERE ep.event_type_id=et.event_type_id),0) AS package_count
+                                              FROM event_types et
+                                              ORDER BY et.updated_at DESC, et.event_type_id DESC");
+                        $eventTypes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    } catch (Throwable $e) { $eventTypes = []; }
+                }
+                ?>
+                <div id="eventtypes-content" class="section-content <?php echo ($section === 'eventtypes') ? '' : 'hidden '; ?>p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-2xl font-medium text-primary">Event Types</h2>
+                            <p class="text-muted-foreground">Manage event types and which packages are allowed per type</p>
+                        </div>
+                        <button type="button" id="open-add-eventtype" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition">
+                            <i class="fas fa-plus"></i>
+                            Add Event Type
+                        </button>
+                    </div>
+                    <div id="et-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        <?php if ($section === 'eventtypes' && !empty($eventTypes)): foreach ($eventTypes as $et): ?>
+                            <div class="card p-4 flex flex-col justify-between">
+                                <div>
+                                    <div class="flex items-start justify-between gap-2">
+                                        <h3 class="text-lg font-semibold text-primary"><?php echo htmlspecialchars($et['name']); ?></h3>
+                                        <span class="inline-flex items-center px-2 py-1 text-xs rounded-full border bg-emerald-50 border-emerald-300 text-emerald-800" title="Linked packages">
+                                            <i class="fa-solid fa-boxes-stacked mr-1"></i>
+                                            <?php echo (int)$et['package_count']; ?>
+                                        </span>
+                                    </div>
+                                    <div class="mt-2 flex items-center gap-2 text-sm">
+                                        <?php if (!empty($et['min_package_pax'])): ?>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full border bg-blue-50 border-blue-300 text-blue-800" title="Min pax">Min: <?php echo htmlspecialchars($et['min_package_pax']); ?></span>
+                                        <?php endif; ?>
+                                        <?php if (!empty($et['max_package_pax'])): ?>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full border bg-purple-50 border-purple-300 text-purple-800" title="Max pax">Max: <?php echo htmlspecialchars($et['max_package_pax']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($et['notes'])): ?>
+                                        <div class="mt-3 text-sm text-muted-foreground line-clamp-3" title="<?php echo htmlspecialchars((string)$et['notes']); ?>"><?php echo htmlspecialchars((string)$et['notes']); ?></div>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="mt-4 flex items-center justify-end gap-2">
+                                    <button type="button" class="et-edit h-9 w-9 grid place-items-center rounded border border-gray-200 hover:bg-gray-50" title="Edit" data-et-id="<?php echo (int)$et['event_type_id']; ?>">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button type="button" class="et-delete h-9 w-9 grid place-items-center rounded border border-red-200 text-red-700 hover:bg-red-50" title="Delete" data-et-id="<?php echo (int)$et['event_type_id']; ?>">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endforeach; else: ?>
+                            <?php if ($section === 'eventtypes'): ?>
+                                <div class="col-span-full text-center text-muted-foreground py-10">No event types yet.</div>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Add/Edit Event Type Modal -->
+                <div id="et-backdrop" class="fixed inset-0 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true"></div>
+                <div id="et-modal" class="fixed inset-0 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200" style="display:none" aria-hidden="true">
+                    <div class="w-full max-w-2xl mx-4 scale-95 transition-transform duration-200">
+                        <div class="bg-white rounded-lg shadow-xl">
+                            <div class="flex items-center justify-between px-4 py-3 border-b">
+                                <h3 id="et-modal-title" class="text-lg font-medium">Add Event Type</h3>
+                                <button type="button" id="et-close" class="h-8 w-8 grid place-items-center rounded hover:bg-gray-100"><i class="fas fa-times"></i></button>
+                            </div>
+                            <form id="et-form" class="p-4 space-y-4">
+                                <input type="hidden" name="section" value="eventtypes" />
+                                <input type="hidden" name="ajax" value="1" />
+                                <input type="hidden" name="action" value="create" id="et-action" />
+                                <input type="hidden" name="event_type_id" id="et-id" />
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div class="sm:col-span-2">
+                                        <label class="text-sm text-muted-foreground">Event Name</label>
+                                        <input type="text" name="name" id="et-name" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" required />
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-muted-foreground">Minimum Pax</label>
+                                        <select name="min_package_pax" id="et-min" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                            <option value="">None</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                            <option value="150">150</option>
+                                            <option value="200">200</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-muted-foreground">Maximum Pax</label>
+                                        <select name="max_package_pax" id="et-max" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
+                                            <option value="">None</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                            <option value="150">150</option>
+                                            <option value="200">200</option>
+                                        </select>
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label class="text-sm text-muted-foreground">Notes</label>
+                                        <textarea name="notes" id="et-notes" rows="3" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Optional"></textarea>
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <div class="flex items-center justify-between">
+                                            <label class="text-sm text-muted-foreground">Allowed Packages</label>
+                                            <input id="et-packages-search" type="text" placeholder="Search packages..." class="ml-2 flex-1 px-2 py-1 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary" />
+                                        </div>
+                                        <div id="et-packages-list" class="mt-2 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2 grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                                    </div>
+                                </div>
+                                <div class="flex justify-end gap-2 pt-2">
+                                    <button type="button" id="et-cancel" class="px-3 py-2 rounded border border-gray-300">Cancel</button>
+                                    <button type="submit" class="px-4 py-2 rounded bg-primary text-white">Save</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <?php
                 // Employees data and filters (server-side)
                 $empQ = isset($_GET['emp_q']) ? trim((string)$_GET['emp_q']) : '';
                 $empRole = isset($_GET['emp_role']) ? trim((string)$_GET['emp_role']) : '';
@@ -2673,23 +3139,118 @@ if ($sectionEarly === 'employees') {
         const sidebarIcon = document.getElementById('sidebar-icon');
         const sidebarTexts = document.querySelectorAll('.sidebar-text');
 
-        // Initialize from persisted preference
-        try { localStorage.setItem('sidebarCollapsed', 'false'); } catch (_) {}
-        sidebar.classList.add('sidebar-expanded');
-        sidebar.classList.remove('sidebar-collapsed');
+        // Initialize from persisted preference (default: expanded)
+        try {
+            const sv = localStorage.getItem('sidebarCollapsed');
+            sidebarCollapsed = (sv === 'true');
+        } catch (_) { sidebarCollapsed = false; }
+        if (sidebarCollapsed) {
+            sidebar.classList.add('sidebar-collapsed');
+            sidebar.classList.remove('sidebar-expanded');
+            sidebarTexts.forEach(text => text.style.display = 'none');
+        } else {
+            sidebar.classList.add('sidebar-expanded');
+            sidebar.classList.remove('sidebar-collapsed');
+            sidebarTexts.forEach(text => text.style.display = 'block');
+        }
         if (sidebarIcon) sidebarIcon.className = 'fas fa-bars text-sm';
-        sidebarTexts.forEach(text => text.style.display = 'block');
-
         if (sidebarToggle) { sidebarToggle.style.display='none'; }
 
         // Clicking empty space inside the sidebar toggles expand/collapse.
         // Ignore clicks on interactive elements (nav items, buttons, links, inputs).
-        // Disable click-to-toggle
-        sidebar.addEventListener('click', function(e) { /* locked */ });
+        const setSidebarState = (collapsed) => {
+            sidebarCollapsed = !!collapsed;
+            if (sidebarCollapsed) {
+                sidebar.classList.add('sidebar-collapsed');
+                sidebar.classList.remove('sidebar-expanded');
+                sidebarTexts.forEach(text => text.style.display = 'none');
+            } else {
+                sidebar.classList.add('sidebar-expanded');
+                sidebar.classList.remove('sidebar-collapsed');
+                sidebarTexts.forEach(text => text.style.display = 'block');
+            }
+            try { localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? 'true' : 'false'); } catch(_) {}
+        };
+        // Initialize from stored preference if available
+        try {
+            const sv = localStorage.getItem('sidebarCollapsed');
+            if (sv === 'true' || sv === 'false') setSidebarState(sv === 'true');
+        } catch(_) {}
+        sidebar.addEventListener('click', function(e) {
+            const link = e.target.closest('a');
+            const interactive = e.target.closest('a,button,input,select,textarea,label');
+            if (interactive) {
+                // If the user clicked a navigation link, let it navigate without toggling
+                return;
+            }
+            // Prevent toggling when clicking scrollbars
+            if (e.clientX === 0 && e.clientY === 0) return;
+            setSidebarState(!sidebarCollapsed);
+        });
 
         // Initialize charts when page loads
         document.addEventListener('DOMContentLoaded', function() {
+            // Admin user dropdown toggle
+            (function(){
+                const btn = document.getElementById('admin-user-button');
+                const dd = document.getElementById('admin-user-dropdown');
+                if (!btn || !dd) return;
+                const close = () => { dd.classList.add('hidden'); btn.setAttribute('aria-expanded','false'); };
+                const open = () => { dd.classList.remove('hidden'); btn.setAttribute('aria-expanded','true'); };
+                let openState = false;
+                btn.addEventListener('click', (e)=>{ e.stopPropagation(); openState ? close() : open(); openState = !openState; });
+                document.addEventListener('click', (e)=>{
+                    if (!dd.contains(e.target) && e.target !== btn && !btn.contains(e.target)) { close(); openState=false; }
+                });
+                document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { close(); openState=false; } });
+            })();
+
             const initialSection = '<?php echo htmlspecialchars($section); ?>';
+            // Bookings: handle Confirmed/Completed actions on card buttons
+            if (initialSection === 'bookings') {
+                const bookingsContainer = document.getElementById('bookings-content');
+                bookingsContainer?.addEventListener('click', async (e) => {
+                    const btnConfirm = e.target.closest('.bk-confirm');
+                    const btnComplete = e.target.closest('.bk-complete');
+                    const btnPaid = e.target.closest('.bk-paid');
+                    if (!btnConfirm && !btnComplete) return; // existing .bk-paid handled by modal below
+                    const btn = btnConfirm || btnComplete;
+                    const id = btn.getAttribute('data-bk-id');
+                    const newStatus = btnConfirm ? 'In Progress' : 'Completed';
+                    try {
+                        const fd = new FormData();
+                        fd.append('section','bookings');
+                        fd.append('ajax','1');
+                        fd.append('action','update');
+                        fd.append('booking_id', id);
+                        // Minimal fields to update only status; backend requires many fields, so fetch first then submit
+                        const r0 = await fetch(`?section=bookings&action=get_booking&booking_id=${id}`, { headers: {'X-Requested-With':'XMLHttpRequest'} });
+                        const j0 = await r0.json();
+                        if (!j0.success) { alert(j0.message||'Failed to load booking'); return; }
+                        const d = j0.data || {};
+                        fd.append('eb_name', d.eb_name||'');
+                        fd.append('eb_contact', d.eb_contact||'');
+                        fd.append('eb_type', d.eb_type||'');
+                        fd.append('eb_venue', d.eb_venue||'');
+                        fd.append('eb_date', d.eb_date ? d.eb_date.replace(' ', 'T').slice(0,16) : '');
+                        fd.append('eb_order', d.eb_order||'');
+                        if (d.eb_package_pax!==null && d.eb_package_pax!==undefined) fd.append('eb_package_pax', d.eb_package_pax);
+                        if (d.eb_addon_pax!==null && d.eb_addon_pax!==undefined) fd.append('eb_addon_pax', d.eb_addon_pax);
+                        if (d.eb_notes!==null && d.eb_notes!==undefined) fd.append('eb_notes', d.eb_notes);
+                        fd.append('eb_status', newStatus);
+                        const r = await fetch(`?section=bookings&action=update`, { method:'POST', body: fd, headers: {'X-Requested-With':'XMLHttpRequest'} });
+                        const j = await r.json();
+                        if (!j.success) { alert(j.message||'Failed to update'); return; }
+                        // Update chip text and classes
+                        const card = btn.closest('.card');
+                        const chip = card?.querySelector('[data-bk-status]');
+                        if (chip) {
+                            chip.textContent = newStatus;
+                            chip.className = '<?= booking_chip_base_classes(); ?> ' + (newStatus.toLowerCase()==='completed' ? 'bg-blue-50 border-blue-300 text-blue-800' : (newStatus.toLowerCase()==='in progress' ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-gray-50 border-gray-300 text-gray-800'));
+                        }
+                    } catch (_) { alert('Network error'); }
+                });
+            }
             // Packages: open modal to add/edit and handle delete
             if (initialSection === 'packages') {
                 // Build simple modal dynamically to keep patch small
@@ -3873,6 +4434,8 @@ if ($sectionEarly === 'employees') {
                 // Re-render chosen chips on category name change to update color theme
                 nameEl && nameEl.addEventListener('input', renderChosen);
 
+
+            
                 // Edit existing category: fetch and populate
                 table && table.addEventListener('click', async (e) => {
                     const del = e.target.closest('[data-delete-category]');
@@ -3919,6 +4482,140 @@ if ($sectionEarly === 'employees') {
                         const cp = url.searchParams.get('cat_page');
                         window.location.href = cp ? `?section=categories&cat_page=${encodeURIComponent(cp)}` : '?section=categories';
                     } catch (_) { alert('Network error'); }
+                });
+            }
+
+            // Event Types: modal and CRUD (standalone initializer)
+            if (initialSection === 'eventtypes') {
+                const etBackdrop = document.getElementById('et-backdrop');
+                const etModal = document.getElementById('et-modal');
+                const etTitle = document.getElementById('et-modal-title');
+                const etForm = document.getElementById('et-form');
+                const etAction = document.getElementById('et-action');
+                const etId = document.getElementById('et-id');
+                const etName = document.getElementById('et-name');
+                const etMin = document.getElementById('et-min');
+                const etMax = document.getElementById('et-max');
+                const etNotes = document.getElementById('et-notes');
+                const etPkgSearch = document.getElementById('et-packages-search');
+                const etPkgList = document.getElementById('et-packages-list');
+                let etGrid = document.getElementById('et-grid');
+
+                let allPackages = [];
+                let selectedPackageIds = new Set();
+
+                function showEt(){
+                    if(!etBackdrop||!etModal) return;
+                    etBackdrop.style.display='block';
+                    etModal.style.display='flex';
+                    etBackdrop.classList.remove('pointer-events-none');
+                    etModal.classList.remove('pointer-events-none');
+                    etBackdrop.setAttribute('aria-hidden','false');
+                    etModal.setAttribute('aria-hidden','false');
+                    requestAnimationFrame(()=>{
+                        etBackdrop.style.opacity='1';
+                        etModal.style.opacity='1';
+                        if (etModal.firstElementChild) etModal.firstElementChild.style.transform='scale(1)';
+                    });
+                }
+                function hideEt(){
+                    if(!etBackdrop||!etModal) return;
+                    etBackdrop.style.opacity='0';
+                    etModal.style.opacity='0';
+                    if (etModal.firstElementChild) etModal.firstElementChild.style.transform='scale(0.95)';
+                    setTimeout(()=>{
+                        etBackdrop.classList.add('pointer-events-none');
+                        etModal.classList.add('pointer-events-none');
+                        etBackdrop.style.display='none';
+                        etModal.style.display='none';
+                        etBackdrop.setAttribute('aria-hidden','true');
+                        etModal.setAttribute('aria-hidden','true');
+                    }, 180);
+                }
+                function resetEt(){ etForm?.reset(); if(etAction) etAction.value='create'; if(etId) etId.value=''; if(etTitle) etTitle.textContent='Add Event Type'; selectedPackageIds.clear(); renderPkgList(); }
+
+                async function loadPackages(){
+                    try { const r = await fetch('?section=eventtypes&ajax=1&action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }); const j=await r.json(); if(j.success){ allPackages = j.data||[]; renderPkgList(); } } catch(_){ /* ignore */ }
+                }
+                function renderPkgList(){
+                    if (!etPkgList) return;
+                    const q = (etPkgSearch?.value||'').toLowerCase();
+                    const frag = document.createDocumentFragment();
+                    (allPackages||[]).forEach(p=>{
+                        const txt = ((p.name||'')+' '+(p.pax||'')).toLowerCase();
+                        if (q && !txt.includes(q)) return;
+                        const id = Number(p.package_id);
+                        const wrap = document.createElement('label');
+                        wrap.className='flex items-center gap-2 p-2 rounded border border-gray-200 hover:bg-gray-50';
+                        const cb = document.createElement('input');
+                        cb.type='checkbox'; cb.value=String(id); cb.checked = selectedPackageIds.has(id);
+                        cb.addEventListener('change', ()=>{ if (cb.checked) selectedPackageIds.add(id); else selectedPackageIds.delete(id); });
+                        const name = document.createElement('div');
+                        name.className='text-sm';
+                        name.textContent = (p.name||'') + (p.pax?(' • '+p.pax):'');
+                        const badge = document.createElement('span');
+                        badge.className = 'ml-auto inline-flex items-center px-2 py-0.5 text-xs rounded-full border ' + ((String(p.is_active)==='1') ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-gray-50 border-gray-300 text-gray-700');
+                        badge.textContent = (String(p.is_active)==='1') ? 'Active' : 'Inactive';
+                        wrap.append(cb, name, badge);
+                        frag.appendChild(wrap);
+                    });
+                    etPkgList.innerHTML=''; etPkgList.appendChild(frag);
+                }
+
+                async function refreshEtGrid(){
+                    try {
+                        const html = await fetch('?section=eventtypes', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.text());
+                        const tmp = document.createElement('div'); tmp.innerHTML = html;
+                        const newGrid = tmp.querySelector('#eventtypes-content #et-grid');
+                        if (newGrid && etGrid) { etGrid.replaceWith(newGrid); }
+                        const fresh = document.querySelector('#eventtypes-content #et-grid');
+                        if (fresh) etGrid = fresh;
+                    } catch(_){ /* ignore */ }
+                }
+
+                document.getElementById('open-add-eventtype')?.addEventListener('click', async ()=>{ resetEt(); await loadPackages(); showEt(); });
+                document.getElementById('et-close')?.addEventListener('click', hideEt);
+                document.getElementById('et-cancel')?.addEventListener('click', hideEt);
+                etBackdrop && etBackdrop.addEventListener('click', hideEt);
+                etPkgSearch?.addEventListener('input', renderPkgList);
+
+                document.addEventListener('click', async (e)=>{
+                    const editBtn = e.target.closest?.('.et-edit');
+                    const delBtn = e.target.closest?.('.et-delete');
+                    if (editBtn) {
+                        const id = editBtn.getAttribute('data-et-id');
+                        try {
+                            const r = await fetch(`?section=eventtypes&ajax=1&action=get&event_type_id=${encodeURIComponent(id)}`, { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                            const j = await r.json(); if(!j.success) return alert(j.message||'Failed');
+                            resetEt(); await loadPackages();
+                            const d = j.data||{}; const pkgIds = j.package_ids||[];
+                            if (etTitle) etTitle.textContent='Edit Event Type'; if (etAction) etAction.value='update'; if (etId) etId.value = d.event_type_id || id;
+                            if (etName) etName.value = d.name||''; if (etMin) etMin.value = d.min_package_pax||''; if (etMax) etMax.value = d.max_package_pax||''; if (etNotes) etNotes.value = d.notes||'';
+                            selectedPackageIds = new Set(pkgIds.map(Number)); renderPkgList(); showEt();
+                        } catch(_){ alert('Network error'); }
+                        return;
+                    }
+                    if (delBtn) {
+                        const id = delBtn.getAttribute('data-et-id');
+                        if (!confirm('Delete this event type?')) return;
+                        try { await fetch(`?section=eventtypes&action=delete&event_type_id=${encodeURIComponent(id)}&ajax=1`, { headers:{'X-Requested-With':'XMLHttpRequest'} }); await refreshEtGrid(); } catch(_){ alert('Network error'); }
+                        return;
+                    }
+                });
+
+                etForm?.addEventListener('submit', async (e)=>{
+                    e.preventDefault();
+                    if (!etName?.value.trim()) { alert('Name is required'); etName?.focus(); return; }
+                    const minVal = etMin && etMin.value !== '' ? Number(etMin.value) : null;
+                    const maxVal = etMax && etMax.value !== '' ? Number(etMax.value) : null;
+                    if (minVal !== null && maxVal !== null && minVal > maxVal) { alert('Min pax cannot exceed max pax'); return; }
+                    const fd = new FormData(etForm);
+                    selectedPackageIds.forEach(id => fd.append('package_ids[]', String(id)));
+                    try {
+                        const r = await fetch('?section=eventtypes', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} });
+                        const j = await r.json(); if(!j.success){ alert(j.message||'Save failed'); return; }
+                        hideEt(); await refreshEtGrid();
+                    } catch(_){ alert('Network error'); }
                 });
             }
 

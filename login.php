@@ -60,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     $_SESSION['user_type'] = (int)$user['user_type'];
                     $_SESSION['user_photo'] = isset($user['user_photo']) ? (string)$user['user_photo'] : null;
 
+<<<<<<< HEAD
                     // After login: prefer safe "next" redirect if provided
                     $redirect = '';
                     if ($next !== '') {
@@ -67,6 +68,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                         if (preg_match('~^/[^\n\r]*$~', $next)) {
                             $redirect = $next;
                         }
+=======
+                    // Simple role-based redirect: 1 = admin per sample data
+                    if ((int)$user['user_type'] === 1) {
+                        header('Location: admin/admin');
+                    } else {
+                        header('Location: user/home');
+>>>>>>> cdc43894b23e156f244af3a18cab1421c624bf0a
                     }
                     if ($redirect === '') {
                         // Simple role-based fallback: 1 = admin

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 12, 2025 at 10:41 AM
+-- Generation Time: Oct 12, 2025 at 08:59 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -55,11 +55,12 @@ CREATE TABLE `cateringpackages` (
   `cp_id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `cp_name` varchar(255) NOT NULL,
+  `cp_email` varchar(255) NOT NULL,
   `cp_phone` varchar(11) NOT NULL,
   `cp_place` varchar(255) NOT NULL,
   `cp_date` date NOT NULL,
   `cp_price` decimal(10,2) NOT NULL,
-  `cp_addon_pax` int(11) DEFAULT NULL,
+  `cp_addon_pax` varchar(255) DEFAULT NULL,
   `cp_notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -68,8 +69,10 @@ CREATE TABLE `cateringpackages` (
 -- Dumping data for table `cateringpackages`
 --
 
-INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_phone`, `cp_place`, `cp_date`, `cp_price`, `cp_addon_pax`, `cp_notes`, `created_at`) VALUES
-(2, 1, 'John Andal', '09123123234', 'Purok 2 , Sabang , Lipa City , Batangas', '2025-10-26', 36000.00, 5, '', '2025-10-12 04:35:50');
+INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_email`, `cp_phone`, `cp_place`, `cp_date`, `cp_price`, `cp_addon_pax`, `cp_notes`, `created_at`) VALUES
+(2, 1, 'John Andal', 'jmbmaines17@gmail.com', '09123123234', 'Purok 2 , Sabang , Lipa City , Batangas', '2025-10-26', 36000.00, '5', '', '2025-10-12 18:03:05'),
+(3, 1, 'May Kap', 'jmbmaines17@gmail.com', '09603070809', 'Purok 2 , Sabang , Lipa City , Batangas', '2025-10-28', 37000.00, '10 pax, 2 tables, 10 chairs', '', '2025-10-12 18:04:06'),
+(4, 1, 'Juan Dela Cruz', 'jmbmaines17@gmail.com', '09893247892', 'adfsawd , wadssad , wadsd , wadas', '2025-10-30', 35000.00, NULL, '', '2025-10-12 18:57:18');
 
 -- --------------------------------------------------------
 
@@ -83,15 +86,25 @@ CREATE TABLE `eventbookings` (
   `event_type_id` int(11) NOT NULL,
   `package_id` int(11) NOT NULL,
   `eb_name` varchar(255) NOT NULL,
-  `eb_contact` varchar(11) NOT NULL,
+  `eb_email` varchar(255) NOT NULL,
+  `eb_contact` varchar(255) NOT NULL,
   `eb_venue` varchar(255) NOT NULL,
   `eb_date` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `eb_order` varchar(100) NOT NULL,
   `eb_status` varchar(100) NOT NULL,
-  `eb_addon_pax` int(11) DEFAULT NULL,
+  `eb_addon_pax` varchar(255) DEFAULT NULL,
   `eb_notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `eventbookings`
+--
+
+INSERT INTO `eventbookings` (`eb_id`, `user_id`, `event_type_id`, `package_id`, `eb_name`, `eb_email`, `eb_contact`, `eb_venue`, `eb_date`, `eb_order`, `eb_status`, `eb_addon_pax`, `eb_notes`, `created_at`) VALUES
+(1, 1, 2, 2, 'John Andal', '', '09023347823, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-12 18:04:26', 'Wedding Package - 100', 'Pending', '0', NULL, '2025-10-12 14:03:50'),
+(2, 1, 2, 3, 'Cris Carlo', '', '09278334233, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-27 05:30:00', 'Corporate - 150', 'Pending', '0', NULL, '2025-10-12 14:39:58'),
+(3, 1, 2, 1, 'Cris Carlo', 'jmbmaines17@gmail.com', '09023347823, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-12 18:04:22', 'Standard - 50', 'Pending', '10 pax, 5 tables, 10 chairs', NULL, '2025-10-12 16:39:59');
 
 -- --------------------------------------------------------
 
@@ -109,6 +122,14 @@ CREATE TABLE `event_types` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `event_types`
+--
+
+INSERT INTO `event_types` (`event_type_id`, `name`, `min_package_pax`, `max_package_pax`, `notes`, `created_at`, `updated_at`) VALUES
+(1, 'Wedding', '100', '200', NULL, '2025-10-12 11:36:35', '2025-10-12 11:36:35'),
+(2, 'Birthday', '50', '200', NULL, '2025-10-12 12:55:46', '2025-10-12 12:55:46');
+
 -- --------------------------------------------------------
 
 --
@@ -120,6 +141,17 @@ CREATE TABLE `event_type_packages` (
   `package_id` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `event_type_packages`
+--
+
+INSERT INTO `event_type_packages` (`event_type_id`, `package_id`, `created_at`) VALUES
+(1, 2, '2025-10-12 11:36:35'),
+(1, 3, '2025-10-12 11:36:35'),
+(2, 1, '2025-10-12 12:55:46'),
+(2, 2, '2025-10-12 12:55:46'),
+(2, 3, '2025-10-12 12:55:46');
 
 -- --------------------------------------------------------
 
@@ -517,7 +549,9 @@ CREATE TABLE `payments` (
 --
 
 INSERT INTO `payments` (`pay_id`, `order_id`, `cp_id`, `user_id`, `pay_date`, `pay_amount`, `pay_method`, `pay_status`, `created_at`) VALUES
-(1, NULL, 2, 1, '2025-10-12', 18000.00, '', 'Pending', '2025-10-12 04:35:50');
+(1, NULL, 2, 1, '2025-10-12', 18000.00, '', 'Partial', '2025-10-12 15:12:13'),
+(2, NULL, 3, 1, '2025-10-12', 18500.00, '', 'Pending', '2025-10-12 16:27:03'),
+(3, NULL, 4, 1, '2025-10-13', 35000.00, 'Cash', 'Paid', '2025-10-12 18:57:38');
 
 -- --------------------------------------------------------
 
@@ -670,19 +704,19 @@ ALTER TABLE `category`
 -- AUTO_INCREMENT for table `cateringpackages`
 --
 ALTER TABLE `cateringpackages`
-  MODIFY `cp_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `cp_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `eventbookings`
 --
 ALTER TABLE `eventbookings`
-  MODIFY `eb_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `eb_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `event_types`
 --
 ALTER TABLE `event_types`
-  MODIFY `event_type_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `event_type_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `menu`
@@ -730,7 +764,7 @@ ALTER TABLE `package_items`
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `users`

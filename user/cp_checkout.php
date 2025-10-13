@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/../classes/Mailer.php';
 
 try {
     if (!isset($_SESSION['user_id'])) {
@@ -25,6 +26,7 @@ try {
     $municipality = trim($payload['municipality'] ?? '');
     $province = trim($payload['province'] ?? '');
     $event_date = $payload['event_date'] ?? null; // YYYY-MM-DD
+    $email = trim($payload['email'] ?? '');
 
     $package_id = (int)($payload['package_id'] ?? 0);
     $package_name = trim($payload['package_name'] ?? '');
@@ -40,8 +42,12 @@ try {
     $pay_type = trim($payload['pay_type'] ?? '');
     $pay_number = trim($payload['pay_number'] ?? '');
 
-    if (!$full_name || !$phone || !$street || !$barangay || !$municipality || !$province || !$event_date || !$package_name || $base_price <= 0) {
+    if (!$full_name || !$phone || !$email || !$street || !$barangay || !$municipality || !$province || !$event_date || !$package_name || $base_price <= 0) {
         echo json_encode(['success' => false, 'message' => 'Missing required fields']);
+        exit;
+    }
+    if (strpos($email, '@') === false || strpos($email, '.') === false) {
+        echo json_encode(['success' => false, 'message' => 'Invalid email']);
         exit;
     }
 
@@ -59,15 +65,15 @@ try {
     $pdo->beginTransaction();
 
     // 1) Insert into cateringpackages
-    $notesCombined = $notes;
-    $extras = [];
-    if ($chairs > 0) { $extras[] = "Chairs: {$chairs}"; }
-    if ($tables > 0) { $extras[] = "Tables: {$tables}"; }
-    if (!empty($extras)) {
-        $notesCombined = trim(($notesCombined ? ($notesCombined . ' | ') : '') . implode(', ', $extras));
-    }
-    $stmt = $pdo->prepare("INSERT INTO cateringpackages (user_id, cp_name, cp_phone, cp_place, cp_date, cp_price, cp_addon_pax, cp_notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-    $stmt->execute([$user_id, $full_name, $phone, $cp_place, $event_date, $calc_total, $addon_pax, $notesCombined]);
+    // Build labeled CSV for cp_addon_pax: e.g., "5 pax, 3 tables"
+    $addonParts = [];
+    if ($addon_pax > 0) { $addonParts[] = $addon_pax . ' ' . 'pax'; }
+    if ($tables > 0) { $addonParts[] = $tables . ' ' . ($tables === 1 ? 'table' : 'tables'); }
+    if ($chairs > 0) { $addonParts[] = $chairs . ' ' . ($chairs === 1 ? 'chair' : 'chairs'); }
+    $cp_addon_pax = $addonParts ? implode(', ', $addonParts) : null;
+
+    $stmt = $pdo->prepare("INSERT INTO cateringpackages (user_id, cp_name, cp_phone, cp_email, cp_place, cp_date, cp_price, cp_addon_pax, cp_notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+    $stmt->execute([$user_id, $full_name, $phone, $email, $cp_place, $event_date, $calc_total, $cp_addon_pax, $notes]);
     $cp_id = (int)$pdo->lastInsertId();
 
     // 2) Create order (optional for alignment with payments table)
@@ -82,8 +88,19 @@ try {
     }
 
     // 3) Insert payment as 50% deposit
-    // Normalize to match enum in some schemas (Cash/Online/Credit). We'll store Online for digital payments.
-    $pay_method = 'Online';
+    // Map selected pay_type to stored pay_method (preserve common labels)
+    $typeNorm = strtolower($pay_type);
+    $methodMap = [
+        'gcash'   => 'GCash',
+        'paymaya' => 'PayMaya',
+        'paypal'  => 'PayPal',
+        'card'    => 'Card',
+        // legacy/fallbacks
+        'cash'    => 'Cash',
+        'online'  => 'Online',
+        'credit'  => 'Credit',
+    ];
+    $pay_method = $methodMap[$typeNorm] ?? 'Online';
     $pay_status = 'Pending';
     $pay_date = date('Y-m-d');
 
@@ -93,6 +110,27 @@ try {
     }
 
     $pdo->commit();
+
+    // Send Partial payment email to user
+    try {
+    $userEmail = (string)($_SESSION['user_email'] ?? $email);
+        $userFn = trim((string)($_SESSION['user_fn'] ?? ''));
+        $userLn = trim((string)($_SESSION['user_ln'] ?? ''));
+        $toName = trim($userFn . ' ' . $userLn);
+        $mailer = new Mailer();
+        $edata = [
+            'full_name'   => $full_name ?: $toName,
+            'event_date'  => $event_date,
+            'place'       => $cp_place,
+            'phone'       => $phone,
+            'total_price' => $calc_total,
+            'deposit'     => $calc_deposit,
+            'addons'      => $cp_addon_pax,
+            'notes'       => $notes,
+        ];
+        [$subject,$html] = $mailer->renderCateringEmail($edata, 'Partial');
+        if ($userEmail) { $mailer->send($userEmail, $toName ?: $full_name, $subject, $html); }
+    } catch (Throwable $e) { /* ignore mail errors */ }
 
     echo json_encode(['success' => true, 'cp_id' => $cp_id, 'order_id' => $order_id]);
 } catch (Throwable $e) {

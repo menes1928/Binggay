@@ -7,5 +7,5 @@ session_unset();
 session_destroy();
 
 
-header("Location: user/home");
+header("Location: home");
 exit();

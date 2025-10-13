@@ -4,6 +4,9 @@ session_start();
 require_once __DIR__ . '/../classes/database.php';
 
 try {
+    if (empty($_SESSION['user_id'])) {
+        throw new Exception('Please login to place an order.');
+    }
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
     if (!is_array($data)) { throw new Exception('Invalid JSON'); }

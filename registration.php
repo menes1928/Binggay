@@ -490,7 +490,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
 
-<?php include __DIR__ . '/user/partials/navbar.php'; ?>
+
     <!-- Background Decorative Elements -->
     <div class="decorative-circle" style="width: 500px; height: 500px; top: -250px; right: -250px;"></div>
     <div class="decorative-circle" style="width: 400px; height: 400px; bottom: -200px; left: -200px;"></div>
@@ -621,7 +621,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                                    id="phone" 
                                    name="phone" 
                                    class="input-field w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                                   placeholder="0919-123-4567"
+                                   placeholder="0919-123-4567"  maxlength="11"
                                    required>
                         </div>
 
