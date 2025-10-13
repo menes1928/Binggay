@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 12, 2025 at 08:59 PM
+-- Generation Time: Oct 13, 2025 at 06:40 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -579,7 +579,8 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`user_id`, `user_fn`, `user_ln`, `user_sex`, `user_email`, `user_phone`, `user_username`, `user_password`, `user_photo`, `user_type`, `created_at`, `updated_at`) VALUES
-(1, 'John', 'Andal', 'Male', 'jmbmaines17@gmail.com', '09267834238', 'JAB12', '$2y$10$c0xnIHFrY.d6HidBDW5jtuDZZus.hB7xk.YQiBf45h/F.DlwsyQhK', NULL, 0, '2025-10-12 04:33:59', '2025-10-12 04:33:59');
+(1, 'John', 'Andal', 'Male', 'jmbmaines17@gmail.com', '09267834238', 'JAB12', '$2y$10$c0xnIHFrY.d6HidBDW5jtuDZZus.hB7xk.YQiBf45h/F.DlwsyQhK', NULL, 0, '2025-10-12 04:33:59', '2025-10-12 04:33:59'),
+(2, 'Sandok', 'Binggay', 'Male', 'sandokdummy@gmail.com', '09238914072', 'sdby', '$2y$10$AGOejyyIW9SoFCyFy/n98u8d9B.VJt6N5uQr09JxCAIvIZolvxU0u', NULL, 1, '2025-10-12 19:10:02', '2025-10-12 19:10:17');
 
 --
 -- Indexes for dumped tables
@@ -770,7 +771,7 @@ ALTER TABLE `payments`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- Constraints for dumped tables

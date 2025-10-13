@@ -39,6 +39,7 @@ try {
 
     $total_price = (float)($payload['total_price'] ?? 0);
     $deposit_amount = (float)($payload['deposit_amount'] ?? 0);
+    $pay_now = isset($payload['pay_now']) ? (float)$payload['pay_now'] : null; // allow 50%..100%
     $pay_type = trim($payload['pay_type'] ?? '');
     $pay_number = trim($payload['pay_number'] ?? '');
 
@@ -59,6 +60,14 @@ try {
     $calc_deposit = round($calc_total * 0.5, 2);
     if (abs($calc_total - $total_price) > 0.01 || abs($calc_deposit - $deposit_amount) > 0.01) {
         echo json_encode(['success' => false, 'message' => 'Invalid totals submitted']);
+        exit;
+    }
+
+    // Validate pay_now range if provided; default to 50% if missing
+    if ($pay_now === null) { $pay_now = $calc_deposit; }
+    $pay_now = round($pay_now, 2);
+    if ($pay_now < $calc_deposit - 0.01 || $pay_now > $calc_total + 0.01) {
+        echo json_encode(['success' => false, 'message' => 'Invalid payment amount. It must be between 50% and 100% of total.']);
         exit;
     }
 
@@ -87,7 +96,7 @@ try {
         $order_id = null;
     }
 
-    // 3) Insert payment as 50% deposit
+    // 3) Insert payment as partial/full depending on pay_now
     // Map selected pay_type to stored pay_method (preserve common labels)
     $typeNorm = strtolower($pay_type);
     $methodMap = [
@@ -104,7 +113,7 @@ try {
     $pay_status = 'Pending';
     $pay_date = date('Y-m-d');
 
-    $res = $db->savePayment($order_id, $cp_id, $user_id, $pay_date, $calc_deposit, $pay_method, $pay_status);
+    $res = $db->savePayment($order_id, $cp_id, $user_id, $pay_date, $pay_now, $pay_method, $pay_status);
     if ($res !== true) {
         throw new Exception(is_string($res) ? $res : 'Payment save failed');
     }
@@ -124,11 +133,12 @@ try {
             'place'       => $cp_place,
             'phone'       => $phone,
             'total_price' => $calc_total,
-            'deposit'     => $calc_deposit,
+            'deposit'     => $pay_now,
             'addons'      => $cp_addon_pax,
             'notes'       => $notes,
         ];
-        [$subject,$html] = $mailer->renderCateringEmail($edata, 'Partial');
+        $label = ($pay_now + 0.01 >= $calc_total) ? 'Full' : 'Partial';
+        [$subject,$html] = $mailer->renderCateringEmail($edata, $label);
         if ($userEmail) { $mailer->send($userEmail, $toName ?: $full_name, $subject, $html); }
     } catch (Throwable $e) { /* ignore mail errors */ }
 

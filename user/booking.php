@@ -3,6 +3,43 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+// Prefill identity fields for logged-in users and lock them
+$BF_IS_LOGGED_IN = !empty($_SESSION['user_id']);
+$BF_FULLNAME = '';
+$BF_EMAIL = '';
+$BF_PHONE = '';
+if ($BF_IS_LOGGED_IN) {
+    $fn = isset($_SESSION['user_fn']) ? trim((string)$_SESSION['user_fn']) : '';
+    $ln = isset($_SESSION['user_ln']) ? trim((string)$_SESSION['user_ln']) : '';
+    $BF_FULLNAME = trim((string)($_SESSION['user_name'] ?? (trim($fn . ' ' . $ln))));
+    $BF_EMAIL = isset($_SESSION['user_email']) ? (string)$_SESSION['user_email'] : '';
+    $BF_PHONE = isset($_SESSION['user_phone']) ? trim((string)$_SESSION['user_phone']) : '';
+    if ($BF_PHONE === '') {
+        // Fallback to DB lookup if phone not in session
+        try {
+            require_once __DIR__ . '/../classes/database.php';
+            $db = new database();
+            $pdo = $db->opencon();
+            $stmt = $pdo->prepare('SELECT user_phone FROM users WHERE user_id = ? LIMIT 1');
+            $stmt->execute([ (int)($_SESSION['user_id'] ?? 0) ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row && !empty($row['user_phone'])) {
+                $BF_PHONE = trim((string)$row['user_phone']);
+                $_SESSION['user_phone'] = $BF_PHONE; // cache for later
+            }
+        } catch (Throwable $e) { /* ignore lookup errors */ }
+    }
+    // Normalize phone to 11-digit local format if possible (e.g., 63XXXXXXXXXX -> 0XXXXXXXXXX)
+    if ($BF_PHONE !== '') {
+        $d = preg_replace('/\D+/', '', $BF_PHONE);
+        if (strlen($d) === 12 && substr($d, 0, 2) === '63') {
+            $d = '0' . substr($d, 2);
+        }
+        if ($d !== '') { $BF_PHONE = $d; }
+    }
+}
+// Attribute helper for locking fields
+$BF_LOCK_ATTR = $BF_IS_LOGGED_IN ? 'readonly' : '';
 ?>
 
 <!DOCTYPE html>
@@ -750,19 +787,19 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="form-group">
                         <label class="form-label">Full Name *</label>
-                        <input type="text" name="fullName" class="form-input" placeholder="Juan Dela Cruz" required>
+                        <input type="text" name="fullName" class="form-input" placeholder="Juan Dela Cruz" value="<?php echo htmlspecialchars($BF_FULLNAME); ?>" <?php echo $BF_LOCK_ATTR; ?> required>
                         <i class="fas fa-user input-icon"></i>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Email Address *</label>
-                        <input type="email" name="email" class="form-input" placeholder="juan@email.com" required>
+                        <input type="email" name="email" class="form-input" placeholder="juan@email.com" value="<?php echo htmlspecialchars($BF_EMAIL); ?>" <?php echo $BF_LOCK_ATTR; ?> required>
                         <i class="fas fa-envelope input-icon"></i>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Contact Number *</label>
-                        <input type="tel" name="phone" class="form-input" placeholder="09XX XXX XXXX" maxlength="11" required>
+                        <input type="tel" name="phone" class="form-input" placeholder="09XX XXX XXXX" value="<?php echo htmlspecialchars($BF_PHONE); ?>" maxlength="11" <?php echo $BF_LOCK_ATTR; ?> required>
                         <i class="fas fa-phone input-icon"></i>
                     </div>
 
@@ -799,6 +836,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                         <select name="packageId" id="bf-package" class="form-select" required>
                             <option value="">Select an event type first</option>
                         </select>
+                        <div id="pkg-price-info" class="mt-2 text-sm opacity-80"></div>
                     </div>
                 </div>
 
@@ -834,7 +872,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 <!-- Add-ons -->
                 <div class="form-group mt-6">
                     <label class="form-label">Add-ons</label>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label class="checkbox-group">
                                 <input type="checkbox" class="checkbox-input bf-addon" data-addon="Pax">
@@ -847,6 +885,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                                     </select>
                                     <input type="number" min="1" name="addon[Pax][qty]" class="form-input" placeholder="Qty">
                                 </div>
+                                <div id="pax-estimate" class="mt-2 text-sm opacity-80 hidden"></div>
+                                <div id="pax-limit" class="mt-1 text-xs opacity-80 hidden"></div>
                             </div>
                         </div>
                         <div>
@@ -877,35 +917,27 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                                 </div>
                             </div>
                         </div>
-                        <div>
-                            <label class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Utensils">
-                                <span><i class="fas fa-utensils gold-text mr-2"></i>Utensils</span>
-                            </label>
-                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Utensils">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <select name="addon[Utensils][unit]" class="form-select">
-                                        <option value="set">Set</option>
-                                    </select>
-                                    <input type="number" min="1" name="addon[Utensils][qty]" class="form-input" placeholder="Qty">
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Waiters">
-                                <span><i class="fas fa-concierge-bell gold-text mr-2"></i>Waiters</span>
-                            </label>
-                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Waiters">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <select name="addon[Waiters][unit]" class="form-select">
-                                        <option value="staff">Staff</option>
-                                    </select>
-                                    <input type="number" min="1" name="addon[Waiters][qty]" class="form-input" placeholder="Qty">
-                                </div>
-                            </div>
-                        </div>
                     </div>
+                </div>
+
+                <!-- Inclusions (dynamic based on Event Type) -->
+                <div id="inclusions-section" class="form-group mt-6 hidden">
+                    <label class="form-label">Inclusions</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <label class="checkbox-group bf-inclusion-item hidden" data-inc="Clowns" id="inc-clowns">
+                            <input type="checkbox" class="checkbox-input bf-inclusion" value="Clowns">
+                            <span><i class="fas fa-smile gold-text mr-2"></i>Clowns</span>
+                        </label>
+                        <label class="checkbox-group bf-inclusion-item" data-inc="Entertainer" id="inc-entertainer">
+                            <input type="checkbox" class="checkbox-input bf-inclusion" value="Entertainer">
+                            <span><i class="fas fa-microphone gold-text mr-2"></i>Entertainer</span>
+                        </label>
+                        <label class="checkbox-group bf-inclusion-item" data-inc="Props" id="inc-props">
+                            <input type="checkbox" class="checkbox-input bf-inclusion" value="Props">
+                            <span><i class="fas fa-theater-masks gold-text mr-2"></i>Props</span>
+                        </label>
+                    </div>
+                    <p class="mt-2 text-sm opacity-80">Select any applicable inclusions for your event.</p>
                 </div>
 
 
@@ -996,10 +1028,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 <div>
                     <h4 class="font-semibold mb-4 gold-text">Quick Links</h4>
                     <ul class="space-y-2">
-                        <li><a href="index.php" class="hover-gold">Home</a></li>
-                        <li><a href="menu.php" class="hover-gold">Menu</a></li>
-                        <li><a href="packages.php" class="hover-gold">Packages</a></li>
-                        <li><a href="bookings.php" class="hover-gold">Book Event</a></li>
+                        <li><a href="home" class="hover-gold">Home</a></li>
+                        <li><a href="menu" class="hover-gold">Menu</a></li>
+                        <li><a href="cateringpackages" class="hover-gold">Catering</a></li>
+                        <li><a href="booking" class="hover-gold">Occasions</a></li>
                     </ul>
                 </div>
                 <div>
@@ -1098,14 +1130,122 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 const all = await fetch('../admin/admin.php?section=eventtypes&ajax=1&action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.json());
                 if (!all.success) throw new Error();
                 const opts = (all.data||[]).filter(p=>allowed.has(Number(p.package_id))).map(p=>{
+                    const price = (p.base_price!=null && p.base_price!=='') ? Number(p.base_price) : '';
                     const label = (p.name||'') + (p.pax?(' - '+p.pax):'');
-                    return `<option value="${p.package_id}">${label}</option>`;
+                    const paxAttr = (p.pax!=null && p.pax!=='') ? ` data-pax="${p.pax}"` : '';
+                    const dp = price!=='' ? ` data-price="${price}"` : '';
+                    return `<option value="${p.package_id}"${dp}${paxAttr}>${label}</option>`;
                 });
                 pkgSel.innerHTML = opts.length ? ('<option value="">Select Package</option>'+opts.join('')) : '<option value="">No packages available</option>';
             } catch(_) { pkgSel.innerHTML = '<option value="">Failed to load packages</option>'; }
         }
-        etSel?.addEventListener('change', (e)=>{ const v = e.target.value; if (v) loadPackagesFor(v); else { pkgSel.innerHTML = '<option value="">Select an event type first</option>'; } });
+        const inclusionsSection = document.getElementById('inclusions-section');
+        const incClowns = document.getElementById('inc-clowns');
+        const incChecks = document.querySelectorAll('.bf-inclusion');
+        const pkgPriceInfo = document.getElementById('pkg-price-info');
+        const paxEstimateEl = document.getElementById('pax-estimate');
+    const paxLimitEl = document.getElementById('pax-limit');
+        const paxCb = document.querySelector('.bf-addon[data-addon="Pax"]');
+        const paxQtyInput = document.querySelector('.bf-addon-fields[data-addon-fields="Pax"] input[name="addon[Pax][qty]"]');
+        const PER_HEAD_RATE = 200;
+    const VENUE_CAPACITY = 250; // Global cap per venue as requested
+
+        function formatCurrency(num){
+            const n = Number(num||0);
+            return '₱' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function getSelectedPackagePrice(){
+            if (!pkgSel) return null;
+            const opt = pkgSel.options && pkgSel.selectedIndex >= 0 ? pkgSel.options[pkgSel.selectedIndex] : null;
+            if (!opt) return null;
+            const dp = opt.getAttribute('data-price');
+            return (dp!==null && dp!=='') ? Number(dp) : null;
+        }
+
+        function getSelectedPackagePax(){
+            if (!pkgSel) return null;
+            const opt = pkgSel.options && pkgSel.selectedIndex >= 0 ? pkgSel.options[pkgSel.selectedIndex] : null;
+            if (!opt) return null;
+            const pax = opt.getAttribute('data-pax');
+            return (pax!==null && pax!=='') ? Number(pax) : null;
+        }
+
+        function computePaxMax(){
+            const pkgPax = getSelectedPackagePax();
+            if (pkgPax==null) return null;
+            // Special rule: if package pax is exactly 50 → max add-ons pax is 50
+            if (pkgPax === 50) return 50;
+            // Otherwise, add-ons are limited so that package pax + add-ons pax ≤ venue capacity
+            const max = Math.max(0, VENUE_CAPACITY - pkgPax);
+            return max;
+        }
+
+        function updatePaxLimitUI(){
+            if (!paxLimitEl) return;
+            const max = computePaxMax();
+            if (max==null){
+                paxLimitEl.textContent = '';
+                paxLimitEl.classList.add('hidden');
+                if (paxQtyInput){ paxQtyInput.removeAttribute('max'); }
+                return;
+            }
+            paxLimitEl.textContent = `You can add up to ${max} additional pax for this venue/package.`;
+            paxLimitEl.classList.remove('hidden');
+            if (paxQtyInput){
+                paxQtyInput.setAttribute('max', String(max));
+                // Clamp current value if needed
+                const cur = Number(paxQtyInput.value||0);
+                if (cur > max){ paxQtyInput.value = String(max); }
+            }
+        }
+
+        function updatePackagePriceDisplay(){
+            const price = getSelectedPackagePrice();
+            if (pkgPriceInfo){
+                if (price!=null){ pkgPriceInfo.textContent = `Package price: ${formatCurrency(price)}`; }
+                else { pkgPriceInfo.textContent = ''; }
+            }
+            updatePaxEstimate();
+            updatePaxLimitUI();
+        }
+
+        function updatePaxEstimate(){
+            if (!paxEstimateEl) return;
+            const price = getSelectedPackagePrice();
+            const paxChecked = paxCb ? paxCb.checked : false;
+            const qty = paxQtyInput ? Number(paxQtyInput.value||0) : 0;
+            if (price!=null && paxChecked && qty>0){
+                const estimate = price + (qty * PER_HEAD_RATE);
+                paxEstimateEl.textContent = `Estimated total: ${formatCurrency(estimate)}`;
+                paxEstimateEl.classList.remove('hidden');
+            } else {
+                paxEstimateEl.textContent = '';
+                paxEstimateEl.classList.add('hidden');
+            }
+        }
+        function syncInclusionsVisibility(){
+            if (!etSel) return;
+            const selectedText = etSel.options && etSel.selectedIndex >= 0 ? (etSel.options[etSel.selectedIndex].text||'') : '';
+            const hasEvent = !!etSel.value;
+            if (inclusionsSection) inclusionsSection.classList.toggle('hidden', !hasEvent);
+            const isBirthday = /birthday/i.test(selectedText);
+            if (incClowns){
+                incClowns.classList.toggle('hidden', !isBirthday);
+                if (!isBirthday){
+                    const cb = incClowns.querySelector('input[type="checkbox"]');
+                    if (cb) cb.checked = false;
+                }
+            }
+        }
+    etSel?.addEventListener('change', (e)=>{ const v = e.target.value; if (v) loadPackagesFor(v); else { pkgSel.innerHTML = '<option value="">Select an event type first</option>'; } syncInclusionsVisibility(); updatePackagePriceDisplay(); });
+        // Initial sync
+        syncInclusionsVisibility();
         loadEventTypes();
+    // Package price change
+    pkgSel?.addEventListener('change', updatePackagePriceDisplay);
+    // Also recompute limit when Pax qty changes (so estimate shows after clamping)
+    paxQtyInput?.addEventListener('input', ()=>{ updatePaxLimitUI(); updatePaxEstimate(); });
 
         // Add-ons UI: toggle fields when checked
         const addonBoxes = document.querySelectorAll('.bf-addon');
@@ -1122,7 +1262,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 if (qtyInput){ qtyInput.required = false; qtyInput.value = ''; }
             }
         }
-        addonBoxes.forEach(cb=>{ cb.addEventListener('change', ()=>toggleAddonFields(cb)); toggleAddonFields(cb); });
+    addonBoxes.forEach(cb=>{ cb.addEventListener('change', ()=>{ toggleAddonFields(cb); updatePaxEstimate(); }); toggleAddonFields(cb); });
+    paxQtyInput?.addEventListener('input', updatePaxEstimate);
+    // Run once on load
+    updatePackagePriceDisplay();
 
         // Form Validation and Submission (requires login)
         let pendingFormData = null;
@@ -1153,6 +1296,16 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
             }
             e.preventDefault();
             const formData = new FormData(this);
+            // Validate pax add-ons against max limit
+            const maxAdd = computePaxMax();
+            if (maxAdd!=null && paxCb && paxCb.checked && paxQtyInput){
+                const qty = Number(paxQtyInput.value||0);
+                if (qty > maxAdd){
+                    alert(`Maximum additional pax allowed is ${maxAdd}. Please adjust your Pax add-on quantity.`);
+                    paxQtyInput.focus();
+                    return;
+                }
+            }
             // Serialize add-ons to addons[] entries expected by backend in the format: "5 pax", "3 tables", ...
             const checked = Array.from(document.querySelectorAll('.bf-addon:checked'));
             const addonLabels = [];
@@ -1182,6 +1335,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                 const label = `${qty} ${word}`;
                 addonLabels.push(label);
             }
+            // Include inclusions as part of addons[] as plain labels
+            const selectedIncs = Array.from(document.querySelectorAll('.bf-inclusion:checked')).map(cb=>cb.value);
+            selectedIncs.forEach(label=>addonLabels.push(label));
+
             // Remove any previous addons[] then append fresh
             formData.delete('addons[]');
             addonLabels.forEach(l=>formData.append('addons[]', l));
@@ -1229,6 +1386,12 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
                     form.reset();
                     pkgSel.innerHTML = '<option value="">Select an event type first</option>';
                     addonBoxes.forEach(cb=>toggleAddonFields(cb));
+                    // Reset inclusions
+                    document.querySelectorAll('.bf-inclusion').forEach(cb=>{ cb.checked = false; });
+                    syncInclusionsVisibility();
+                    // Reset price/estimate displays
+                    if (pkgPriceInfo) pkgPriceInfo.textContent='';
+                    if (paxEstimateEl){ paxEstimateEl.textContent=''; paxEstimateEl.classList.add('hidden'); }
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 })
                 .catch((err)=>{

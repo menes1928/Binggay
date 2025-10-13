@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         try {
             $db = new database();
             $pdo = $db->opencon();
-            $stmt = $pdo->prepare('SELECT user_id, user_fn, user_ln, user_username, user_email, user_password, user_type, user_photo FROM users WHERE user_email = ? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT user_id, user_fn, user_ln, user_username, user_email, user_phone, user_password, user_type, user_photo FROM users WHERE user_email = ? LIMIT 1');
             $stmt->execute([$email]);
             $user = $stmt->fetch();
             $isValid = false;
@@ -57,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     $_SESSION['user_username'] = (string)($user['user_username'] ?? '');
                     $_SESSION['user_name'] = trim(($_SESSION['user_fn'] ?? '') . ' ' . ($_SESSION['user_ln'] ?? ''));
                     $_SESSION['user_email'] = $user['user_email'];
+                    $_SESSION['user_phone'] = isset($user['user_phone']) ? (string)$user['user_phone'] : '';
                     $_SESSION['user_type'] = (int)$user['user_type'];
                     $_SESSION['user_photo'] = isset($user['user_photo']) ? (string)$user['user_photo'] : null;
 
