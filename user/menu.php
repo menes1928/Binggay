@@ -223,6 +223,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
             max-height: 90vh;
             overflow-y: auto;
         }
+        /* Hide amount row by default; JS will show it when needed */
+        #co_amount_row { display: none; }
 
         /* Cart Sidebar */
         .cart-sidebar {
@@ -478,6 +480,13 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                         <div>
                             <label class="block text-sm text-gray-600 mb-1">Notes</label>
                             <input type="text" id="co_notes" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Optional">
+                        </div>
+                    </div>
+                    <div id="co_amount_row" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">Amount</label>
+                            <input type="number" id="co_amount" step="0.01" min="0" class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Enter exact total" />
+                            <p id="co_amount_help" class="text-xs text-gray-500 mt-1"></p>
                         </div>
                     </div>
                 </div>
@@ -868,6 +877,19 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 // Update total shown in modal
                 const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                 document.getElementById('co_total').textContent = '₱' + cartTotal.toLocaleString();
+                // Prepare amount field for non-cash online methods
+                const methodEl = document.getElementById('co_method');
+                const amtRow = document.getElementById('co_amount_row');
+                const amtEl = document.getElementById('co_amount');
+                const amtHelp = document.getElementById('co_amount_help');
+                const m = methodEl ? (methodEl.value||'') : '';
+                const requiresExact = (m === 'Paypal' || m === 'Gcash');
+                if (amtRow) amtRow.style.display = requiresExact ? 'grid' : 'none';
+                if (amtEl) {
+                    amtEl.value = requiresExact ? String(cartTotal.toFixed(2)) : '';
+                    amtEl.required = !!requiresExact;
+                }
+                if (amtHelp) amtHelp.textContent = requiresExact ? `Enter the exact total: ₱${cartTotal.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
             }
         }
 
@@ -902,6 +924,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                     notes: document.getElementById('co_notes').value,
                 }
             };
+            const amtEl = document.getElementById('co_amount');
+            if (amtEl && amtEl.value) { payload.pay_amount = Number(amtEl.value); }
             return payload;
         }
 
@@ -1134,6 +1158,25 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 if (cart.length === 0) return;
                 toggleCheckout(true);
                 setupDateNeeded();
+                // Attach change handler to payment method to toggle amount field
+                const methodEl = document.getElementById('co_method');
+                if (methodEl && !methodEl.__wired) {
+                    methodEl.addEventListener('change', function(){
+                        const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                        const m = (this.value||'');
+                        const amtRow = document.getElementById('co_amount_row');
+                        const amtEl = document.getElementById('co_amount');
+                        const amtHelp = document.getElementById('co_amount_help');
+                        const requiresExact = (m === 'Paypal' || m === 'Gcash');
+                        if (amtRow) amtRow.style.display = requiresExact ? 'grid' : 'none';
+                        if (amtEl) {
+                            amtEl.value = requiresExact ? String(cartTotal.toFixed(2)) : '';
+                            amtEl.required = !!requiresExact;
+                        }
+                        if (amtHelp) amtHelp.textContent = requiresExact ? `Enter the exact total: ₱${cartTotal.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
+                    });
+                    methodEl.__wired = true;
+                }
             });
         }
 
@@ -1156,8 +1199,23 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                     alert('Orders must be placed at least 1 day in advance.');
                     return;
                 }
+                // Validate exact amount for non-cash online methods
+                const method = (document.getElementById('co_method')?.value||'');
+                const requiresExact = (method === 'Paypal' || method === 'Gcash');
+                if (requiresExact) {
+                    const amtEl = document.getElementById('co_amount');
+                    const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                    const entered = Number(amtEl && amtEl.value ? amtEl.value : '0');
+                    const exact = Number(cartTotal.toFixed(2));
+                    if (!Number.isFinite(entered) || Math.abs(entered - exact) > 0.009) {
+                        alert(`Please enter the exact total amount: ₱${cartTotal.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`);
+                        return;
+                    }
+                }
                 // Build payload and open summary modal for confirmation
                 pendingOrderPayload = buildOrderPayloadFromForm();
+                // Persist amount in payload (optional; backend may ignore if not needed)
+                try { if (requiresExact) pendingOrderPayload.pay_amount = Number(document.getElementById('co_amount').value); } catch(_) {}
                 renderSummary(pendingOrderPayload);
                 toggleCheckout(false);
                 toggleSummary(true);
