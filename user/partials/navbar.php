@@ -109,13 +109,13 @@ function current_user_display_name() {
 
             <!-- Auth / Profile -->
             <div class="hidden md:flex items-center space-x-4">
-                <!-- Global Cart Button -->
-                <button id="nav-cart-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span class="sr-only">Cart</span>
-                    <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
-                </button>
                 <?php if (!empty($_SESSION['user_id'])): ?>
+                    <!-- Global Cart Button (logged-in only) -->
+                    <button id="nav-cart-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
+                        <i class="fas fa-shopping-cart"></i>
+                        <span class="sr-only">Cart</span>
+                        <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
+                    </button>
                     <div class="relative" id="nav-profile">
                         <button id="profile-btn" class="flex items-center gap-2 text-white hover:text-yellow-400 transition-colors">
                             <img src="<?php echo htmlspecialchars(current_user_avatar()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" />
@@ -138,10 +138,12 @@ function current_user_display_name() {
 
             <!-- Mobile Menu Button -->
             <div class="md:hidden flex items-center gap-3">
+                <?php if (!empty($_SESSION['user_id'])): ?>
                 <button id="nav-cart-btn-mobile" class="p-2 rounded border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors relative">
                     <i class="fas fa-shopping-cart"></i>
                     <span class="cart-badge hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-5 h-5 items-center justify-center text-[10px] font-bold"></span>
                 </button>
+                <?php endif; ?>
                 <button id="mobile-menu-btn" class="text-white hover:text-yellow-400 transition-colors duration-300">
                 <i data-lucide="menu" class="w-6 h-6"></i>
                 </button>
@@ -176,7 +178,7 @@ function current_user_display_name() {
         const profileBtn = document.getElementById('profile-btn');
         const mobileBtn = document.getElementById('mobile-menu-btn');
         const mobileMenu = document.getElementById('mobile-menu');
-        const cartBtns = Array.from(document.querySelectorAll('#nav-cart-btn, #nav-cart-btn-mobile'));
+    const cartBtns = Array.from(document.querySelectorAll('#nav-cart-btn, #nav-cart-btn-mobile'));
 
         // Toggle nav scheme based on backdrop (clear on dark/green, solid on white)
         const setScheme = (solid) => {
@@ -324,7 +326,9 @@ function current_user_display_name() {
             // Go to menu and open cart via hash
             window.location.href = 'menu.php#cart';
         };
-        cartBtns.forEach(btn => btn && btn.addEventListener('click', handleCartClick));
+        if (cartBtns && cartBtns.length) {
+            cartBtns.forEach(btn => btn && btn.addEventListener('click', handleCartClick));
+        }
 
         // Initialize lucide icons if available on page
         if (window.lucide && typeof window.lucide.createIcons === 'function') {

@@ -517,6 +517,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
         let selectedCategory = '<?php echo addslashes($selectedCategoryName); ?>';
         let currentPage = 1;
         const pageSize = 20;
+        // Auth state from PHP session
+        const isLoggedIn = <?php echo isset($_SESSION['user_id']) ? 'true' : 'false'; ?>;
     // pending payload holder for double confirmation
     let pendingOrderPayload = null;
 
@@ -805,7 +807,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                             <p class="text-sm text-gray-500">Price</p>
                             <p class="text-3xl font-bold text-primary">₱${item.price.toLocaleString()}</p>
                         </div>
-                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="${item.available ? `addToCart(${item.id}); closeModal(); toggleCart()` : ''}" class="${item.available ? 'bg-primary hover:bg-green-800 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-6 py-3 rounded-lg font-medium transition-colors">
+                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="${item.available ? `handleAddFromModal(${item.id})` : ''}" class="${item.available ? 'bg-primary hover:bg-green-800 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-6 py-3 rounded-lg font-medium transition-colors">
                             <i class="fas fa-plus mr-2"></i>Add to Cart
                         </button>
                     </div>
@@ -945,8 +947,29 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
             toggleCheckout(true);
         }
 
+        // Ensure user is logged in; otherwise redirect to login with notice and next
+        function requireLoginRedirect() {
+            const current = (window.location.pathname || '') + (window.location.search || '') + (window.location.hash || '');
+            const target = '/Binggay/login.php?msg=login_required&next=' + encodeURIComponent(current);
+            window.location.href = target;
+        }
+
+        function handleAddFromModal(itemId) {
+            if (!isLoggedIn) {
+                requireLoginRedirect();
+                return;
+            }
+            addToCart(itemId);
+            closeModal();
+            toggleCart();
+        }
+
         // Add to cart
         function addToCart(itemId) {
+            if (!isLoggedIn) {
+                requireLoginRedirect();
+                return false;
+            }
             const item = menuItems.find(i => i.id === itemId);
             if(!item) return;
 
@@ -958,6 +981,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
             }
 
             updateCart();
+            return true;
         }
 
         // Update quantity
