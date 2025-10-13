@@ -242,6 +242,145 @@ if ($sectionEarly === 'bookings') {
         || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
     $pdo = $db->opencon();
 
+    // Download Contract (PDF) for a booking
+    if ($action === 'contract' && $bid > 0) {
+        try {
+            // Fetch booking with joins for human-readable fields
+            $stmt = $pdo->prepare("SELECT eb.*, u.user_fn, u.user_ln, u.user_email, u.user_phone, et.name AS eb_type, pk.pax AS eb_package_pax, pk.name AS package_name
+                                   FROM eventbookings eb
+                                   LEFT JOIN users u ON u.user_id = eb.user_id
+                                   LEFT JOIN event_types et ON et.event_type_id = eb.event_type_id
+                                   LEFT JOIN packages pk ON pk.package_id = eb.package_id
+                                   WHERE eb.eb_id = ? LIMIT 1");
+            $stmt->execute([$bid]);
+            $b = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$b) { http_response_code(404); echo 'Not found'; exit; }
+
+            // Latest payment for this booking (bookings use payments rows with order_id and cp_id NULL)
+            $pstmt = $pdo->prepare("SELECT pay_date, pay_amount, pay_method, pay_status
+                                    FROM payments WHERE user_id=? AND order_id IS NULL AND cp_id IS NULL
+                                    ORDER BY pay_date DESC, pay_id DESC LIMIT 1");
+            $pstmt->execute([(int)($b['user_id'] ?? 0)]);
+            $pay = $pstmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            // Build contract content lines
+            $clientName = trim((string)($b['eb_name'] ?: (($b['user_fn'] ?? '') . ' ' . ($b['user_ln'] ?? ''))));
+            $email = trim((string)($b['eb_email'] ?? ($b['user_email'] ?? '')));
+            $phone = trim((string)($b['eb_contact'] ?? ($b['user_phone'] ?? '')));
+            $etype = trim((string)($b['eb_type'] ?? ''));
+            $pkgName = trim((string)($b['package_name'] ?? ''));
+            $paxVal = trim((string)($b['eb_package_pax'] ?? ''));
+            $pkgLabel = $pkgName !== '' ? ($pkgName . ($paxVal !== '' ? (' - ' . $paxVal) : '')) : ($paxVal !== '' ? $paxVal : '—');
+            $addons = trim((string)($b['eb_addon_pax'] ?? ''));
+            $venue = trim((string)($b['eb_venue'] ?? ''));
+            $eventDate = isset($b['eb_date']) && $b['eb_date'] !== '' ? date('F d, Y g:i A', strtotime((string)$b['eb_date'])) : '';
+            $notes = trim((string)($b['eb_notes'] ?? ''));
+            $status = trim((string)($b['eb_status'] ?? 'Pending'));
+            $created = isset($b['created_at']) && $b['created_at'] !== '' ? date('F d, Y', strtotime((string)$b['created_at'])) : date('F d, Y');
+
+            $paySummary = $pay ? (sprintf('Payment: %s • %s • ₱%s',
+                                $pay['pay_status'] ?? '—',
+                                $pay['pay_method'] ?? '—',
+                                number_format((float)($pay['pay_amount'] ?? 0), 2))) : 'Payment: —';
+
+            // Minimal PDF generator (no external library)
+            $escape = function(string $s): string { return strtr($s, ["\\"=>'\\\\', '('=>'\\(', ')'=>'\\)']); };
+            $addLine = function(array &$buf, string $text, int $x, int &$y, int $leading=16) use ($escape) {
+                $safe = $escape($text);
+                $buf[] = sprintf("1 0 0 1 %d %d Tm (%s) Tj\n", $x, $y, $safe);
+                $y -= $leading;
+            };
+
+            $content = [];
+            $y = 800; // start near top (A4/Letter height ~ 842/792)
+            // Header
+            $content[] = "BT\n/F1 20 Tf\n";
+            $addLine($content, 'Catering Service Agreement', 50, $y, 26);
+            $content[] = "/F1 12 Tf\n";
+            $addLine($content, 'Sandok ni Binggay Catering Services', 50, $y);
+            $addLine($content, 'Date: ' . date('F d, Y'), 50, $y);
+            $y -= 6;
+            $addLine($content, 'This agreement outlines the details for the catering service as requested by the client.', 50, $y);
+            $y -= 10;
+
+            // Client & Event Details
+            $content[] = "/F1 14 Tf\n"; $addLine($content, 'Client & Event Details', 50, $y, 20);
+            $content[] = "/F1 12 Tf\n";
+            $addLine($content, 'Booking No.: #' . (int)$bid, 50, $y);
+            $addLine($content, 'Client Name: ' . ($clientName !== '' ? $clientName : '—'), 50, $y);
+            $addLine($content, 'Contact: ' . ($phone !== '' ? $phone : '—'), 50, $y);
+            $addLine($content, 'Email: ' . ($email !== '' ? $email : '—'), 50, $y);
+            $addLine($content, 'Event Type: ' . ($etype !== '' ? $etype : '—'), 50, $y);
+            $addLine($content, 'Package: ' . ($pkgLabel !== '' ? $pkgLabel : '—'), 50, $y);
+            $addLine($content, 'Add-ons: ' . ($addons !== '' ? $addons : '—'), 50, $y);
+            $addLine($content, 'Venue: ' . ($venue !== '' ? $venue : '—'), 50, $y);
+            $addLine($content, 'Event Date: ' . ($eventDate !== '' ? $eventDate : '—'), 50, $y);
+            $addLine($content, 'Status: ' . ($status !== '' ? $status : '—'), 50, $y);
+            $addLine($content, $paySummary, 50, $y);
+            if ($notes !== '') { $addLine($content, 'Notes: ' . $notes, 50, $y); }
+
+            // Terms (brief)
+            $y -= 8;
+            $content[] = "/F1 14 Tf\n"; $addLine($content, 'Terms & Conditions (Summary)', 50, $y, 20);
+            $content[] = "/F1 12 Tf\n";
+            $addLine($content, '• Client agrees to provide accurate event details and access to the venue on the event date.', 50, $y);
+            $addLine($content, '• Any changes to the order must be communicated at least 3 days prior to the event.', 50, $y);
+            $addLine($content, '• Payments follow the status listed above unless otherwise agreed in writing.', 50, $y);
+            $addLine($content, '• Sandok ni Binggay will deliver food and services per package details.', 50, $y);
+
+            // Signatures
+            $y -= 10;
+            $addLine($content, 'Signed on: ' . $created, 50, $y);
+            $y -= 24;
+            $addLine($content, 'Client Signature: ___________________________', 50, $y);
+            $addLine($content, 'Authorized Signature (Sandok ni Binggay): ___________________________', 50, $y);
+            $content[] = "ET\n";
+
+            // Assemble PDF objects
+            $stream = implode('', $content);
+            $len = strlen($stream);
+            $objs = [];
+            $offsets = [];
+            $pdf = "%PDF-1.4\n";
+            $writeObj = function(int $num, string $body) use (&$pdf, &$offsets) {
+                $offsets[$num] = strlen($pdf);
+                $pdf .= $num . " 0 obj\n" . $body . "\nendobj\n";
+            };
+            // 1: Catalog
+            $writeObj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+            // 2: Pages
+            $writeObj(2, "<< /Type /Pages /Count 1 /Kids [3 0 R] >>");
+            // 3: Page (A4 595x842pt; we use 612x792 Letter to match y)
+            $writeObj(3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>");
+            // 4: Contents stream
+            $writeObj(4, "<< /Length $len >>\nstream\n$stream\nendstream");
+            // 5: Font (Helvetica)
+            $writeObj(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+
+            // xref
+            $xrefPos = strlen($pdf);
+            $pdf .= "xref\n0 6\n"; // objects 0..5
+            $pdf .= sprintf("%010d %05d f \n", 0, 65535);
+            for ($i=1; $i<=5; $i++) {
+                $pdf .= sprintf("%010d %05d n \n", (int)$offsets[$i], 0);
+            }
+            // trailer
+            $pdf .= "trailer\n";
+            $pdf .= "<< /Size 6 /Root 1 0 R >>\nstartxref\n" . $xrefPos . "\n%%EOF";
+
+            $fname = 'Contract_Booking_' . (int)$bid . '.pdf';
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $fname . '"');
+            header('Cache-Control: private, max-age=0, must-revalidate');
+            header('Pragma: public');
+            echo $pdf;
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo 'Failed to generate PDF';
+        }
+        exit;
+    }
+
     if ($action === 'get_booking' && $bid > 0) {
         header('Content-Type: application/json');
         try {
@@ -2496,10 +2635,13 @@ if ($sectionEarly === 'eventtypes') {
                                             </div>
                                         </div>
                                         <div class="mt-4 pt-3 border-t flex flex-wrap items-center justify-end gap-2">
-                                            <button class="bk-edit h-9 px-3 rounded border border-gray-300 hover:bg-gray-50" title="Edit" data-bk-id="<?= $id ?>"><i class="fas fa-pen mr-2"></i>Edit</button>
-                                            <button class="bk-delete h-9 px-3 rounded border border-rose-300 text-rose-700 hover:bg-rose-50" title="Delete" data-bk-id="<?= $id ?>"><i class="fas fa-trash mr-2"></i>Delete</button>
-                                            <button class="bk-confirm h-9 px-3 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50" title="Mark Confirmed" data-bk-id="<?= $id ?>"><i class="fa-solid fa-circle-check mr-2"></i>Confirmed</button>
-                                            <button class="bk-complete h-9 px-3 rounded border border-blue-300 text-blue-700 hover:bg-blue-50" title="Mark Completed" data-bk-id="<?= $id ?>"><i class="fa-solid fa-flag-checkered mr-2"></i>Completed</button>
+                                            <button class="bk-edit h-9 w-9 grid place-items-center rounded border border-gray-200 hover:bg-gray-50" title="Edit" data-bk-id=<?= $id ?>><i class="fas fa-pen"></i><span class="sr-only">Edit</span></button>
+                                            <button class="bk-delete h-9 w-9 grid place-items-center rounded border border-rose-300 text-rose-700 hover:bg-rose-50" title="Delete" data-bk-id=<?= $id ?>><i class="fas fa-trash"></i><span class="sr-only">Delete</span></button>
+                                            <button class="bk-confirm h-9 w-9 grid place-items-center rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50" title="Mark Confirmed" data-bk-id=<?= $id ?>><i class="fa-solid fa-circle-check"></i><span class="sr-only">Confirm</span></button>
+                                            <button class="bk-complete h-9 w-9 grid place-items-center rounded border border-blue-300 text-blue-700 hover:bg-blue-50" title="Mark Completed" data-bk-id=<?= $id ?>><i class="fa-solid fa-flag-checkered"></i><span class="sr-only">Complete</span></button>
+                                            <a class="bk-contract h-9 w-9 grid place-items-center rounded border border-gray-200 hover:bg-gray-50" title="Download Contract" href="?section=bookings&action=contract&booking_id=<?= $id ?>" target="_blank" rel="noopener">
+                                                <i class="fa-solid fa-file-pdf"></i><span class="sr-only">Download Contract</span>
+                                            </a>
                                         </div>
                                     </div>
                                 <?php endforeach; else: ?>
