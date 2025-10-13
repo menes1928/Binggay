@@ -602,6 +602,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
             });
         }
 
+        // Helper: redirect to login with message and return path
+        function goLoginForOrder(){
+            const next = '/Binggay/menu.php';
+            window.location.href = `login.php?msg=login_required&next=${encodeURIComponent(next)}`;
+        }
+
         // Create menu card HTML
         function createMenuCard(item) {
                 return `
@@ -610,7 +616,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                         <img src="${item.image}" alt="${item.name}" onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Menu+Photo';" class="menu-image w-full h-full object-cover">
                         <div class="menu-overlay absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                         ${item.available ? '<span class="absolute top-3 left-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Available</span>' : '<span class="absolute top-3 left-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">Unavailable</span>'}
-                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="event.stopPropagation(); ${item.available ? `addToCart(${item.id})` : ''}" class="add-btn absolute bottom-3 right-3 ${item.available ? 'bg-white text-primary hover:bg-primary hover:text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
+                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="event.stopPropagation(); ${item.available ? `goLoginForOrder()` : ''}" class="add-btn absolute bottom-3 right-3 ${item.available ? 'bg-white text-primary hover:bg-primary hover:text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-colors">
                             <i class="fas fa-plus mr-1"></i>Add
                         </button>
                     </div>
@@ -676,7 +682,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                             <p class="text-sm text-gray-500">Price</p>
                             <p class="text-3xl font-bold text-primary">₱${item.price.toLocaleString()}</p>
                         </div>
-                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="${item.available ? `addToCart(${item.id}); closeModal(); toggleCart()` : ''}" class="${item.available ? 'bg-primary hover:bg-green-800 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-6 py-3 rounded-lg font-medium transition-colors">
+                        <button ${item.available ? '' : 'disabled aria-disabled="true"'} onclick="${item.available ? `goLoginForOrder()` : ''}" class="${item.available ? 'bg-primary hover:bg-green-800 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'} px-6 py-3 rounded-lg font-medium transition-colors">
                             <i class="fas fa-plus mr-2"></i>Add to Cart
                         </button>
                     </div>

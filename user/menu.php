@@ -523,28 +523,49 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
     let pendingOrderPayload = null;
 
         // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            // Load persisted cart from localStorage
-            try {
-                const raw = localStorage.getItem('binggay_cart_v1');
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed)) {
-                        // Basic validation and normalization
-                        cart = parsed.filter(it => it && typeof it.id === 'number' && typeof it.quantity === 'number' && it.quantity > 0)
-                                     .map(it => ({
-                                         id: it.id,
-                                         quantity: Math.max(1, Math.floor(it.quantity)),
-                                         price: typeof it.price === 'number' ? it.price : 0,
-                                         name: typeof it.name === 'string' ? it.name : '',
-                                         image: typeof it.image === 'string' ? it.image : '',
-                                         servings: typeof it.servings === 'string' ? it.servings : '',
-                                         prepTime: typeof it.prepTime === 'string' ? it.prepTime : '',
-                                         available: !!it.available
-                                     }));
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Load per-user cart from backend when logged in; fallback to localStorage for guests
+            if (isLoggedIn) {
+                try {
+                    const resp = await fetch('cart_get.php', { headers: { 'Accept': 'application/json' } });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data && data.ok && Array.isArray(data.items)) {
+                            cart = data.items.map(it => ({
+                                id: it.id,
+                                quantity: Math.max(1, Math.floor(it.quantity || 1)),
+                                price: Number(it.price) || 0,
+                                name: String(it.name || ''),
+                                image: String(it.image || ''),
+                                servings: String(it.servings || ''),
+                                prepTime: String(it.prepTime || ''),
+                                available: !!it.available
+                            }));
+                        }
                     }
-                }
-            } catch (e) { /* ignore parse errors */ }
+                } catch (e) { /* ignore */ }
+            } else {
+                // Load persisted cart from localStorage
+                try {
+                    const raw = localStorage.getItem('binggay_cart_v1');
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            cart = parsed.filter(it => it && typeof it.id === 'number' && typeof it.quantity === 'number' && it.quantity > 0)
+                                         .map(it => ({
+                                             id: it.id,
+                                             quantity: Math.max(1, Math.floor(it.quantity)),
+                                             price: typeof it.price === 'number' ? it.price : 0,
+                                             name: typeof it.name === 'string' ? it.name : '',
+                                             image: typeof it.image === 'string' ? it.image : '',
+                                             servings: typeof it.servings === 'string' ? it.servings : '',
+                                             prepTime: typeof it.prepTime === 'string' ? it.prepTime : '',
+                                             available: !!it.available
+                                         }));
+                        }
+                    }
+                } catch (e) { /* ignore parse errors */ }
+            }
 
             renderMenu();
             setupSearch();
@@ -565,18 +586,20 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 }
             } catch (_) {}
 
-            // Cross-tab sync
-            window.addEventListener('storage', (ev) => {
-                if (ev.key === 'binggay_cart_v1') {
-                    try {
-                        const parsed = ev.newValue ? JSON.parse(ev.newValue) : [];
-                        if (Array.isArray(parsed)) {
-                            cart = parsed;
-                            updateCart();
-                        }
-                    } catch (_) {}
-                }
-            });
+            // Cross-tab sync (guest localStorage cart only)
+            if (!isLoggedIn) {
+                window.addEventListener('storage', (ev) => {
+                    if (ev.key === 'binggay_cart_v1') {
+                        try {
+                            const parsed = ev.newValue ? JSON.parse(ev.newValue) : [];
+                            if (Array.isArray(parsed)) {
+                                cart = parsed;
+                                updateCart();
+                            }
+                        } catch (_) {}
+                    }
+                });
+            }
         });
 
         // Filter by category
@@ -954,43 +977,60 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
             window.location.href = target;
         }
 
-        function handleAddFromModal(itemId) {
+        async function handleAddFromModal(itemId) {
             if (!isLoggedIn) {
                 requireLoginRedirect();
                 return;
             }
-            addToCart(itemId);
+            await addToCart(itemId);
             closeModal();
             toggleCart();
         }
 
         // Add to cart
-        function addToCart(itemId) {
+        async function addToCart(itemId) {
             if (!isLoggedIn) {
                 requireLoginRedirect();
                 return false;
             }
             const item = menuItems.find(i => i.id === itemId);
             if(!item) return;
-
-            const existingItem = cart.find(i => i.id === itemId);
-            if(existingItem) {
-                existingItem.quantity += 1;
-            } else {
-                cart.push({...item, quantity: 1});
-            }
+            // Persist to server
+            try {
+                const resp = await fetch('cart_add.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ menu_id: itemId, delta: 1 })
+                });
+                if (!resp.ok) throw new Error('Add failed');
+                // Refresh from server to keep in sync
+                const r2 = await fetch('cart_get.php', { headers: { 'Accept': 'application/json' } });
+                if (r2.ok) {
+                    const data = await r2.json();
+                    if (data && data.ok && Array.isArray(data.items)) {
+                        cart = data.items.map(it => ({ id: it.id, quantity: Math.max(1, parseInt(it.quantity||1,10)), price: Number(it.price)||0, name: it.name || '', image: it.image || '', servings: it.servings || '', prepTime: it.prepTime || '', available: !!it.available }));
+                    }
+                }
+            } catch (e) { /* ignore */ }
 
             updateCart();
             return true;
         }
 
         // Update quantity
-        function updateQuantity(itemId, quantity) {
-            if(quantity === 0) {
+        async function updateQuantity(itemId, quantity) {
+            if (quantity === 0) {
+                // Remove server-side
+                try {
+                    await fetch('cart_update.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ menu_id: itemId, quantity: 0 }) });
+                } catch (_) {}
                 cart = cart.filter(item => item.id !== itemId);
             } else {
                 const item = cart.find(i => i.id === itemId);
-                if(item) item.quantity = quantity;
+                if (item) item.quantity = quantity;
+                try {
+                    await fetch('cart_update.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ menu_id: itemId, quantity: Math.max(1, parseInt(quantity||1,10)) }) });
+                } catch (_) {}
             }
             updateCart();
         }
@@ -1051,10 +1091,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 document.getElementById('cartTotal').textContent = '₱' + cartTotal.toLocaleString();
             }
 
-            // Persist to localStorage
-            try {
-                localStorage.setItem('binggay_cart_v1', JSON.stringify(cart));
-            } catch (_) {}
+            // Persist guest cart to localStorage only; logged-in carts are server-side
+            if (!isLoggedIn) {
+                try {
+                    localStorage.setItem('binggay_cart_v1', JSON.stringify(cart));
+                } catch (_) {}
+            }
         }
 
         // Close modal when clicking outside
@@ -1139,6 +1181,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 // success: clear cart, close modals, show alert
                 cart = [];
                 updateCart();
+                try { await fetch('cart_clear.php', { method: 'POST' }); } catch (_) {}
                 try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
                 toggleSummary(false);
                 toggleCheckout(false);
