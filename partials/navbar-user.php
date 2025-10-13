@@ -111,7 +111,7 @@ function current_user_display_name_user() {
                         </button>
                         <div id="profile-menu" class="absolute right-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/5 py-1 hidden">
                             <a href="profile" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
-                            <a href="../logout" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
+                            <a href="logout" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
                         </div>
                     </div>
                 <?php else: ?>
