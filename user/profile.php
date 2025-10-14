@@ -157,6 +157,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     }
+    // Real-time counts for stats
+    if (isset($data['action']) && $data['action'] === 'get_counts') {
+        header('Content-Type: application/json');
+        $uid = (int)$_SESSION['user_id'];
+        try {
+            $c1 = $pdo->prepare('SELECT COUNT(*) FROM orders WHERE user_id = ?'); $c1->execute([$uid]); $orders = (int)$c1->fetchColumn();
+            $c2 = $pdo->prepare('SELECT COUNT(*) FROM eventbookings WHERE user_id = ?'); $c2->execute([$uid]); $bookings = (int)$c2->fetchColumn();
+            $c3 = $pdo->prepare('SELECT COUNT(*) FROM cateringpackages WHERE user_id = ?'); $c3->execute([$uid]); $catering = (int)$c3->fetchColumn();
+            echo json_encode(['ok'=>true,'orders'=>$orders,'bookings'=>$bookings,'catering'=>$catering]);
+        } catch (Throwable $e) { echo json_encode(['ok'=>false]); }
+        exit;
+    }
+    // List user's catering inquiries
+    if (isset($data['action']) && $data['action'] === 'list_catering') {
+        header('Content-Type: application/json');
+        $uid = (int)$_SESSION['user_id'];
+        try {
+            $stmt = $pdo->prepare('SELECT cp_id, cp_place, cp_date, cp_price, cp_addon_pax, cp_notes FROM cateringpackages WHERE user_id = ? ORDER BY created_at DESC, cp_id DESC');
+            $stmt->execute([$uid]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            // Latest payment per cp (if exists)
+            $payStmt = $pdo->prepare('SELECT pay_amount, pay_method, pay_status, pay_date FROM payments WHERE cp_id = ? ORDER BY pay_date DESC, pay_id DESC LIMIT 1');
+            $items = [];
+            foreach ($rows as $r) {
+                $p = null;
+                if (!empty($r['cp_id'])) { $payStmt->execute([(int)$r['cp_id']]); $p = $payStmt->fetch(PDO::FETCH_ASSOC) ?: null; }
+                $items[] = [
+                    'id' => (int)$r['cp_id'],
+                    'place' => (string)$r['cp_place'],
+                    'date' => (string)$r['cp_date'],
+                    'addons' => (string)($r['cp_addon_pax'] ?? ''),
+                    'notes' => (string)($r['cp_notes'] ?? ''),
+                    'price' => (float)$r['cp_price'],
+                    'payment' => $p ? [
+                        'amount' => (float)($p['pay_amount'] ?? 0),
+                        'method' => (string)($p['pay_method'] ?? ''),
+                        'status' => (string)($p['pay_status'] ?? ''),
+                        'date' => (string)($p['pay_date'] ?? '')
+                    ] : null,
+                    'contract' => 'javascript:void(0)'
+                ];
+            }
+            echo json_encode(['ok'=>true,'items'=>$items]);
+        } catch (Throwable $e) { echo json_encode(['ok'=>false,'message'=>'Failed to load catering.']); }
+        exit;
+    }
+    // List user's bookings
+    if (isset($data['action']) && $data['action'] === 'list_bookings') {
+        header('Content-Type: application/json');
+        $uid = (int)$_SESSION['user_id'];
+        try {
+            $stmt = $pdo->prepare('SELECT eb.eb_id, eb.event_type_id, eb.package_id, eb.eb_venue, eb.eb_date, eb.eb_addon_pax, eb.eb_status, eb.eb_notes, eb.eb_order, et.name AS et_name, p.name AS pkg_name, p.pax AS pkg_pax, p.base_price AS pkg_price FROM eventbookings eb LEFT JOIN event_types et ON et.event_type_id=eb.event_type_id LEFT JOIN packages p ON p.package_id = eb.package_id WHERE eb.user_id = ? ORDER BY eb.created_at DESC, eb.eb_id DESC');
+            $stmt->execute([$uid]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $items = [];
+            foreach ($rows as $r) {
+                $pkg = null; if (!empty($r['pkg_name'])) { $pkg = ['name'=>(string)$r['pkg_name'],'pax'=>(string)$r['pkg_pax'],'price'=>(float)$r['pkg_price']]; }
+                $items[] = [
+                    'id' => (int)$r['eb_id'],
+                    'event_type' => (string)($r['et_name'] ?? ''),
+                    'package' => $pkg,
+                    'orderLabel' => (string)($r['eb_order'] ?? ''),
+                    'venue' => (string)($r['eb_venue'] ?? ''),
+                    'date' => (string)($r['eb_date'] ?? ''),
+                    'addons' => (string)($r['eb_addon_pax'] ?? ''),
+                    'status' => (string)($r['eb_status'] ?? ''),
+                    'notes' => (string)($r['eb_notes'] ?? ''),
+                    'contract' => '../admin/admin.php?section=bookings&action=contract&booking_id='.(int)$r['eb_id'].'&ajax=1'
+                ];
+            }
+            echo json_encode(['ok'=>true,'items'=>$items]);
+        } catch (Throwable $e) { echo json_encode(['ok'=>false,'message'=>'Failed to load bookings.']); }
+        exit;
+    }
+    // Cancel/Delete actions
+    if (isset($data['action']) && $data['action'] === 'cancel_booking') {
+        header('Content-Type: application/json');
+        $id = (int)($data['id'] ?? 0); $uid=(int)$_SESSION['user_id'];
+        if ($id<=0) { echo json_encode(['ok'=>false,'message'=>'Invalid.']); exit; }
+        try { $pdo->prepare("UPDATE eventbookings SET eb_status='Canceled' WHERE eb_id=? AND user_id=?")->execute([$id,$uid]); echo json_encode(['ok'=>true]); } catch (Throwable $e) { echo json_encode(['ok'=>false,'message'=>'Failed to cancel.']); }
+        exit;
+    }
+    if (isset($data['action']) && $data['action'] === 'delete_booking') {
+        header('Content-Type: application/json');
+        $id = (int)($data['id'] ?? 0); $uid=(int)$_SESSION['user_id'];
+        if ($id<=0) { echo json_encode(['ok'=>false,'message'=>'Invalid.']); exit; }
+        try { $pdo->prepare('DELETE FROM eventbookings WHERE eb_id=? AND user_id=?')->execute([$id,$uid]); echo json_encode(['ok'=>true]); } catch (Throwable $e) { echo json_encode(['ok'=>false,'message'=>'Failed to delete.']); }
+        exit;
+    }
+    if (isset($data['action']) && $data['action'] === 'cancel_catering') {
+        header('Content-Type: application/json');
+        $id = (int)($data['id'] ?? 0); $uid=(int)$_SESSION['user_id'];
+        if ($id<=0) { echo json_encode(['ok'=>false,'message'=>'Invalid.']); exit; }
+        try {
+            // Soft-cancel by appending to notes
+            $pdo->prepare("UPDATE cateringpackages SET cp_notes = CONCAT(IFNULL(cp_notes,''), ' ', '(Canceled on ', DATE(NOW()), ')') WHERE cp_id=? AND user_id=?")
+                ->execute([$id,$uid]);
+            echo json_encode(['ok'=>true]);
+        } catch (Throwable $e) { echo json_encode(['ok'=>false,'message'=>'Failed to cancel.']); }
+        exit;
+    }
+    if (isset($data['action']) && $data['action'] === 'delete_catering') {
+        header('Content-Type: application/json');
+        $id = (int)($data['id'] ?? 0); $uid=(int)$_SESSION['user_id'];
+        if ($id<=0) { echo json_encode(['ok'=>false,'message'=>'Invalid.']); exit; }
+        try { $pdo->prepare('DELETE FROM cateringpackages WHERE cp_id=? AND user_id=?')->execute([$id,$uid]); echo json_encode(['ok'=>true]); } catch (Throwable $e) { echo json_encode(['ok'=>false,'message'=>'Failed to delete.']); }
+        exit;
+    }
 }
 $stmt = $pdo->prepare('SELECT * FROM users WHERE user_id = ? LIMIT 1');
 $stmt->execute([ (int)$_SESSION['user_id'] ]);
@@ -195,13 +303,18 @@ if (!empty($photoRaw)) {
 }
 
 // Dynamic stats
+// Initial counts (will be kept up-to-date via polling)
 $q1 = $pdo->prepare('SELECT COUNT(*) FROM orders WHERE user_id = ?');
 $q1->execute([ (int)$_SESSION['user_id'] ]);
 $totalOrders = (int)$q1->fetchColumn();
 
 $q2 = $pdo->prepare('SELECT COUNT(*) FROM eventbookings WHERE user_id = ?');
 $q2->execute([ (int)$_SESSION['user_id'] ]);
-$totalAppointments = (int)$q2->fetchColumn();
+$totalBookings = (int)$q2->fetchColumn();
+
+$q3 = $pdo->prepare('SELECT COUNT(*) FROM cateringpackages WHERE user_id = ?');
+$q3->execute([ (int)$_SESSION['user_id'] ]);
+$totalCatering = (int)$q3->fetchColumn();
 
 // Recent orders for right-column history
 $qOrders = $pdo->prepare('SELECT order_id, order_status, order_amount, order_needed, order_date, created_at FROM orders WHERE user_id = ? ORDER BY created_at DESC, order_id DESC LIMIT 5');
@@ -307,6 +420,15 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         .btn-sm {
             padding: 0.5rem 1rem;
             font-size: 0.875rem;
+        }
+
+        /* Extra small button for dense actions in modals */
+        .btn-xs {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.1;
+            border-width: 1.5px;
+            border-radius: 0.5rem;
         }
 
         .btn-destructive {
@@ -819,6 +941,28 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             margin-top: 1.5rem;
         }
 
+        /* Icon action buttons fixed at bottom-right inside each record in modals */
+        .modal .address-item { position: relative; padding-bottom: 3rem; }
+        .modal .address-actions {
+            position: absolute;
+            right: 1rem;
+            bottom: 0.75rem;
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .icon-btn {
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            border-width: 2px;
+        }
+        .icon-btn i { font-size: 0.9rem; }
+
         /* Footer */
         footer {
             background: var(--primary);
@@ -1004,11 +1148,11 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
         <!-- Stats Grid -->
         <div class="stats-grid">
-            <div class="stat-card">
+            <div class="stat-card" id="stat-orders">
                 <div class="stat-content">
                     <div class="stat-info">
                         <p>Total Orders</p>
-                        <div class="stat-value" style="color: var(--primary);"><?php echo e($totalOrders); ?></div>
+                        <div class="stat-value" id="count-orders" style="color: var(--primary);"><?php echo e($totalOrders); ?></div>
                     </div>
                     <div class="stat-icon icon-primary">
                         <i class="fas fa-shopping-bag"></i>
@@ -1016,11 +1160,11 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                 </div>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-card" id="stat-bookings">
                 <div class="stat-content">
                     <div class="stat-info">
-                        <p>Appointments</p>
-                        <div class="stat-value" style="color: var(--accent);"><?php echo e($totalAppointments); ?></div>
+                        <p>Bookings</p>
+                        <div class="stat-value" id="count-bookings" style="color: var(--accent);"><?php echo e($totalBookings); ?></div>
                     </div>
                     <div class="stat-icon icon-accent">
                         <i class="fas fa-calendar"></i>
@@ -1028,16 +1172,14 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                 </div>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-card" id="stat-catering">
                 <div class="stat-content">
                     <div class="stat-info">
-                        <p>View My Orders</p>
-                        <a href="#" style="color: var(--chart-3); text-decoration: none; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
-                            View All <i class="fas fa-chevron-right"></i>
-                        </a>
+                        <p>Catering</p>
+                        <div class="stat-value" id="count-catering" style="color: var(--chart-3);"><?php echo e($totalCatering); ?></div>
                     </div>
                     <div class="stat-icon icon-chart3">
-                        <i class="fas fa-box"></i>
+                        <i class="fas fa-utensils"></i>
                     </div>
                 </div>
             </div>
@@ -1276,6 +1418,40 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         </div>
     </div>
 
+    <!-- Catering Modal -->
+    <div class="modal" id="cateringModal">
+        <div class="modal-content" style="max-width:900px;">
+            <div class="modal-header">
+                <i class="fas fa-utensils"></i>
+                <h3 style="margin-right:auto;">My Catering Inquiries</h3>
+                <button class="btn btn-sm" id="cateringClose">Close</button>
+            </div>
+            <div class="card">
+                <div class="card-header"><div class="card-title"><i class="fas fa-list"></i> Records</div></div>
+                <div class="card-content" id="cateringList">
+                    <div class="empty-state"><i class="fas fa-box-open"></i><p>No catering inquiries yet.</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bookings Modal -->
+    <div class="modal" id="bookingsModal">
+        <div class="modal-content" style="max-width:960px;">
+            <div class="modal-header">
+                <i class="fas fa-calendar"></i>
+                <h3 style="margin-right:auto;">My Bookings</h3>
+                <button class="btn btn-sm" id="bookingsClose">Close</button>
+            </div>
+            <div class="card">
+                <div class="card-header"><div class="card-title"><i class="fas fa-list"></i> Records</div></div>
+                <div class="card-content" id="bookingsList">
+                    <div class="empty-state"><i class="fas fa-box-open"></i><p>No bookings yet.</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer>
     <img src="../images/logo.png" alt="Sandok ni Binggay" class="footer-logo">
@@ -1420,6 +1596,124 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         }
 
         // (Addresses and Favorites removed per request)
+
+        // Real-time Stats Polling
+        function loadCounts(){
+            fetch(window.location.href, {
+                method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'}, credentials:'same-origin',
+                body: JSON.stringify({ action: 'get_counts' })
+            }).then(r=>r.json()).then(j=>{
+                if(!j.ok) return;
+                const o=document.getElementById('count-orders'); if(o) o.textContent = j.orders;
+                const b=document.getElementById('count-bookings'); if(b) b.textContent = j.bookings;
+                const c=document.getElementById('count-catering'); if(c) c.textContent = j.catering;
+            }).catch(()=>{});
+        }
+        let countsTimer = null;
+        function startCounts(){ if(countsTimer) clearInterval(countsTimer); loadCounts(); countsTimer = setInterval(loadCounts, 10000); }
+        document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) startCounts(); });
+        startCounts();
+
+        // Catering + Bookings Modals
+        const cateringModal = document.getElementById('cateringModal');
+        const bookingsModal = document.getElementById('bookingsModal');
+        const cateringList = document.getElementById('cateringList');
+        const bookingsList = document.getElementById('bookingsList');
+        const statCatering = document.getElementById('stat-catering');
+        const statBookings = document.getElementById('stat-bookings');
+        const cateringClose = document.getElementById('cateringClose');
+        const bookingsClose = document.getElementById('bookingsClose');
+
+        function openCatering(){ cateringModal.classList.add('active'); loadCatering(); }
+        function openBookings(){ bookingsModal.classList.add('active'); loadBookings(); }
+        if (statCatering) statCatering.addEventListener('click', openCatering);
+        if (statBookings) statBookings.addEventListener('click', openBookings);
+        if (cateringClose) cateringClose.addEventListener('click', ()=> cateringModal.classList.remove('active'));
+        if (bookingsClose) bookingsClose.addEventListener('click', ()=> bookingsModal.classList.remove('active'));
+        cateringModal.addEventListener('click', (e)=>{ if (e.target===cateringModal) cateringModal.classList.remove('active'); });
+        bookingsModal.addEventListener('click', (e)=>{ if (e.target===bookingsModal) bookingsModal.classList.remove('active'); });
+
+        function renderCatering(items){
+            if(!items || !items.length){ cateringList.innerHTML = '<div class="empty-state"><i class="fas fa-box-open"></i><p>No catering inquiries yet.</p></div>'; return; }
+            cateringList.innerHTML = items.map(it=>{
+                const pay = it.payment||{};
+                const amt = typeof pay.amount!=='undefined' ? ('₱'+Number(pay.amount||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})) : '—';
+                return `<div class="address-item">
+                    <div class="address-content">
+                        <div class="address-info">
+                            <div class="address-label"><i class="fas fa-map-marker-alt"></i><span>${escapeHtml(it.place||'-')}</span></div>
+                            <div class="address-details"><b>Date needed:</b> ${escapeHtml(it.date||'-')}</div>
+                            <div class="address-details"><b>Add ons:</b> ${escapeHtml(String(it.addons||''))}</div>
+                            <div class="address-details"><b>Notes:</b> ${escapeHtml(String(it.notes||''))}</div>
+                            <div class="address-details"><b>Price:</b> ₱${Number(it.price||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+                            <div class="address-details"><b>Payment amount:</b> ${amt}</div>
+                            <div class="address-details"><b>Payment method:</b> ${escapeHtml(pay.method||'-')}</div>
+                            <div class="address-details"><b>Payment status:</b> ${escapeHtml(pay.status||'-')}</div>
+                        </div>
+                        <div class="address-actions">
+                            <a class="btn icon-btn" href="catering_contract.php?id=${it.id}" target="_blank" title="View Contract"><i class="fas fa-file-contract"></i></a>
+                            <button class="btn icon-btn btn-destructive js-cancel-catering" data-id="${it.id}" title="Cancel"><i class="fas fa-ban"></i></button>
+                            <button class="btn icon-btn btn-destructive js-delete-catering" data-id="${it.id}" title="Delete"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+        function renderBookings(items){
+            if(!items || !items.length){ bookingsList.innerHTML = '<div class="empty-state"><i class="fas fa-box-open"></i><p>No bookings yet.</p></div>'; return; }
+            bookingsList.innerHTML = items.map(it=>{
+                const pkg = it.package||{};
+                const pkgTxt = pkg.name ? `${escapeHtml(pkg.name)} - ${escapeHtml(String(pkg.pax||''))} - ₱${Number(pkg.price||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}` : escapeHtml(it.orderLabel||'-');
+                return `<div class="address-item">
+                    <div class="address-content">
+                        <div class="address-info">
+                            <div class="address-label"><i class="fas fa-tag"></i><span>Event Type: ${escapeHtml(it.event_type||'-')}</span></div>
+                            <div class="address-details"><b>Package:</b> ${pkgTxt}</div>
+                            <div class="address-details"><b>Venue:</b> ${escapeHtml(it.venue||'-')}</div>
+                            <div class="address-details"><b>Date:</b> ${escapeHtml(it.date||'-')}</div>
+                            <div class="address-details"><b>Add ons:</b> ${escapeHtml(String(it.addons||''))}</div>
+                            <div class="address-details"><b>Status:</b> ${escapeHtml(it.status||'-')}</div>
+                            <div class="address-details"><b>Notes:</b> ${escapeHtml(String(it.notes||''))}</div>
+                        </div>
+                        <div class="address-actions">
+                            <a class="btn icon-btn" href="booking_contract.php?id=${it.id}" target="_blank" title="View Contract"><i class="fas fa-file-contract"></i></a>
+                            <button class="btn icon-btn btn-destructive js-cancel-booking" data-id="${it.id}" title="Cancel"><i class="fas fa-ban"></i></button>
+                            <button class="btn icon-btn btn-destructive js-delete-booking" data-id="${it.id}" title="Delete"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+        function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+        function loadCatering(){
+            fetch(window.location.href, { method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'}, credentials:'same-origin', body: JSON.stringify({ action:'list_catering' }) })
+            .then(r=>r.json()).then(j=>{ if(j.ok){ renderCatering(j.items||[]); } });
+        }
+        function loadBookings(){
+            fetch(window.location.href, { method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'}, credentials:'same-origin', body: JSON.stringify({ action:'list_bookings' }) })
+            .then(r=>r.json()).then(j=>{ if(j.ok){ renderBookings(j.items||[]); } });
+        }
+
+        // Actions: cancel/delete
+        document.addEventListener('click', (e)=>{
+            const btnCancelC = e.target.closest('.js-cancel-catering');
+            const btnDeleteC = e.target.closest('.js-delete-catering');
+            const btnCancelB = e.target.closest('.js-cancel-booking');
+            const btnDeleteB = e.target.closest('.js-delete-booking');
+            if (btnCancelC){ const id=+btnCancelC.getAttribute('data-id'); if(!id) return; if(!confirm('Cancel this catering inquiry?')) return;
+                fetch(window.location.href,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'},credentials:'same-origin', body: JSON.stringify({action:'cancel_catering', id})}).then(r=>r.json()).then(j=>{ if(j.ok){ loadCatering(); loadCounts(); } else { alert(j.message||'Failed to cancel.'); } });
+            }
+            if (btnDeleteC){ const id=+btnDeleteC.getAttribute('data-id'); if(!id) return; if(!confirm('Delete this catering inquiry? This cannot be undone.')) return;
+                fetch(window.location.href,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'},credentials:'same-origin', body: JSON.stringify({action:'delete_catering', id})}).then(r=>r.json()).then(j=>{ if(j.ok){ loadCatering(); loadCounts(); } else { alert(j.message||'Failed to delete.'); } });
+            }
+            if (btnCancelB){ const id=+btnCancelB.getAttribute('data-id'); if(!id) return; if(!confirm('Cancel this booking?')) return;
+                fetch(window.location.href,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'},credentials:'same-origin', body: JSON.stringify({action:'cancel_booking', id})}).then(r=>r.json()).then(j=>{ if(j.ok){ loadBookings(); loadCounts(); } else { alert(j.message||'Failed to cancel.'); } });
+            }
+            if (btnDeleteB){ const id=+btnDeleteB.getAttribute('data-id'); if(!id) return; if(!confirm('Delete this booking? This cannot be undone.')) return;
+                fetch(window.location.href,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'},credentials:'same-origin', body: JSON.stringify({action:'delete_booking', id})}).then(r=>r.json()).then(j=>{ if(j.ok){ loadBookings(); loadCounts(); } else { alert(j.message||'Failed to delete.'); } });
+            }
+        });
 
         // Order Details modal interactions
         const orderDetailsModal = document.getElementById('orderDetailsModal');
