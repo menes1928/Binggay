@@ -442,7 +442,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 btn.addEventListener('click', function(e){
                     if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
                         e.preventDefault();
-                        window.location.href = 'login.php?next=' + encodeURIComponent('user/menu.php#cart');
+                        window.location.href = 'login?next=' + encodeURIComponent('user/menu#cart');
                     }
                 });
             }
@@ -604,8 +604,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
 
         // Helper: redirect to login with message and return path
         function goLoginForOrder(){
-            const next = '/Binggay/menu.php';
-            window.location.href = `login.php?msg=login_required&next=${encodeURIComponent(next)}`;
+            const next = '/Binggay/menu';
+            window.location.href = `login?msg=login_required&next=${encodeURIComponent(next)}`;
         }
 
         // Create menu card HTML

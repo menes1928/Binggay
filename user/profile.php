@@ -230,6 +230,8 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Profile - Sandok ni Binggay</title>
+    <!-- TailwindCSS (required for shared navbar styles) -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -260,52 +262,7 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             min-height: 100vh;
         }
 
-        /* Header */
-        header {
-            position: sticky;
-            top: 0;
-            z-index: 50;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            border-bottom: 1px solid var(--border);
-        }
-
-        .header-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 1rem 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .header-logo {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .logo-img {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            border: 4px solid var(--primary);
-            box-shadow: 0 4px 15px rgba(27, 67, 50, 0.3);
-            object-fit: cover;
-        }
-
-        .header-text h1 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: var(--primary);
-            margin-bottom: 0.25rem;
-        }
-
-        .header-text p {
-            font-size: 0.875rem;
-            color: var(--muted-foreground);
-        }
+        /* Standalone header styles removed – navbar-user.php supplies the navigation */
 
         .btn {
             padding: 0.625rem 1.5rem;
@@ -997,19 +954,43 @@ function e($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         .empty-state p {
             color: var(--muted-foreground);
         }
+
+        /* Profile page forced green navbar */
+        body.profile-page header.nav-root {
+            background: #1B4332 !important; /* primary green */
+            backdrop-filter: none !important;
+            border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.25) !important;
+        }
+        body.profile-page header.nav-root .nav-link,
+        body.profile-page header.nav-root #profile-btn,
+        body.profile-page header.nav-root #nav-notif-btn,
+        body.profile-page header.nav-root #nav-cart-btn,
+        body.profile-page header.nav-root #nav-notif-btn-mobile,
+        body.profile-page header.nav-root #nav-cart-btn-mobile,
+        body.profile-page header.nav-root #mobile-menu-btn { color:#ffffff !important; }
+        body.profile-page header.nav-root .nav-link:hover { color:#D4AF37 !important; }
+        body.profile-page header.nav-root #signup-btn-nav { border-color:#ffffff !important; color:#ffffff !important; }
+        body.profile-page header.nav-root #signup-btn-nav:hover { background:#ffffff !important; color:#1B4332 !important; }
+        body.profile-page header.nav-root #nav-notif-btn,
+        body.profile-page header.nav-root #nav-cart-btn,
+        body.profile-page header.nav-root #nav-notif-btn-mobile,
+        body.profile-page header.nav-root #nav-cart-btn-mobile { border-color: rgba(255,255,255,0.6) !important; }
+        body.profile-page header.nav-root #nav-notif-btn:hover,
+        body.profile-page header.nav-root #nav-cart-btn:hover,
+        body.profile-page header.nav-root #nav-notif-btn-mobile:hover,
+        body.profile-page header.nav-root #nav-cart-btn-mobile:hover { background:rgba(255,255,255,0.1) !important; }
+        /* Ensure mobile expanded menu inherits green */
+        body.profile-page #mobile-menu { background:#1B4332 !important; border-color:rgba(255,255,255,0.15) !important; }
     </style>
 </head>
-<body>
-    <!-- Header -->
-    <header>
-        <div class="header-container">
-            
-            <a href="menu.php" class="btn">Back to Menu</a>
-        </div>
-    </header>
+<body class="min-h-screen profile-page">
+    <?php include __DIR__ . '/../partials/navbar-user.php'; ?>
 
     <!-- Main Content -->
-    <div class="container">
+    <div class="container pt-32 md:pt-36" data-nav-contrast="dark">
+
+    
         <!-- Welcome Section -->
         <div class="welcome-section">
             <div class="welcome-content">

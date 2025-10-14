@@ -33,7 +33,7 @@ function normalize_menu_pic($raw) {
         if ($base === '' || strcasecmp($base, 'default.jpg') === 0) {
             return 'https://placehold.co/800x600?text=Menu+Photo';
         }
-        return '/Binggay/images/menu/' . $base;
+        return '/Binggay/menu/' . $base;
     }
 
     // If already starts with a known web-rooted segment
@@ -43,7 +43,7 @@ function normalize_menu_pic($raw) {
 
     // Bare filename -> assume images/menu/
     if (strpos($raw, '/') === false) {
-        return '/Binggay/images/menu/' . $raw;
+        return '/Binggay/menu/' . $raw;
     }
 
     // Fallback: ensure it is under site root
