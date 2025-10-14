@@ -166,7 +166,7 @@ if ($sectionEarly === 'orders') {
             }
             exit;
         }
-        if ($action === 'update_order' && $isAjaxAction) {
+    if ($action === 'update_order' && $isAjaxAction) {
             header('Content-Type: application/json');
             try {
                 $status = (string)($_POST['order_status'] ?? 'pending');
@@ -194,6 +194,15 @@ if ($sectionEarly === 'orders') {
                 echo json_encode(['success'=>false,'message'=>'Error updating order']);
             }
             exit;
+        }
+        // Set only the order status (do not touch address or payments)
+        if ($action === 'set_status') {
+            try {
+                $newStatus = strtolower(trim((string)($_POST['order_status'] ?? '')));
+                $allowed = ['pending','in progress','completed','canceled','cancelled'];
+                if (!in_array($newStatus, $allowed, true)) { $newStatus = 'pending'; }
+                $pdo->prepare("UPDATE orders SET order_status=? WHERE order_id=?")->execute([$newStatus, $oid]);
+            } catch (Throwable $e) {}
         }
         if ($action === 'mark_paid') {
             try {
@@ -229,6 +238,67 @@ if ($sectionEarly === 'orders') {
             header('Location: ?section=orders');
             exit;
         }
+    }
+}
+
+// Dashboard early actions (AJAX endpoints)
+if ($sectionEarly === 'dashboard') {
+    $action = $_GET['action'] ?? '';
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    if ($action && $isAjaxAction) {
+        header('Content-Type: application/json');
+        try {
+            $pdo = $db->opencon();
+            if ($action === 'get_total_orders') {
+                // Orders only (exclude catering packages)
+                $stmt = $pdo->query("SELECT COUNT(*) FROM orders");
+                $ordersOnly = (int)$stmt->fetchColumn();
+                echo json_encode(['ok'=>true,'totalOrders'=>$ordersOnly]);
+                exit;
+            }
+            if ($action === 'get_total_revenue') {
+                // Sum of collected payments (Paid or Partial) for Orders (order_id) and Catering (cp_id), exclude booking-reserved rows (both NULL)
+                $sql = "SELECT COALESCE(SUM(pay_amount),0) AS total
+                        FROM payments
+                        WHERE (pay_status IN ('Paid','Partial'))
+                          AND (order_id IS NOT NULL OR cp_id IS NOT NULL)";
+                $stmt = $pdo->query($sql);
+                $total = (float)$stmt->fetchColumn();
+                echo json_encode(['ok'=>true,'totalRevenue'=>$total]);
+                exit;
+            }
+            if ($action === 'get_best_sellers') {
+                $sql = "SELECT oi.menu_id,
+                               m.menu_name,
+                               COALESCE(SUM(COALESCE(oi.oi_quantity,1)),0) AS qty
+                        FROM orderitems oi
+                        JOIN orders o ON o.order_id = oi.order_id
+                        JOIN menu m ON m.menu_id = oi.menu_id
+                        WHERE o.order_status IS NULL OR o.order_status <> 'canceled'
+                        GROUP BY oi.menu_id, m.menu_name
+                        ORDER BY qty DESC, m.menu_name ASC
+                        LIMIT 10";
+                $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+                $ranked = [];
+                $rank = 1;
+                foreach ($rows as $r) {
+                    $ranked[] = [
+                        'rank' => $rank++,
+                        'menu_id' => (int)$r['menu_id'],
+                        'name' => (string)$r['menu_name'],
+                        'qty' => (float)$r['qty'],
+                    ];
+                }
+                echo json_encode(['ok'=>true,'items'=>$ranked]);
+                exit;
+            }
+            echo json_encode(['ok'=>false,'error'=>'Unknown action']);
+        } catch (Throwable $e) {
+            echo json_encode(['ok'=>false,'error'=>'Failed: '.$e->getMessage()]);
+        }
+        exit;
     }
 }
 
@@ -532,6 +602,47 @@ if ($sectionEarly === 'bookings') {
             echo json_encode(['success'=>true]);
         } catch (Throwable $e) {
             echo json_encode(['success'=>false,'message'=>'Mark paid failed']);
+        }
+        exit;
+    }
+
+    if ($action === 'mark_downpayment' && $bid > 0) {
+        header('Content-Type: application/json');
+        try {
+            $method = (string)($_POST['pay_method'] ?? 'Cash');
+            $amount = (float)($_POST['pay_amount'] ?? 0);
+            // Load booking to obtain user_id and for email
+            $b = $pdo->prepare("SELECT eb.*, u.user_email, u.user_fn, u.user_ln, et.name AS et_name FROM eventbookings eb LEFT JOIN users u ON u.user_id=eb.user_id LEFT JOIN event_types et ON et.event_type_id=eb.event_type_id WHERE eb.eb_id=?");
+            $b->execute([$bid]);
+            $brow = $b->fetch(PDO::FETCH_ASSOC) ?: [];
+            $userId = (int)($brow['user_id'] ?? 0);
+            if ($userId <= 0) { echo json_encode(['success'=>false,'message'=>'User not found for booking']); exit; }
+            // Insert a Partial payment row reserved for bookings (order_id and cp_id are NULL)
+            $ins = $pdo->prepare("INSERT INTO payments (order_id, cp_id, user_id, pay_date, pay_amount, pay_method, pay_status) VALUES (NULL, NULL, ?, CURDATE(), ?, ?, 'Partial')");
+            $ins->execute([$userId, $amount, $method]);
+            // Update booking status to Downpayment
+            $pdo->prepare("UPDATE eventbookings SET eb_status='Downpayment' WHERE eb_id=?")->execute([$bid]);
+            // Email notification
+            try {
+                require_once __DIR__ . '/../classes/Mailer.php';
+                $mailer = new Mailer();
+                $toEmail = (string)($brow['user_email'] ?? '');
+                $toName = trim(((string)($brow['user_fn'] ?? '')) . ' ' . ((string)($brow['user_ln'] ?? '')));
+                $data = [
+                    'fullName'   => (string)($brow['eb_name'] ?? $toName),
+                    'event_type' => (string)($brow['et_name'] ?? 'Event Booking'),
+                    'package'    => (string)($brow['eb_order'] ?? ''),
+                    'event_date' => (string)($brow['eb_date'] ?? ''),
+                    'venue'      => (string)($brow['eb_venue'] ?? ''),
+                    'contact'    => (string)($brow['eb_contact'] ?? ''),
+                    'addons'     => (string)($brow['eb_addon_pax'] ?? ''),
+                    'notes'      => (string)($brow['eb_notes'] ?? ''),
+                ];
+                if ($toEmail) { [$subject,$html]=$mailer->renderBookingEmail($data,'Partial'); $mailer->send($toEmail,$toName?:$data['fullName'],$subject,$html); }
+            } catch (Throwable $e) {}
+            echo json_encode(['success'=>true]);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'message'=>'Mark downpayment failed']);
         }
         exit;
     }
@@ -1453,6 +1564,7 @@ if ($sectionEarly === 'eventtypes') {
         function booking_status_chip_classes($value) {
             $n = strtolower(trim((string)$value));
             if ($n === 'paid') return 'bg-emerald-50 border-emerald-300 text-emerald-800';
+            if ($n === 'downpayment' || $n === 'partial') return 'bg-blue-50 border-blue-300 text-blue-800';
             if ($n === 'completed') return 'bg-blue-50 border-blue-300 text-blue-800';
             if ($n === 'in progress' || $n === 'processing' || $n === 'ongoing') return 'bg-amber-50 border-amber-300 text-amber-800';
             if ($n === 'canceled' || $n === 'cancelled') return 'bg-rose-50 border-rose-300 text-rose-800';
@@ -1888,7 +2000,6 @@ if ($sectionEarly === 'eventtypes') {
                                 <i class="fas fa-dollar-sign text-primary"></i>
                             </div>
                             <?php
-                                // Compute real-time total revenue from payments marked as Paid for the current month only
                                 $totalRevenuePaid = 0.0;
                                 try {
                                     $pdo = $db->opencon();
@@ -1903,26 +2014,26 @@ if ($sectionEarly === 'eventtypes') {
                                     $totalRevenuePaid = 0.0;
                                 }
                             ?>
-                            <div class="text-2xl font-bold text-primary">₱<?= number_format($totalRevenuePaid, 0) ?></div>
+                            <div id="total-revenue-amount" class="text-2xl font-bold text-primary">₱<?= number_format($totalRevenuePaid, 0) ?></div>
                             <div class="flex items-center text-sm text-muted-foreground">
-                                <i class="fas fa-arrow-up text-green-600 mr-1"></i>
-                                <span class="text-green-600">+12.5%</span>
-                                <span class="ml-1">from last month</span>
+                                <i class="fas fa-bolt text-green-700 mr-1"></i>
+                                <span class="text-green-700">real-time</span>
+                                <span class="ml-1">orders + catering</span>
                             </div>
                         </div>
 
-                        <div class="card p-6 border-l-4 border-l-accent hover:shadow-lg transition-shadow">
+                        <button id="card-total-orders" type="button" onclick="if(window.__openBestSellers){window.__openBestSellers();}" class="card text-left p-6 border-l-4 border-l-accent hover:shadow-lg transition-shadow w-full">
                             <div class="flex items-center justify-between mb-2">
                                 <h3 class="text-sm font-medium">Total Orders</h3>
                                 <i class="fas fa-shopping-cart text-accent"></i>
                             </div>
-                            <div class="text-2xl font-bold text-primary">1,176</div>
+                            <div id="total-orders-count" class="text-2xl font-bold text-primary">—</div>
                             <div class="flex items-center text-sm text-muted-foreground">
                                 <i class="fas fa-arrow-up text-green-600 mr-1"></i>
-                                <span class="text-green-600">+8.2%</span>
-                                <span class="ml-1">from last month</span>
+                                <span class="text-green-600">real-time</span>
+                                <span class="ml-1">click to view best sellers</span>
                             </div>
-                        </div>
+                        </button>
 
                         <div class="card p-6 border-l-4 border-l-green-700 hover:shadow-lg transition-shadow">
                             <div class="flex items-center justify-between mb-2">
@@ -2448,7 +2559,13 @@ if ($sectionEarly === 'eventtypes') {
                                                     <span class="<?= ord_chip_base().' '.ord_status_chip($o['order_status'] ?? ''); ?>"><?= htmlspecialchars(ucfirst($o['order_status'] ?? 'pending')) ?></span>
                                                 </td>
                                                 <td class="p-3 whitespace-nowrap"><?= $pay ?></td>
-                                                <td class="p-3"><?php $ps = trim((string)($o['pay_status'] ?? '')); echo $ps!==''?('<span class="'.ord_chip_base().' '.ord_pay_status_chip($ps).'">'.htmlspecialchars($ps).'</span>'):'—'; ?></td>
+                                                <td class="p-3"><?php
+                                                    $method = strtolower(trim((string)($o['pay_method'] ?? '')));
+                                                    $ps = trim((string)($o['pay_status'] ?? ''));
+                                                    // If online methods, display Paid regardless of stored value per requirement
+                                                    if (in_array($method, ['gcash','paypal','paymaya'], true)) { $ps = 'Paid'; }
+                                                    echo $ps!==''?('<span class="'.ord_chip_base().' '.ord_pay_status_chip($ps).'">'.htmlspecialchars($ps).'</span>'):'—';
+                                                ?></td>
                                                 <td class="p-3 whitespace-nowrap">
                                                     <div class="flex items-center gap-2">
                                                         <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50" title="Edit" aria-label="Edit" data-edit-order="<?= (int)$o['order_id'] ?>">
@@ -2456,6 +2573,9 @@ if ($sectionEarly === 'eventtypes') {
                                                         </button>
                                                         <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50" title="View Order" aria-label="View Order" data-view-order="<?= (int)$o['order_id'] ?>">
                                                             <i class="fas fa-eye"></i>
+                                                        </button>
+                                                        <button type="button" class="p-2 rounded border border-amber-300 text-amber-700 hover:bg-amber-50" title="Mark In Progress" aria-label="Mark In Progress" data-inprogress-order="<?= (int)$o['order_id'] ?>">
+                                                            <i class="fas fa-spinner"></i>
                                                         </button>
                                                         <button type="button" class="p-2 rounded border border-gray-200 hover:bg-gray-50 text-green-700" title="Mark Paid" aria-label="Mark Paid" data-paid-order="<?= (int)$o['order_id'] ?>">
                                                             <i class="fas fa-circle-check"></i>
@@ -2575,6 +2695,7 @@ if ($sectionEarly === 'eventtypes') {
                                     <option value="">All</option>
                                     <option value="Pending" <?= $bkStatus==='Pending'?'selected':'' ?>>Pending</option>
                                     <option value="In Progress" <?= $bkStatus==='In Progress'?'selected':'' ?>>In Progress</option>
+                                    <option value="Downpayment" <?= $bkStatus==='Downpayment'?'selected':'' ?>>Downpayment</option>
                                     <option value="Completed" <?= $bkStatus==='Completed'?'selected':'' ?>>Completed</option>
                                     <option value="Paid" <?= $bkStatus==='Paid'?'selected':'' ?>>Paid</option>
                                     <option value="Canceled" <?= $bkStatus==='Canceled'?'selected':'' ?>>Canceled</option>
@@ -2658,6 +2779,7 @@ if ($sectionEarly === 'eventtypes') {
                                             <button class="bk-delete h-9 w-9 grid place-items-center rounded border border-rose-300 text-rose-700 hover:bg-rose-50" title="Delete" data-bk-id=<?= $id ?>><i class="fas fa-trash"></i><span class="sr-only">Delete</span></button>
                                             <button class="bk-confirm h-9 w-9 grid place-items-center rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50" title="Mark Confirmed" data-bk-id=<?= $id ?>><i class="fa-solid fa-circle-check"></i><span class="sr-only">Confirm</span></button>
                                             <button class="bk-complete h-9 w-9 grid place-items-center rounded border border-blue-300 text-blue-700 hover:bg-blue-50" title="Mark Completed" data-bk-id=<?= $id ?>><i class="fa-solid fa-flag-checkered"></i><span class="sr-only">Complete</span></button>
+                                            <button class="bk-downpay h-9 w-9 grid place-items-center rounded border border-sky-300 text-sky-700 hover:bg-sky-50" title="Record Downpayment" data-bk-id=<?= $id ?>><i class="fa-solid fa-hand-holding-dollar"></i><span class="sr-only">Downpayment</span></button>
                                             <a class="bk-contract h-9 w-9 grid place-items-center rounded border border-gray-200 hover:bg-gray-50" title="Download Contract" href="?section=bookings&action=contract&booking_id=<?= $id ?>" target="_blank" rel="noopener">
                                                 <i class="fa-solid fa-file-pdf"></i><span class="sr-only">Download Contract</span>
                                             </a>
@@ -3349,8 +3471,8 @@ if ($sectionEarly === 'eventtypes') {
             setSidebarState(!sidebarCollapsed);
         });
 
-        // Initialize charts when page loads
-        document.addEventListener('DOMContentLoaded', function() {
+    // Initialize charts and dashboard widgets when page loads
+    document.addEventListener('DOMContentLoaded', function() {
             // Admin user dropdown toggle
             (function(){
                 const btn = document.getElementById('admin-user-button');
@@ -3367,14 +3489,190 @@ if ($sectionEarly === 'eventtypes') {
             })();
 
             const initialSection = '<?php echo htmlspecialchars($section); ?>';
-            // Dashboard: (Top items modal removed)
-            // Bookings: handle Confirmed/Completed actions on card buttons
+
+            // Dashboard: Total Orders KPI + Best Sellers modal (non-intrusive)
+            if (!initialSection || initialSection === 'dashboard') {
+                const totalEl = document.getElementById('total-orders-count');
+                const cardBtn = document.getElementById('card-total-orders');
+                                let modal = document.getElementById('best-sellers-modal');
+                                let closeBtn = document.getElementById('best-sellers-close');
+                                let closeBtn2 = document.getElementById('best-sellers-close-2');
+                                let rowsTbody = document.getElementById('best-sellers-rows');
+
+                                function ensureBestSellersModal() {
+                                        // If modal exists, nothing to do
+                                        if (modal && rowsTbody) return true;
+                                        // Create lightweight modal structure appended to body as a fallback
+                                        const wrap = document.createElement('div');
+                                        wrap.id = 'best-sellers-modal';
+                                        wrap.className = 'fixed inset-0 z-50 items-center justify-center bg-black/50 hidden';
+                                        wrap.innerHTML = (
+                                                '<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4">' +
+                                                    '<div class="p-4 border-b flex items-center justify-between">' +
+                                                        '<h3 class="text-lg font-medium text-primary">Top 10 Best Sellers</h3>' +
+                                                        '<button id="best-sellers-close" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>' +
+                                                    '</div>' +
+                                                    '<div class="p-4">' +
+                                                        '<div id="best-sellers-body" class="overflow-x-auto">' +
+                                                            '<table class="min-w-full text-sm">' +
+                                                                '<thead class="bg-gray-50 text-gray-600">' +
+                                                                    '<tr>' +
+                                                                        '<th class="text-left px-4 py-2">Rank</th>' +
+                                                                        '<th class="text-left px-4 py-2">Menu Item</th>' +
+                                                                        '<th class="text-right px-4 py-2">Qty Sold</th>' +
+                                                                    '</tr>' +
+                                                                '</thead>' +
+                                                                '<tbody id="best-sellers-rows" class="divide-y divide-gray-100">' +
+                                                                    '<tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">Loading…</td></tr>' +
+                                                                '</tbody>' +
+                                                            '</table>' +
+                                                        '</div>' +
+                                                    '</div>' +
+                                                    '<div class="p-4 border-t text-right">' +
+                                                        '<button id="best-sellers-close-2" class="px-4 py-2 rounded-md border text-gray-700 hover:bg-gray-50">Close</button>' +
+                                                    '</div>' +
+                                                '</div>'
+                                        );
+                                        try { document.body.appendChild(wrap); } catch(_) { return false; }
+                                        // Re-acquire references
+                                        modal = document.getElementById('best-sellers-modal');
+                                        closeBtn = document.getElementById('best-sellers-close');
+                                        closeBtn2 = document.getElementById('best-sellers-close-2');
+                                        rowsTbody = document.getElementById('best-sellers-rows');
+                                        // Wire close handlers for the dynamically added modal
+                                        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+                                        if (closeBtn2) closeBtn2.addEventListener('click', closeModal);
+                                        if (modal) modal.addEventListener('click', function(e){ if (e.target === modal) closeModal(); });
+                                        return !!(modal && rowsTbody);
+                                }
+
+                async function fetchTotalOrders() {
+                    if (!totalEl) return;
+                    try {
+                        const res = await fetch('?section=dashboard&action=get_total_orders&ajax=1', { headers: { 'Accept': 'application/json', 'X-Requested-With':'XMLHttpRequest' } });
+                        const data = await res.json();
+                        if (data && data.ok) {
+                            totalEl.textContent = Number(data.totalOrders).toLocaleString('en-PH');
+                        } else {
+                            totalEl.textContent = '—';
+                        }
+                    } catch (_) {
+                        totalEl.textContent = '—';
+                    }
+                }
+
+                async function openBestSellers() {
+                    if (!modal || !rowsTbody) {
+                        if (!ensureBestSellersModal()) return;
+                    }
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    try { modal.style.display = 'flex'; } catch(_) {}
+                    if (rowsTbody) rowsTbody.innerHTML = '<tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">Loading…</td></tr>';
+                    try {
+                        const res = await fetch('?section=dashboard&action=get_best_sellers&ajax=1', { headers: { 'Accept':'application/json', 'X-Requested-With':'XMLHttpRequest' } });
+                        const data = await res.json();
+                        if (data && data.ok && Array.isArray(data.items) && data.items.length > 0) {
+                            rowsTbody.innerHTML = data.items.map(item => `
+                                <tr>
+                                    <td class="px-4 py-2">${item.rank}</td>
+                                    <td class="px-4 py-2">${item.name || '—'}</td>
+                                    <td class="px-4 py-2 text-right">${Number(item.qty).toLocaleString('en-PH')}</td>
+                                </tr>
+                            `).join('');
+                        } else {
+                            if (rowsTbody) rowsTbody.innerHTML = '<tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">No data available</td></tr>';
+                        }
+                    } catch (_) {
+                        if (rowsTbody) rowsTbody.innerHTML = '<tr><td colspan="3" class="px-4 py-6 text-center text-red-600">Error loading data</td></tr>';
+                    }
+                }
+
+                function closeModal() {
+                    if (!modal) return;
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    try { modal.style.display = 'none'; } catch(_) {}
+                }
+
+                // Expose a safe global fallback for inline handler
+                window.__openBestSellers = openBestSellers;
+
+                fetchTotalOrders();
+                setInterval(fetchTotalOrders, 15000);
+
+                // Real-time Total Revenue (orders + catering; Paid or Partial)
+                const revenueEl = document.getElementById('total-revenue-amount');
+                async function fetchTotalRevenue(){
+                    if (!revenueEl) return;
+                    try {
+                        const res = await fetch('?section=dashboard&action=get_total_revenue&ajax=1', { headers: { 'Accept': 'application/json', 'X-Requested-With':'XMLHttpRequest' } });
+                        const data = await res.json();
+                        if (data && data.ok) {
+                            const amt = Number(data.totalRevenue||0);
+                            revenueEl.textContent = '₱' + amt.toLocaleString('en-PH', { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+                        }
+                    } catch(_) { /* ignore transient errors */ }
+                }
+                fetchTotalRevenue();
+                setInterval(fetchTotalRevenue, 15000);
+                if (cardBtn) {
+                    cardBtn.addEventListener('click', function(e){ e.preventDefault(); openBestSellers(); });
+                }
+                // Delegated fallback in case direct listener doesn't attach for any reason
+                document.addEventListener('click', function(e){
+                    var trg = e.target.closest ? e.target.closest('#card-total-orders') : null;
+                    if (trg) { e.preventDefault(); openBestSellers(); }
+                });
+                if (closeBtn) closeBtn.addEventListener('click', closeModal);
+                if (closeBtn2) closeBtn2.addEventListener('click', closeModal);
+                if (modal) modal.addEventListener('click', function(e){ if (e.target === modal) closeModal(); });
+            }
+
+            // Bookings: handle Confirmed/Completed/Downpayment actions on card buttons
             if (initialSection === 'bookings') {
                 const bookingsContainer = document.getElementById('bookings-content');
                 bookingsContainer?.addEventListener('click', async (e) => {
                     const btnConfirm = e.target.closest('.bk-confirm');
                     const btnComplete = e.target.closest('.bk-complete');
+                    const btnDownpay = e.target.closest('.bk-downpay');
                     const btnPaid = e.target.closest('.bk-paid');
+                    if (btnDownpay) {
+                        const id = btnDownpay.getAttribute('data-bk-id');
+                        try {
+                            const fd = new FormData();
+                            fd.append('section','bookings');
+                            fd.append('ajax','1');
+                            fd.append('action','update');
+                            fd.append('booking_id', id);
+                            // Fetch current booking to provide required fields
+                            const r0 = await fetch(`?section=bookings&action=get_booking&booking_id=${id}`, { headers: {'X-Requested-With':'XMLHttpRequest'} });
+                            const j0 = await r0.json();
+                            if (!j0.success) { alert(j0.message||'Failed to load booking'); return; }
+                            const d = j0.data || {};
+                            fd.append('eb_name', d.eb_name||'');
+                            fd.append('eb_contact', d.eb_contact||'');
+                            fd.append('eb_type', d.eb_type||'');
+                            fd.append('eb_venue', d.eb_venue||'');
+                            fd.append('eb_date', d.eb_date ? d.eb_date.replace(' ', 'T').slice(0,16) : '');
+                            fd.append('eb_order', d.eb_order||'');
+                            if (d.eb_package_pax!==null && d.eb_package_pax!==undefined) fd.append('eb_package_pax', d.eb_package_pax);
+                            if (d.eb_addon_pax!==null && d.eb_addon_pax!==undefined) fd.append('eb_addon_pax', d.eb_addon_pax);
+                            if (d.eb_notes!==null && d.eb_notes!==undefined) fd.append('eb_notes', d.eb_notes);
+                            fd.append('eb_status', 'Downpayment');
+                            const r = await fetch(`?section=bookings&action=update`, { method:'POST', body: fd, headers: {'X-Requested-With':'XMLHttpRequest'} });
+                            const j = await r.json();
+                            if (!j.success) { alert(j.message||'Failed to update'); return; }
+                            // Update card chip in-place
+                            const card = btnDownpay.closest('.card');
+                            const chip = card ? card.querySelector('[data-bk-status]') : null;
+                            if (chip) {
+                                chip.textContent = 'Downpayment';
+                                chip.className = '<?= booking_chip_base_classes(); ?> ' + 'bg-blue-50 border-blue-300 text-blue-800';
+                            }
+                        } catch (_) { alert('Network error'); }
+                        return;
+                    }
                     if (!btnConfirm && !btnComplete) return; // existing .bk-paid handled by modal below
                     const btn = btnConfirm || btnComplete;
                     const id = btn.getAttribute('data-bk-id');
@@ -4393,12 +4691,19 @@ if ($sectionEarly === 'eventtypes') {
                 const pdDialog = pdModal ? pdModal.querySelector('.dialog') : null;
                 const pdForm = document.getElementById('bk-paid-form');
                 const pdId = document.getElementById('bk-paid-id');
+                const pdAction = pdForm ? pdForm.querySelector('input[name="action"]') : null;
+                const pdTitle = document.querySelector('#bk-paid-modal h3');
                 function showPd(){ if(!pdBack||!pdModal) return; pdBack.style.display='block'; pdModal.style.display='flex'; pdBack.setAttribute('aria-hidden','false'); pdModal.setAttribute('aria-hidden','false'); pdBack.classList.remove('pointer-events-none'); pdModal.classList.remove('pointer-events-none'); requestAnimationFrame(()=>{ pdBack.style.opacity='1'; pdModal.style.opacity='1'; if(pdDialog) pdDialog.style.transform='scale(1)'; }); }
                 function hidePd(){ if(!pdBack||!pdModal) return; pdBack.style.opacity='0'; pdModal.style.opacity='0'; if(pdDialog) pdDialog.style.transform='scale(0.95)'; setTimeout(()=>{ pdBack.classList.add('pointer-events-none'); pdModal.classList.add('pointer-events-none'); pdBack.style.display='none'; pdModal.style.display='none'; pdBack.setAttribute('aria-hidden','true'); pdModal.setAttribute('aria-hidden','true'); },180); }
                 document.getElementById('bk-paid-close')?.addEventListener('click', hidePd);
                 document.getElementById('bk-paid-cancel')?.addEventListener('click', hidePd);
                 pdBack && pdBack.addEventListener('click', hidePd);
-                function openPaidBooking(id){ pdId.value = id; showPd(); }
+                function openPaidBooking(id, mode){
+                    pdId.value = id;
+                    if (pdAction) pdAction.value = (mode==='downpayment') ? 'mark_downpayment' : 'mark_paid';
+                    if (pdTitle) pdTitle.textContent = (mode==='downpayment') ? 'Record Downpayment' : 'Record Booking Payment';
+                    showPd();
+                }
                 pdForm && pdForm.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd = new FormData(pdForm); try { const r=await fetch('?section=bookings', { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} }); const j=await r.json(); if(!j.success){ alert(j.message||'Failed to save'); return; } hidePd(); refreshBookings(); } catch (_){ alert('Network error'); } });
             }
             // Categories: modal + live menu search + CRUD
@@ -4899,7 +5204,21 @@ if ($sectionEarly === 'eventtypes') {
                     const editBtn = e.target.closest('[data-edit-order]');
                     const viewBtn = e.target.closest('[data-view-order]');
                     const paidBtn = e.target.closest('[data-paid-order]');
+                    const progBtn = e.target.closest('[data-inprogress-order]');
                     const delBtn = e.target.closest('[data-delete-order]');
+                    if (progBtn) {
+                        const id = progBtn.getAttribute('data-inprogress-order');
+                        try {
+                            const fd = new FormData();
+                            fd.append('ajax','1');
+                            fd.append('action','set_status');
+                            fd.append('order_id', id);
+                            fd.append('order_status','in progress');
+                            await fetch('?section=orders', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }}).then(r=>r.json());
+                            window.location.reload();
+                        } catch (_) { alert('Request failed.'); }
+                        return;
+                    }
                     if (viewBtn) {
                         const id = viewBtn.getAttribute('data-view-order');
                         try {
@@ -5600,6 +5919,7 @@ if ($sectionEarly === 'eventtypes') {
                             <select name="eb_status" id="bk-status-input" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
                                 <option value="Pending">Pending</option>
                                 <option value="In Progress">In Progress</option>
+                                <option value="Downpayment">Downpayment</option>
                                 <option value="Completed">Completed</option>
                                 <option value="Paid">Paid</option>
                                 <option value="Canceled">Canceled</option>
@@ -5632,6 +5952,35 @@ if ($sectionEarly === 'eventtypes') {
                 </div>
                 <div class="p-4 border-t flex justify-end gap-2">
                     <button id="view-order-close" type="button" class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Best Sellers Modal -->
+        <div id="best-sellers-modal" class="fixed inset-0 z-50 items-center justify-center bg-black/50 hidden">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4">
+                <div class="p-4 border-b flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-primary">Top 10 Best Sellers</h3>
+                    <button id="best-sellers-close" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4">
+                    <div id="best-sellers-body" class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50 text-gray-600">
+                                <tr>
+                                    <th class="text-left px-4 py-2">Rank</th>
+                                    <th class="text-left px-4 py-2">Menu Item</th>
+                                    <th class="text-right px-4 py-2">Qty Sold</th>
+                                </tr>
+                            </thead>
+                            <tbody id="best-sellers-rows" class="divide-y divide-gray-100">
+                                <tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="p-4 border-t text-right">
+                    <button id="best-sellers-close-2" class="px-4 py-2 rounded-md border text-gray-700 hover:bg-gray-50">Close</button>
                 </div>
             </div>
         </div>
