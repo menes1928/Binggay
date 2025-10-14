@@ -1,86 +1,68 @@
 <?php
-// User navbar: renders with user controls and correct relative paths under /user
+// Ensure session is active so navbar can read login state everywhere
+// Start session only if headers are not sent to avoid warnings when included after output
 if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
     session_start();
 }
 
-// This variant assumes logged-in user; fall back to session check
-$FORCE_NAV_MODE = 'user';
-$NAV_IS_LOGGED_IN = !empty($_SESSION['user_id']);
+// DB access for fetching user photo if not in session
+require_once __DIR__ . '/../../classes/database.php';
 
-require_once __DIR__ . '/../classes/database.php';
-
-function normalize_user_photo_path_user(?string $raw): ?string {
+// Normalize a stored DB path to a web path usable from /user/* pages; verify file exists if local
+function normalize_user_photo_path(?string $raw): ?string {
     if ($raw === null) return null;
     $raw = trim((string)$raw);
     if ($raw === '') return null;
-    // Normalize slashes
     $raw = str_replace('\\', '/', $raw);
-    // Strip leading ./ or ../ segments
-    $raw = preg_replace('~^(?:\./|\.\./)+~', '', $raw);
-    // Full URL
+    // External URLs are used as-is
     if (preg_match('~^https?://~i', $raw)) return $raw;
 
-    // If it's an absolute filesystem path, try to extract after /Binggay/
-    if (preg_match('~Binggay/(.+)$~i', $raw, $m)) {
-        $rel = ltrim($m[1], '/');
-        return '/Binggay/' . $rel;
+    // Build filesystem path from project root
+    $root = realpath(__DIR__ . '/../../');
+    // Strip leading ./, ../, or / for FS existence check
+    $rel = preg_replace('~^(\./|\.\./|/)+~', '', $raw);
+    $fs = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
+    if (is_file($fs)) {
+        // Web path relative to /user pages
+        return '../' . $rel;
     }
-
-    // If already starts with a known web-rooted segment
-    if (preg_match('~^(uploads(?:/profile)?|profile|profiles|images)(/|$)~i', $raw)) {
-        return '/Binggay/' . ltrim($raw, '/');
-    }
-
-    // If looks like a Windows absolute path without Binggay segment, use the basename
-    if (preg_match('~^[A-Za-z]:/|^/~', $raw)) {
-        $base = basename($raw);
-        if ($base !== '') {
-            return '/Binggay/uploads/profile/' . $base;
-        }
-    }
-
-    // If it's just a filename, assume it's in uploads/profile/
-    if (strpos($raw, '/') === false) {
-        return '/Binggay/uploads/profile/' . $raw;
-    }
-
-    // Fallback: ensure it is under site root
-    return '/Binggay/' . ltrim($raw, '/');
+    // If not found, try original form assuming it's already relative to /user
+    return null;
 }
 
-function current_user_avatar_user(): string {
-    $default = '/Binggay/images/logo.png';
+// Helper: resolve profile image (DB -> session -> default)
+function current_user_avatar(): string {
+    $default = '../images/logo.png';
     $id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     if ($id <= 0) return $default;
 
-    // Always fetch from DB to ensure the latest image is used
+    // 1) Session photo first
+    if (!empty($_SESSION['user_photo'])) {
+        $web = normalize_user_photo_path((string)$_SESSION['user_photo']);
+        if ($web !== null) return $web;
+    }
+
+    // 2) Fetch from DB and cache in session
     try {
         $db = new database();
         $pdo = $db->opencon();
         $stmt = $pdo->prepare('SELECT user_photo FROM users WHERE user_id = ? LIMIT 1');
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row && isset($row['user_photo'])) {
-            $web = normalize_user_photo_path_user((string)$row['user_photo']);
-            if ($web !== null) {
-                return $web;
-            }
+        if ($row && !empty($row['user_photo'])) {
+            $_SESSION['user_photo'] = (string)$row['user_photo'];
+            $web = normalize_user_photo_path((string)$row['user_photo']);
+            if ($web !== null) return $web;
         }
-    } catch (Throwable $e) {}
-
-    // As a fallback, try session value if present
-    if (!empty($_SESSION['user_photo'])) {
-        $web = normalize_user_photo_path_user((string)$_SESSION['user_photo']);
-        if ($web !== null) {
-            return $web;
-        }
+    } catch (Throwable $e) {
+        // ignore and fallback
     }
 
+    // 3) Default logo
     return $default;
 }
 
-function current_user_display_name_user() {
+function current_user_display_name() {
     if (!empty($_SESSION['user_username'])) return (string)$_SESSION['user_username'];
     $fn = isset($_SESSION['user_fn']) ? trim((string)$_SESSION['user_fn']) : '';
     $ln = isset($_SESSION['user_ln']) ? trim((string)$_SESSION['user_ln']) : '';
@@ -95,7 +77,7 @@ function current_user_display_name_user() {
     <div class="container mx-auto px-6 py-4">
         <nav class="flex items-center justify-between">
             <!-- Logo -->
-            <a href="home" class="flex items-center space-x-3">
+            <a href="home.php" class="flex items-center space-x-3">
                 <div class="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center overflow-hidden">
                     <img src="../images/logo.png" alt="Sandok ni Binggay Logo" class="w-10 h-10 object-contain" />
                 </div>
@@ -110,10 +92,10 @@ function current_user_display_name_user() {
                 <?php $current = strtolower(basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))); ?>
                 <?php
                     $links = [
-                        ['href' => 'home', 'label' => 'Home', 'key' => 'home'],
-                        ['href' => 'menu', 'label' => 'Menu', 'key' => 'menu'],
-                        ['href' => 'cateringpackages', 'label' => 'Catering', 'key' => 'cateringpackages'],
-                        ['href' => 'booking', 'label' => 'Occasions', 'key' => 'booking'],
+                        ['href' => 'home.php', 'label' => 'Home', 'key' => 'home.php'],
+                        ['href' => 'menu.php', 'label' => 'Menu', 'key' => 'menu.php'],
+                        ['href' => 'cateringpackages.php', 'label' => 'Packages', 'key' => 'cateringpackages.php'],
+                        ['href' => 'booking.php', 'label' => 'Bookings', 'key' => 'booking.php'],
                     ];
                 ?>
                 <?php foreach ($links as $ln): $isActive = ($current === strtolower($ln['key'])); ?>
@@ -127,8 +109,8 @@ function current_user_display_name_user() {
 
             <!-- Auth / Profile -->
             <div class="hidden md:flex items-center space-x-4">
-                <?php if ($NAV_IS_LOGGED_IN): ?>
-                    <!-- Notifications Button + Dropdown (moved before Cart) -->
+                <?php if (!empty($_SESSION['user_id'])): ?>
+                    <!-- Notifications Button (moved before Cart) -->
                     <div class="relative" id="nav-notif">
                         <button id="nav-notif-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
                             <i class="fas fa-bell"></i>
@@ -144,11 +126,11 @@ function current_user_display_name_user() {
                                 <div class="p-4 text-sm text-gray-500">Loading…</div>
                             </div>
                             <div class="p-2 border-t border-gray-100 text-right">
-                                <a href="profile#orders" class="text-xs text-amber-600 hover:text-amber-700">View all</a>
+                                <a href="orders.php" class="text-xs text-amber-600 hover:text-amber-700">View all</a>
                             </div>
                         </div>
                     </div>
-                    <!-- Global Cart Button (visible only when logged in) -->
+                    <!-- Global Cart Button (logged-in only) -->
                     <button id="nav-cart-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
                         <i class="fas fa-shopping-cart"></i>
                         <span class="sr-only">Cart</span>
@@ -156,13 +138,13 @@ function current_user_display_name_user() {
                     </button>
                     <div class="relative" id="nav-profile">
                         <button id="profile-btn" class="flex items-center gap-2 text-white hover:text-yellow-400 transition-colors">
-                            <img src="<?php echo htmlspecialchars(current_user_avatar_user()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" onerror="this.onerror=null;this.src='/Binggay/images/logo.png';" />
-                            <span class="max-w-[200px] truncate">Welcome, <?php echo htmlspecialchars(current_user_display_name_user()); ?></span>
+                            <img src="<?php echo htmlspecialchars(current_user_avatar()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" />
+                            <span class="max-w-[200px] truncate">Welcome, <?php echo htmlspecialchars(current_user_display_name()); ?></span>
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd"/></svg>
                         </button>
                         <div id="profile-menu" class="absolute right-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/5 py-1 hidden">
-                            <a href="profile" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
-                            <a href="logout" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
+                            <a href="profile.php" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
+                            <a href="../logout.php" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
                         </div>
                     </div>
                 <?php else: ?>
@@ -170,16 +152,16 @@ function current_user_display_name_user() {
                         <i class="fas fa-user"></i>
                         Login
                     </a>
-                    <a id="signup-btn-nav" href="../registration" class="px-4 py-2 rounded-full border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors font-medium">Sign up</a>
+                    <a id="signup-btn-nav" href="../registration.php" class="px-4 py-2 rounded-full border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors font-medium">Sign up</a>
                 <?php endif; ?>
             </div>
 
             <!-- Mobile Menu Button -->
             <div class="md:hidden flex items-center gap-3">
-                <?php if ($NAV_IS_LOGGED_IN): ?>
+                <?php if (!empty($_SESSION['user_id'])): ?>
                 <button id="nav-notif-btn-mobile" class="p-2 rounded border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors relative">
                     <i class="fas fa-bell"></i>
-                    <span class="notif-badge hidden absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-4 h-4 items-center justify-center text-[9px] font-bold"></span>
+                    <span class="notif-badge hidden absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 items-center justify-center text-[10px] font-bold"></span>
                 </button>
                 <button id="nav-cart-btn-mobile" class="p-2 rounded border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors relative">
                     <i class="fas fa-shopping-cart"></i>
@@ -195,16 +177,16 @@ function current_user_display_name_user() {
         <!-- Mobile Navigation -->
         <div id="mobile-menu" class="md:hidden absolute top-full left-0 right-0 bg-green-900/95 backdrop-blur-sm border-t border-green-700 hidden">
             <div class="container mx-auto px-6 py-4 space-y-4">
-                <a href="home" class="block nav-link transition-colors duration-300">Home</a>
-                <a href="menu" class="block nav-link transition-colors duration-300">Menu</a>
-                <a href="cateringpackages" class="block nav-link transition-colors duration-300">Catering</a>
-                <a href="booking" class="block nav-link transition-colors duration-300">Occasions</a>
-                <?php if ($NAV_IS_LOGGED_IN): ?>
-                    <a href="profile" class="block nav-link transition-colors duration-300">Profile</a>
-                    <a href="../logout" class="block nav-link transition-colors duration-300">Logout</a>
+                <a href="home.php#home" class="block nav-link transition-colors duration-300">Home</a>
+                <a href="menu.php" class="block nav-link transition-colors duration-300">Menu</a>
+                <a href="cateringpackages.php" class="block nav-link transition-colors duration-300">Packages</a>
+                <a href="booking.php" class="block nav-link transition-colors duration-300">Bookings</a>
+                <?php if (!empty($_SESSION['user_id'])): ?>
+                    <a href="profile.php" class="block nav-link transition-colors duration-300">Profile</a>
+                    <a href="../logout.php" class="block nav-link transition-colors duration-300">Logout</a>
                 <?php else: ?>
-                    <a href="../login" class="block nav-link transition-colors duration-300">Login</a>
-                    <a href="../registration" class="block nav-link transition-colors duration-300">Sign up</a>
+                    <a href="../login.php" class="block nav-link transition-colors duration-300">Login</a>
+                    <a href="../registration.php" class="block nav-link transition-colors duration-300">Sign up</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -212,6 +194,7 @@ function current_user_display_name_user() {
 </header>
 
 <script>
+    // Navbar behaviors (self-contained)
     (function(){
         const navRoot = document.querySelector('header.nav-root');
         const loginBtn = document.getElementById('login-btn-nav');
@@ -220,7 +203,6 @@ function current_user_display_name_user() {
         const mobileBtn = document.getElementById('mobile-menu-btn');
         const mobileMenu = document.getElementById('mobile-menu');
     const cartBtns = Array.from(document.querySelectorAll('#nav-cart-btn, #nav-cart-btn-mobile'));
-    const notifBtns = Array.from(document.querySelectorAll('#nav-notif-btn, #nav-notif-btn-mobile'));
     const notifBtn = document.getElementById('nav-notif-btn');
     const notifBtnMobile = document.getElementById('nav-notif-btn-mobile');
     const notifBadge = document.getElementById('notifBadge');
@@ -230,13 +212,15 @@ function current_user_display_name_user() {
     const notifRefresh = document.getElementById('notifRefresh');
     const hideNotifBadges = () => {
         if (notifBadge) notifBadge.classList.add('hidden');
-        notifBadges.forEach(el => el && el.classList.add('hidden'));
+        notifBadges.forEach(el => el.classList.add('hidden'));
     };
-    // No toast UI; badge-only UX
 
+        // Toggle nav scheme based on backdrop (clear on dark/green, solid on white)
         const setScheme = (solid) => {
             if (!navRoot) return;
+            // Header container styles
             navRoot.classList.toggle('nav-solid', solid);
+            // Apply background/border via utility classes
             if (solid) {
                 navRoot.classList.add('bg-white/95','backdrop-blur','border-b','border-green-200','shadow');
                 navRoot.classList.remove('bg-transparent','border-transparent','shadow-none');
@@ -244,10 +228,12 @@ function current_user_display_name_user() {
                 navRoot.classList.add('bg-transparent');
                 navRoot.classList.remove('bg-white/95','border-b','border-green-200','shadow');
             }
+            // Links color
             links.forEach(a => {
                 a.classList.remove('text-white','text-green-900');
                 a.classList.add(solid ? 'text-green-900' : 'text-white');
             });
+            // Profile button color (text)
             if (profileBtn) {
                 profileBtn.classList.remove('text-white','hover:text-yellow-400','text-green-900','hover:text-green-700');
                 if (solid) {
@@ -256,11 +242,17 @@ function current_user_display_name_user() {
                     profileBtn.classList.add('text-white','hover:text-yellow-400');
                 }
             }
+            // Mobile menu button color
             if (mobileBtn) {
                 mobileBtn.classList.remove('text-white');
                 mobileBtn.classList.remove('text-green-900');
                 mobileBtn.classList.add(solid ? 'text-green-900' : 'text-white');
             }
+            // Login button: stays gold; ensure readable text color
+            if (loginBtn) {
+                // No dynamic class swap needed; gold pill remains
+            }
+            // Sign up button style depends on scheme
             const signupBtn = document.getElementById('signup-btn-nav');
             if (signupBtn) {
                 signupBtn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
@@ -271,6 +263,7 @@ function current_user_display_name_user() {
                     signupBtn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
                 }
             }
+            // Cart button style
             cartBtns.forEach(btn => {
                 btn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
                 btn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
@@ -280,6 +273,8 @@ function current_user_display_name_user() {
                     btn.classList.add('border-white','text-white','hover:bg-white','hover:text-green-900');
                 }
             });
+            // Notifications button style
+            const notifBtns = [notifBtn, notifBtnMobile].filter(Boolean);
             notifBtns.forEach(btn => {
                 btn.classList.remove('border-white','text-white','hover:bg-white','hover:text-green-900');
                 btn.classList.remove('border-green-800','text-green-800','hover:bg-green-800','hover:text-white');
@@ -291,6 +286,7 @@ function current_user_display_name_user() {
             });
         };
 
+        // Observe page-provided contrast targets (e.g., hero + green search spacer)
         const targets = Array.from(document.querySelectorAll('[data-nav-contrast="dark"]'));
         if (targets.length && 'IntersectionObserver' in window) {
             const vis = new Map();
@@ -306,6 +302,7 @@ function current_user_display_name_user() {
                 recompute();
             }, { root: null, threshold: [0, 0.05, 0.1], rootMargin: '-80px 0px 0px 0px' });
             targets.forEach(t => {
+                // seed initial
                 const r = t.getBoundingClientRect();
                 const initiallyVisible = r.top <= 80 && r.bottom > 0;
                 vis.set(t, initiallyVisible);
@@ -313,7 +310,8 @@ function current_user_display_name_user() {
             });
             recompute();
         } else {
-            const threshold = 140;
+            // Fallback: make nav clear (green-transparent) near top of page, then white-transparent after scrolling
+            const threshold = 140; // px from top before switching to white-transparent
             let ticking = false;
             const onScroll = () => {
                 if (!ticking) {
@@ -325,20 +323,22 @@ function current_user_display_name_user() {
                     ticking = true;
                 }
             };
+            // Initial state and listeners
             setScheme(window.scrollY > threshold);
             window.addEventListener('scroll', onScroll, { passive: true });
             window.addEventListener('resize', onScroll);
         }
 
+        // Profile dropdown toggle
         const menu = document.getElementById('profile-menu');
-        const profileBtnEl = document.getElementById('profile-btn');
-        if (profileBtnEl && menu) {
+        if (profileBtn && menu) {
             const toggle = () => menu.classList.toggle('hidden');
-            const close = (e) => { if (!menu.contains(e.target) && !profileBtnEl.contains(e.target)) menu.classList.add('hidden'); };
-            profileBtnEl.addEventListener('click', (e)=>{ e.stopPropagation(); toggle(); });
+            const close = (e) => { if (!menu.contains(e.target) && !profileBtn.contains(e.target)) menu.classList.add('hidden'); };
+            profileBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggle(); });
             document.addEventListener('click', close);
         }
 
+        // Mobile menu toggle
         let isOpen = false;
         const setIcon = () => {
             if (!mobileBtn) return;
@@ -358,6 +358,7 @@ function current_user_display_name_user() {
             setIcon();
         }
 
+        // Cart button behavior: open cart on menu page if available; else navigate to menu with #cart
         const handleCartClick = (e) => {
             e.preventDefault();
             try {
@@ -368,13 +369,16 @@ function current_user_display_name_user() {
                     return;
                 }
             } catch (_) {}
+            // Go to menu and open cart via hash
             window.location.href = 'menu.php#cart';
         };
-        cartBtns.forEach(btn => btn && btn.addEventListener('click', handleCartClick));
+        if (cartBtns && cartBtns.length) {
+            cartBtns.forEach(btn => btn && btn.addEventListener('click', handleCartClick));
+        }
 
         // Per-user cart badge based on localStorage key
         try {
-            const userId = <?php echo $NAV_IS_LOGGED_IN ? (int)$_SESSION['user_id'] : 0; ?>;
+            const userId = <?php echo !empty($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0; ?>;
             if (userId) {
                 const CART_KEY = `binggay_cart_v1_u${userId}`;
                 const badgeEl = document.getElementById('cartBadge');
@@ -398,45 +402,52 @@ function current_user_display_name_user() {
                         mobileBadges.forEach(set);
                     } catch (_) {}
                 };
-                // Initial and cross-tab sync
+                // Initial apply and keep in sync across tabs
                 applyCartBadge();
                 window.addEventListener('storage', (e) => {
                     if (e && e.key === CART_KEY) applyCartBadge();
                 });
-                document.addEventListener('visibilitychange', () => { if (!document.hidden) applyCartBadge(); });
-                // Expose for cart UI to call after changes
+                // Optional: re-apply on visibility change
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) applyCartBadge();
+                });
+                // Expose helper to call from cart UI when items change
                 window.__binggay_cart_badge_refresh = applyCartBadge;
             }
         } catch(_) {}
 
         // Notifications dropdown behavior and fetch
-        let notifOpen = false;
-        let notifAutoTimer = null;
+    let notifOpen = false;
+    let notifAutoTimer = null;
+    let notifRelTimer = null;
         const toggleNotif = () => {
             if (!notifDropdown) return;
             notifOpen = !notifOpen;
             notifDropdown.classList.toggle('hidden', !notifOpen);
             if (notifOpen) {
                 loadNotifications();
+                // start auto-refresh while open
                 if (notifAutoTimer) clearInterval(notifAutoTimer);
                 notifAutoTimer = setInterval(() => loadNotifications(true), 15000);
+                // relative ticker not needed when time is hidden, but keep function harmless
             }
         };
         const closeNotif = (e) => {
             if (!notifDropdown) return;
-            const trigger = notifBtn?.parentElement;
+            const trigger = notifBtn?.parentElement; // wrapper div
             const isInside = notifDropdown.contains(e.target) || (trigger && trigger.contains(e.target));
             if (!isInside) {
                 notifDropdown.classList.add('hidden');
                 notifOpen = false;
                 if (notifAutoTimer) { clearInterval(notifAutoTimer); notifAutoTimer = null; }
+                // no-op when closed
             }
         };
         if (notifBtn && notifDropdown) {
             notifBtn.addEventListener('click', (e)=>{ 
                 e.preventDefault(); 
                 e.stopPropagation(); 
-                toggleNotif();
+                toggleNotif(); 
                 if (typeof window.__binggay_mark_notif_seen === 'function') window.__binggay_mark_notif_seen();
                 hideNotifBadges();
             });
@@ -448,7 +459,8 @@ function current_user_display_name_user() {
         if (notifBtnMobile) {
             notifBtnMobile.addEventListener('click', (e)=>{
                 e.preventDefault();
-                // Simpler behavior on mobile: navigate to menu notifications anchor
+                // On mobile, navigate to menu page notifications or show a toast-like overlay
+                // For simplicity, navigate to menu and open cart-like hash for now
                 if (typeof window.__binggay_mark_notif_seen === 'function') window.__binggay_mark_notif_seen();
                 hideNotifBadges();
                 window.location.href = 'menu.php#notifications';
@@ -472,7 +484,7 @@ function current_user_display_name_user() {
         function renderNotifications(items) {
             if (!Array.isArray(items) || items.length === 0) {
                 notifList.innerHTML = '<div class="p-4 text-sm text-gray-500">No recent orders yet.</div>';
-                [notifBadge, ...notifBadges].filter(Boolean).forEach(el => el.classList.add('hidden'));
+                if (notifBadge) notifBadge.classList.add('hidden');
                 return;
             }
             const frag = document.createDocumentFragment();
@@ -483,7 +495,7 @@ function current_user_display_name_user() {
                 li.className = 'p-3 hover:bg-amber-50 transition-colors';
                 const statusClass = statusBadgeClass(it.order_status);
                 const pay = it.payment || {};
-                // time hidden per request
+                const ts = safeParseDate(it.updated_at) || safeParseDate(it.order_date) || 0;
                 const needed = it.order_needed ? `Needed: ${fmtDate(it.order_needed)}` : '';
                 li.innerHTML = `
                     <div class="flex items-start gap-3">
@@ -502,7 +514,6 @@ function current_user_display_name_user() {
                         <a href="order_details.php?id=${encodeURIComponent(it.order_id)}" class="text-xs text-amber-600 hover:text-amber-700 whitespace-nowrap ml-2">View</a>
                     </div>
                 `;
-                const ts = safeParseDate(it.updated_at) || safeParseDate(it.order_date) || 0;
                 if (ts > latestTs) latestTs = ts;
                 const lastSeenLocal = (typeof window.__binggay_notif_last_seen === 'number') ? window.__binggay_notif_last_seen : 0;
                 if (ts > lastSeenLocal) unreadCount++;
@@ -511,7 +522,7 @@ function current_user_display_name_user() {
             notifList.innerHTML = '';
             notifList.appendChild(frag);
             const lastSeen = (typeof window.__binggay_notif_last_seen === 'number') ? window.__binggay_notif_last_seen : 0;
-            const shouldShow = latestTs > lastSeen && unreadCount > 0;
+            const shouldShow = latestTs > lastSeen && unreadCount > 0; // show only if there are unseen updates
             const updateBadge = (el) => {
                 if (!el) return;
                 if (shouldShow) {
@@ -524,6 +535,7 @@ function current_user_display_name_user() {
             };
             updateBadge(notifBadge);
             notifBadges.forEach(updateBadge);
+            // No time labels to refresh
         }
 
         function statusBadgeClass(status) {
@@ -538,24 +550,24 @@ function current_user_display_name_user() {
         function fmtDate(val) {
             if (!val) return '';
             try {
-                const d = new Date(String(val).replace(' ', 'T'));
+                const d = new Date(val.replace(' ', 'T'));
                 if (isNaN(d.getTime())) return String(val);
                 return d.toLocaleString();
             } catch(_) { return String(val); }
         }
+        // Relative time helpers removed since time is hidden
         function escapeHtml(s) {
             return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
         }
 
-        window.SNB_USER = Object.assign({}, window.SNB_USER || {}, { loggedIn: <?php echo $NAV_IS_LOGGED_IN ? 'true' : 'false'; ?> });
-
+        // Initialize lucide icons if available on page
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
         }
 
-        // Background badge updater (no toast)
+        // ========== Background badge updater (no toast) ==========
         try {
-            const userId = <?php echo $NAV_IS_LOGGED_IN ? (int)$_SESSION['user_id'] : 0; ?>;
+            const userId = <?php echo !empty($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0; ?>;
             if (userId) {
                 const LS_KEY = `binggay_notif_last_seen_u${userId}`;
                 let lastSeen = safeParseDate(localStorage.getItem(LS_KEY));
@@ -590,45 +602,50 @@ function current_user_display_name_user() {
                     } catch (_) {}
                 };
 
+                // Mark seen helper
                 function markSeen() {
                     const nowTs = Date.now();
                     localStorage.setItem(LS_KEY, String(nowTs));
                     lastSeen = nowTs;
                     window.__binggay_notif_last_seen = nowTs;
                 }
-                // expose locally
+                // Expose locally for click wiring
                 window.__binggay_mark_notif_seen = markSeen;
 
+                // Initial delayed check and polling
                 setTimeout(checkForUpdates, 2000);
                 setInterval(checkForUpdates, 45000);
 
-                // Live updates via Server-Sent Events (SSE)
+                // ====== Live updates via Server-Sent Events (SSE) ======
                 let evtSource = null;
-                let sseBackoff = 2000;
+                let sseBackoff = 2000; // start 2s; will adapt on retry: 2s->5s->10s (capped)
                 const sseMaxBackoff = 15000;
                 let lastEventId = 0;
 
                 function startSSE() {
                     try {
                         const since = Math.max(lastSeen || 0, lastEventId || 0);
-                        const url = `user/api_notifications_sse.php?since=${since}`;
+                        const url = `api_notifications_sse.php?since=${since}`;
                         evtSource = new EventSource(url, { withCredentials: true });
 
                         evtSource.addEventListener('open', () => {
+                            // Reset backoff on successful open
                             sseBackoff = 2000;
                         });
 
                         evtSource.addEventListener('change', async (ev) => {
                             try {
                                 lastEventId = Number(ev.lastEventId || 0) || lastEventId;
+                                // Re-check counts and refresh list if dropdown is open
                                 await checkForUpdates();
-                                if (typeof notifOpen !== 'undefined' && notifOpen) {
+                                if (notifOpen) {
                                     loadNotifications(true);
                                 }
                             } catch (_) {}
                         });
 
                         evtSource.addEventListener('error', () => {
+                            // Close and retry with backoff
                             try { evtSource.close(); } catch(_) {}
                             evtSource = null;
                             setTimeout(startSSE, sseBackoff);
@@ -641,7 +658,9 @@ function current_user_display_name_user() {
                 }
 
                 if ('EventSource' in window) {
+                    // Defer a bit to not compete with initial fetches
                     setTimeout(startSSE, 1500);
+                    // Cleanup on page unload
                     window.addEventListener('beforeunload', () => { try { evtSource && evtSource.close(); } catch(_) {} });
                 }
             }
