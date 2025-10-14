@@ -61,10 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     $_SESSION['user_type'] = (int)$user['user_type'];
                     $_SESSION['user_photo'] = isset($user['user_photo']) ? (string)$user['user_photo'] : null;
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 4a5b738fc20c3bf09a05fbda540bc3e6d5401474
                     // After login: prefer safe "next" redirect if provided
                     $redirect = '';
                     if ($next !== '') {

@@ -545,25 +545,18 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
     let pendingOrderPayload = null;
 
         // Initialize
-<<<<<<< HEAD
         document.addEventListener('DOMContentLoaded', function() {
-            // Load persisted cart from localStorage
+            // Load persisted cart from localStorage using per-user key; guests have no cart
             try {
-                // Do not allow a shared/global cart. Remove legacy key if present.
-                if (isLoggedIn) {
-                    try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
-                } else {
-                    // Guests shouldn't have a cart; ensure guest key is cleared
-                    try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
-                    try { localStorage.removeItem('binggay_cart_v1_guest'); } catch (_) {}
-                }
+                // Remove legacy/global keys to avoid mixing carts
+                try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
+                try { localStorage.removeItem('binggay_cart_v1_guest'); } catch (_) {}
 
                 if (isLoggedIn) {
                     const raw = localStorage.getItem(CART_KEY);
                     if (raw) {
                         const parsed = JSON.parse(raw);
                         if (Array.isArray(parsed)) {
-                            // Basic validation and normalization
                             cart = parsed.filter(it => it && typeof it.id === 'number' && typeof it.quantity === 'number' && it.quantity > 0)
                                          .map(it => ({
                                              id: it.id,
@@ -581,51 +574,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                     cart = [];
                 }
             } catch (e) { /* ignore parse errors */ }
-=======
-        document.addEventListener('DOMContentLoaded', async function() {
-            // Load per-user cart from backend when logged in; fallback to localStorage for guests
-            if (isLoggedIn) {
-                try {
-                    const resp = await fetch('cart_get.php', { headers: { 'Accept': 'application/json' } });
-                    if (resp.ok) {
-                        const data = await resp.json();
-                        if (data && data.ok && Array.isArray(data.items)) {
-                            cart = data.items.map(it => ({
-                                id: it.id,
-                                quantity: Math.max(1, Math.floor(it.quantity || 1)),
-                                price: Number(it.price) || 0,
-                                name: String(it.name || ''),
-                                image: String(it.image || ''),
-                                servings: String(it.servings || ''),
-                                prepTime: String(it.prepTime || ''),
-                                available: !!it.available
-                            }));
-                        }
-                    }
-                } catch (e) { /* ignore */ }
-            } else {
-                // Load persisted cart from localStorage
-                try {
-                    const raw = localStorage.getItem('binggay_cart_v1');
-                    if (raw) {
-                        const parsed = JSON.parse(raw);
-                        if (Array.isArray(parsed)) {
-                            cart = parsed.filter(it => it && typeof it.id === 'number' && typeof it.quantity === 'number' && it.quantity > 0)
-                                         .map(it => ({
-                                             id: it.id,
-                                             quantity: Math.max(1, Math.floor(it.quantity)),
-                                             price: typeof it.price === 'number' ? it.price : 0,
-                                             name: typeof it.name === 'string' ? it.name : '',
-                                             image: typeof it.image === 'string' ? it.image : '',
-                                             servings: typeof it.servings === 'string' ? it.servings : '',
-                                             prepTime: typeof it.prepTime === 'string' ? it.prepTime : '',
-                                             available: !!it.available
-                                         }));
-                        }
-                    }
-                } catch (e) { /* ignore parse errors */ }
-            }
->>>>>>> 4a5b738fc20c3bf09a05fbda540bc3e6d5401474
 
             renderMenu();
             setupSearch();
@@ -646,7 +594,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 }
             } catch (_) {}
 
-<<<<<<< HEAD
             // Cross-tab sync
             window.addEventListener('storage', (ev) => {
                 if (ev.key === CART_KEY) {
@@ -659,22 +606,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                     } catch (_) {}
                 }
             });
-=======
-            // Cross-tab sync (guest localStorage cart only)
-            if (!isLoggedIn) {
-                window.addEventListener('storage', (ev) => {
-                    if (ev.key === 'binggay_cart_v1') {
-                        try {
-                            const parsed = ev.newValue ? JSON.parse(ev.newValue) : [];
-                            if (Array.isArray(parsed)) {
-                                cart = parsed;
-                                updateCart();
-                            }
-                        } catch (_) {}
-                    }
-                });
-            }
->>>>>>> 4a5b738fc20c3bf09a05fbda540bc3e6d5401474
         });
 
         // Filter by category
@@ -1084,45 +1015,37 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 return false;
             }
             const item = menuItems.find(i => i.id === itemId);
-            if(!item) return;
-            // Persist to server
-            try {
-                const resp = await fetch('cart_add.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ menu_id: itemId, delta: 1 })
+            if(!item) return false;
+            const existing = cart.find(i => i.id === itemId);
+            if (existing) {
+                existing.quantity = Math.max(1, (existing.quantity||0) + 1);
+            } else {
+                cart.push({
+                    id: item.id,
+                    quantity: 1,
+                    price: Number(item.price)||0,
+                    name: String(item.name||''),
+                    image: String(item.image||''),
+                    servings: String(item.servings||''),
+                    prepTime: String(item.prepTime||''),
+                    available: !!item.available
                 });
-                if (!resp.ok) throw new Error('Add failed');
-                // Refresh from server to keep in sync
-                const r2 = await fetch('cart_get.php', { headers: { 'Accept': 'application/json' } });
-                if (r2.ok) {
-                    const data = await r2.json();
-                    if (data && data.ok && Array.isArray(data.items)) {
-                        cart = data.items.map(it => ({ id: it.id, quantity: Math.max(1, parseInt(it.quantity||1,10)), price: Number(it.price)||0, name: it.name || '', image: it.image || '', servings: it.servings || '', prepTime: it.prepTime || '', available: !!it.available }));
-                    }
-                }
-            } catch (e) { /* ignore */ }
-
+            }
             updateCart();
+            try { if (typeof window.__binggay_cart_badge_refresh === 'function') window.__binggay_cart_badge_refresh(); } catch(_) {}
             return true;
         }
 
         // Update quantity
         async function updateQuantity(itemId, quantity) {
-            if (quantity === 0) {
-                // Remove server-side
-                try {
-                    await fetch('cart_update.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ menu_id: itemId, quantity: 0 }) });
-                } catch (_) {}
+            if (quantity <= 0) {
                 cart = cart.filter(item => item.id !== itemId);
             } else {
                 const item = cart.find(i => i.id === itemId);
-                if (item) item.quantity = quantity;
-                try {
-                    await fetch('cart_update.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ menu_id: itemId, quantity: Math.max(1, parseInt(quantity||1,10)) }) });
-                } catch (_) {}
+                if (item) item.quantity = Math.max(1, parseInt(quantity||1,10));
             }
             updateCart();
+            try { if (typeof window.__binggay_cart_badge_refresh === 'function') window.__binggay_cart_badge_refresh(); } catch(_) {}
         }
 
         // Update cart display
@@ -1181,21 +1104,14 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 document.getElementById('cartTotal').textContent = '₱' + cartTotal.toLocaleString();
             }
 
-<<<<<<< HEAD
             // Persist to localStorage
             try {
                 if (isLoggedIn) {
                     localStorage.setItem(CART_KEY, JSON.stringify(cart));
                 }
             } catch (_) {}
-=======
-            // Persist guest cart to localStorage only; logged-in carts are server-side
-            if (!isLoggedIn) {
-                try {
-                    localStorage.setItem('binggay_cart_v1', JSON.stringify(cart));
-                } catch (_) {}
-            }
->>>>>>> 4a5b738fc20c3bf09a05fbda540bc3e6d5401474
+            // Also inform navbar badge logic if present
+            try { if (typeof window.__binggay_cart_badge_refresh === 'function') window.__binggay_cart_badge_refresh(); } catch(_) {}
         }
 
         // Close modal when clicking outside
@@ -1314,12 +1230,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 // success: clear cart, close modals, show alert
                 cart = [];
                 updateCart();
-<<<<<<< HEAD
                 try { if (isLoggedIn) { localStorage.removeItem(CART_KEY); } } catch (_) {}
-=======
-                try { await fetch('cart_clear.php', { method: 'POST' }); } catch (_) {}
-                try { localStorage.removeItem('binggay_cart_v1'); } catch (_) {}
->>>>>>> 4a5b738fc20c3bf09a05fbda540bc3e6d5401474
+                try { if (typeof window.__binggay_cart_badge_refresh === 'function') window.__binggay_cart_badge_refresh(); } catch(_) {}
                 toggleSummary(false);
                 toggleCheckout(false);
                 try { if (document.getElementById('cartSidebar')?.classList.contains('active')) toggleCart(); } catch(_) {}

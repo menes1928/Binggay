@@ -128,13 +128,7 @@ function current_user_display_name_user() {
             <!-- Auth / Profile -->
             <div class="hidden md:flex items-center space-x-4">
                 <?php if ($NAV_IS_LOGGED_IN): ?>
-                    <!-- Global Cart Button (visible only when logged in) -->
-                    <button id="nav-cart-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
-                        <i class="fas fa-shopping-cart"></i>
-                        <span class="sr-only">Cart</span>
-                        <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
-                    </button>
-                    <!-- Notifications Button + Dropdown (visible only when logged in) -->
+                    <!-- Notifications Button + Dropdown (moved before Cart) -->
                     <div class="relative" id="nav-notif">
                         <button id="nav-notif-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
                             <i class="fas fa-bell"></i>
@@ -154,6 +148,12 @@ function current_user_display_name_user() {
                             </div>
                         </div>
                     </div>
+                    <!-- Global Cart Button (visible only when logged in) -->
+                    <button id="nav-cart-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative">
+                        <i class="fas fa-shopping-cart"></i>
+                        <span class="sr-only">Cart</span>
+                        <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
+                    </button>
                     <div class="relative" id="nav-profile">
                         <button id="profile-btn" class="flex items-center gap-2 text-white hover:text-yellow-400 transition-colors">
                             <img src="<?php echo htmlspecialchars(current_user_avatar_user()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" onerror="this.onerror=null;this.src='/Binggay/images/logo.png';" />
@@ -177,13 +177,13 @@ function current_user_display_name_user() {
             <!-- Mobile Menu Button -->
             <div class="md:hidden flex items-center gap-3">
                 <?php if ($NAV_IS_LOGGED_IN): ?>
-                <button id="nav-cart-btn-mobile" class="p-2 rounded border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors relative">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span class="cart-badge hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-5 h-5 items-center justify-center text-[10px] font-bold"></span>
-                </button>
                 <button id="nav-notif-btn-mobile" class="p-2 rounded border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors relative">
                     <i class="fas fa-bell"></i>
                     <span class="notif-badge hidden absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-4 h-4 items-center justify-center text-[9px] font-bold"></span>
+                </button>
+                <button id="nav-cart-btn-mobile" class="p-2 rounded border-2 text-white border-white hover:bg-white hover:text-green-900 transition-colors relative">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span class="cart-badge hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-5 h-5 items-center justify-center text-[10px] font-bold"></span>
                 </button>
                 <?php endif; ?>
                 <button id="mobile-menu-btn" class="text-white hover:text-yellow-400 transition-colors duration-300">
@@ -372,14 +372,54 @@ function current_user_display_name_user() {
         };
         cartBtns.forEach(btn => btn && btn.addEventListener('click', handleCartClick));
 
+        // Per-user cart badge based on localStorage key
+        try {
+            const userId = <?php echo $NAV_IS_LOGGED_IN ? (int)$_SESSION['user_id'] : 0; ?>;
+            if (userId) {
+                const CART_KEY = `binggay_cart_v1_u${userId}`;
+                const badgeEl = document.getElementById('cartBadge');
+                const mobileBadges = Array.from(document.querySelectorAll('.cart-badge'));
+                const applyCartBadge = () => {
+                    try {
+                        const raw = localStorage.getItem(CART_KEY);
+                        const items = raw ? JSON.parse(raw) : [];
+                        const count = Array.isArray(items) ? items.reduce((sum, it) => sum + (Number(it.qty||1)||1), 0) : 0;
+                        const set = (el) => {
+                            if (!el) return;
+                            if (count > 0) {
+                                el.textContent = String(count);
+                                el.classList.remove('hidden');
+                                el.classList.add('flex');
+                            } else {
+                                el.classList.add('hidden');
+                            }
+                        };
+                        set(badgeEl);
+                        mobileBadges.forEach(set);
+                    } catch (_) {}
+                };
+                // Initial and cross-tab sync
+                applyCartBadge();
+                window.addEventListener('storage', (e) => {
+                    if (e && e.key === CART_KEY) applyCartBadge();
+                });
+                document.addEventListener('visibilitychange', () => { if (!document.hidden) applyCartBadge(); });
+                // Expose for cart UI to call after changes
+                window.__binggay_cart_badge_refresh = applyCartBadge;
+            }
+        } catch(_) {}
+
         // Notifications dropdown behavior and fetch
         let notifOpen = false;
+        let notifAutoTimer = null;
         const toggleNotif = () => {
             if (!notifDropdown) return;
             notifOpen = !notifOpen;
             notifDropdown.classList.toggle('hidden', !notifOpen);
             if (notifOpen) {
                 loadNotifications();
+                if (notifAutoTimer) clearInterval(notifAutoTimer);
+                notifAutoTimer = setInterval(() => loadNotifications(true), 15000);
             }
         };
         const closeNotif = (e) => {
@@ -389,6 +429,7 @@ function current_user_display_name_user() {
             if (!isInside) {
                 notifDropdown.classList.add('hidden');
                 notifOpen = false;
+                if (notifAutoTimer) { clearInterval(notifAutoTimer); notifAutoTimer = null; }
             }
         };
         if (notifBtn && notifDropdown) {
@@ -442,7 +483,7 @@ function current_user_display_name_user() {
                 li.className = 'p-3 hover:bg-amber-50 transition-colors';
                 const statusClass = statusBadgeClass(it.order_status);
                 const pay = it.payment || {};
-                const date = fmtDate(it.order_date) || fmtDate(it.updated_at) || '';
+                // time hidden per request
                 const needed = it.order_needed ? `Needed: ${fmtDate(it.order_needed)}` : '';
                 li.innerHTML = `
                     <div class="flex items-start gap-3">
@@ -452,7 +493,7 @@ function current_user_display_name_user() {
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between gap-2">
                                 <div class="text-sm font-medium text-gray-800 truncate">Order #${it.order_id}</div>
-                                <div class="text-xs text-gray-500 whitespace-nowrap">${date}</div>
+                                <!-- time hidden per request -->
                             </div>
                             <div class="text-xs text-gray-600 mt-0.5">Total: ₱${Number(it.order_amount || 0).toFixed(2)}</div>
                             <div class="text-xs text-gray-500">${needed}</div>
@@ -560,6 +601,49 @@ function current_user_display_name_user() {
 
                 setTimeout(checkForUpdates, 2000);
                 setInterval(checkForUpdates, 45000);
+
+                // Live updates via Server-Sent Events (SSE)
+                let evtSource = null;
+                let sseBackoff = 2000;
+                const sseMaxBackoff = 15000;
+                let lastEventId = 0;
+
+                function startSSE() {
+                    try {
+                        const since = Math.max(lastSeen || 0, lastEventId || 0);
+                        const url = `user/api_notifications_sse.php?since=${since}`;
+                        evtSource = new EventSource(url, { withCredentials: true });
+
+                        evtSource.addEventListener('open', () => {
+                            sseBackoff = 2000;
+                        });
+
+                        evtSource.addEventListener('change', async (ev) => {
+                            try {
+                                lastEventId = Number(ev.lastEventId || 0) || lastEventId;
+                                await checkForUpdates();
+                                if (typeof notifOpen !== 'undefined' && notifOpen) {
+                                    loadNotifications(true);
+                                }
+                            } catch (_) {}
+                        });
+
+                        evtSource.addEventListener('error', () => {
+                            try { evtSource.close(); } catch(_) {}
+                            evtSource = null;
+                            setTimeout(startSSE, sseBackoff);
+                            sseBackoff = Math.min(sseMaxBackoff, Math.floor(sseBackoff * 2.2));
+                        });
+                    } catch (_) {
+                        setTimeout(startSSE, sseBackoff);
+                        sseBackoff = Math.min(sseMaxBackoff, Math.floor(sseBackoff * 2.2));
+                    }
+                }
+
+                if ('EventSource' in window) {
+                    setTimeout(startSSE, 1500);
+                    window.addEventListener('beforeunload', () => { try { evtSource && evtSource.close(); } catch(_) {} });
+                }
             }
         } catch(_) {}
 
