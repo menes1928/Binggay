@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 13, 2025 at 06:40 PM
+-- Generation Time: Oct 14, 2025 at 05:44 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -71,7 +71,7 @@ CREATE TABLE `cateringpackages` (
 
 INSERT INTO `cateringpackages` (`cp_id`, `user_id`, `cp_name`, `cp_email`, `cp_phone`, `cp_place`, `cp_date`, `cp_price`, `cp_addon_pax`, `cp_notes`, `created_at`) VALUES
 (2, 1, 'John Andal', 'jmbmaines17@gmail.com', '09123123234', 'Purok 2 , Sabang , Lipa City , Batangas', '2025-10-26', 36000.00, '5', '', '2025-10-12 18:03:05'),
-(3, 1, 'May Kap', 'jmbmaines17@gmail.com', '09603070809', 'Purok 2 , Sabang , Lipa City , Batangas', '2025-10-28', 37000.00, '10 pax, 2 tables, 10 chairs', '', '2025-10-12 18:04:06'),
+(3, 1, 'May Kap', 'jmbmaines17@gmail.com', '09603070809', 'Purok 2 , Sabang , Lipa City , Batangas', '2025-10-28', 37000.00, NULL, '', '2025-10-13 20:33:35'),
 (4, 1, 'Juan Dela Cruz', 'jmbmaines17@gmail.com', '09893247892', 'adfsawd , wadssad , wadsd , wadas', '2025-10-30', 35000.00, NULL, '', '2025-10-12 18:57:18');
 
 -- --------------------------------------------------------
@@ -103,7 +103,7 @@ CREATE TABLE `eventbookings` (
 
 INSERT INTO `eventbookings` (`eb_id`, `user_id`, `event_type_id`, `package_id`, `eb_name`, `eb_email`, `eb_contact`, `eb_venue`, `eb_date`, `eb_order`, `eb_status`, `eb_addon_pax`, `eb_notes`, `created_at`) VALUES
 (1, 1, 2, 2, 'John Andal', '', '09023347823, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-12 18:04:26', 'Wedding Package - 100', 'Pending', '0', NULL, '2025-10-12 14:03:50'),
-(2, 1, 2, 3, 'Cris Carlo', '', '09278334233, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-27 05:30:00', 'Corporate - 150', 'Pending', '0', NULL, '2025-10-12 14:39:58'),
+(2, 1, 2, 3, 'Cris Carlo', '', '09278334233, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-27 05:30:00', 'Corporate - 150', 'Downpayment', '0', NULL, '2025-10-12 14:39:58'),
 (3, 1, 2, 1, 'Cris Carlo', 'jmbmaines17@gmail.com', '09023347823, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-12 18:04:22', 'Standard - 50', 'Pending', '10 pax, 5 tables, 10 chairs', NULL, '2025-10-12 16:39:59');
 
 -- --------------------------------------------------------
@@ -407,6 +407,14 @@ CREATE TABLE `orderaddress` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `orderaddress`
+--
+
+INSERT INTO `orderaddress` (`oa_id`, `order_id`, `oa_street`, `oa_city`, `oa_province`, `created_at`) VALUES
+(6, 2, '21', 'dsfsdf', 'fdsfesdf', '2025-10-13 18:32:42'),
+(7, 3, '21', 'dsfsdf', 'fdsfesdf', '2025-10-13 20:15:39');
+
 -- --------------------------------------------------------
 
 --
@@ -420,6 +428,15 @@ CREATE TABLE `orderitems` (
   `oi_quantity` decimal(10,2) DEFAULT NULL,
   `oi_price` decimal(10,2) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `orderitems`
+--
+
+INSERT INTO `orderitems` (`oi_id`, `order_id`, `menu_id`, `oi_quantity`, `oi_price`) VALUES
+(3, 2, 18, 2.00, 1000.00),
+(4, 3, 18, 1.00, 1000.00),
+(5, 3, 91, 1.00, 800.00);
 
 -- --------------------------------------------------------
 
@@ -437,6 +454,14 @@ CREATE TABLE `orders` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `orders`
+--
+
+INSERT INTO `orders` (`order_id`, `user_id`, `order_date`, `order_status`, `order_amount`, `order_needed`, `created_at`, `updated_at`) VALUES
+(2, 1, '2025-10-13 18:32:42', 'completed', 2000.00, '2025-10-16', '2025-10-13 18:32:42', '2025-10-13 18:33:17'),
+(3, 1, '2025-10-13 20:15:39', 'in progress', 1800.00, '2025-10-16', '2025-10-13 20:15:39', '2025-10-13 20:27:02');
 
 -- --------------------------------------------------------
 
@@ -550,8 +575,10 @@ CREATE TABLE `payments` (
 
 INSERT INTO `payments` (`pay_id`, `order_id`, `cp_id`, `user_id`, `pay_date`, `pay_amount`, `pay_method`, `pay_status`, `created_at`) VALUES
 (1, NULL, 2, 1, '2025-10-12', 18000.00, '', 'Partial', '2025-10-12 15:12:13'),
-(2, NULL, 3, 1, '2025-10-12', 18500.00, '', 'Pending', '2025-10-12 16:27:03'),
-(3, NULL, 4, 1, '2025-10-13', 35000.00, 'Cash', 'Paid', '2025-10-12 18:57:38');
+(2, NULL, 3, 1, '2025-10-12', 18500.00, '', 'Partial', '2025-10-13 20:33:35'),
+(3, NULL, 4, 1, '2025-10-13', 35000.00, 'Cash', 'Paid', '2025-10-12 18:57:38'),
+(4, 2, NULL, 1, '2025-10-14', 2000.00, 'Cash', 'Paid', '2025-10-13 18:33:17'),
+(5, 3, NULL, 1, '2025-10-13', 1800.00, 'Gcash', 'Pending', '2025-10-13 20:15:39');
 
 -- --------------------------------------------------------
 
@@ -581,6 +608,19 @@ CREATE TABLE `users` (
 INSERT INTO `users` (`user_id`, `user_fn`, `user_ln`, `user_sex`, `user_email`, `user_phone`, `user_username`, `user_password`, `user_photo`, `user_type`, `created_at`, `updated_at`) VALUES
 (1, 'John', 'Andal', 'Male', 'jmbmaines17@gmail.com', '09267834238', 'JAB12', '$2y$10$c0xnIHFrY.d6HidBDW5jtuDZZus.hB7xk.YQiBf45h/F.DlwsyQhK', NULL, 0, '2025-10-12 04:33:59', '2025-10-12 04:33:59'),
 (2, 'Sandok', 'Binggay', 'Male', 'sandokdummy@gmail.com', '09238914072', 'sdby', '$2y$10$AGOejyyIW9SoFCyFy/n98u8d9B.VJt6N5uQr09JxCAIvIZolvxU0u', NULL, 1, '2025-10-12 19:10:02', '2025-10-12 19:10:17');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_cart_items`
+--
+
+CREATE TABLE `user_cart_items` (
+  `user_id` int(11) NOT NULL,
+  `menu_id` int(11) NOT NULL,
+  `quantity` int(11) NOT NULL DEFAULT 1,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Indexes for dumped tables
@@ -692,6 +732,12 @@ ALTER TABLE `users`
   ADD UNIQUE KEY `uk_users_username` (`user_username`);
 
 --
+-- Indexes for table `user_cart_items`
+--
+ALTER TABLE `user_cart_items`
+  ADD PRIMARY KEY (`user_id`,`menu_id`);
+
+--
 -- AUTO_INCREMENT for dumped tables
 --
 
@@ -735,19 +781,19 @@ ALTER TABLE `menucategory`
 -- AUTO_INCREMENT for table `orderaddress`
 --
 ALTER TABLE `orderaddress`
-  MODIFY `oa_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `oa_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `orderitems`
 --
 ALTER TABLE `orderitems`
-  MODIFY `oi_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `oi_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `packages`
@@ -765,7 +811,7 @@ ALTER TABLE `package_items`
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `users`

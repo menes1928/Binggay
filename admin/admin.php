@@ -12,18 +12,7 @@ $salesData = [
     ['month' => 'Jun', 'revenue' => 67000, 'orders' => 245]
 ];
 
-$recentOrders = [
-    ['id' => 'ORD-001', 'customer' => 'Maria Santos', 'items' => 'Party Tray for 50', 'amount' => '₱8,500', 'status' => 'Completed', 'time' => '2h ago'],
-    ['id' => 'ORD-002', 'customer' => 'Juan Dela Cruz', 'items' => 'Wedding Catering Package', 'amount' => '₱25,000', 'status' => 'Preparing', 'time' => '4h ago'],
-    ['id' => 'ORD-003', 'customer' => 'Ana Reyes', 'items' => 'Corporate Lunch', 'amount' => '₱12,000', 'status' => 'Delivered', 'time' => '6h ago'],
-    ['id' => 'ORD-004', 'customer' => 'Carlos Martinez', 'items' => 'Birthday Package', 'amount' => '₱6,500', 'status' => 'Pending', 'time' => '8h ago']
-];
-
-$upcomingBookings = [
-    ['event' => 'Corporate Event', 'client' => 'ABC Company', 'date' => 'Oct 8, 2025', 'guests' => 120, 'package' => 'Premium'],
-    ['event' => 'Wedding Reception', 'client' => 'Smith Family', 'date' => 'Oct 10, 2025', 'guests' => 200, 'package' => 'Deluxe'],
-    ['event' => 'Birthday Party', 'client' => 'Johnson Family', 'date' => 'Oct 12, 2025', 'guests' => 50, 'package' => 'Standard']
-];
+// Removed dummy $recentOrders and $upcomingBookings arrays.
 
 // Early action handling before any output (prevents header issues)
 require_once __DIR__ . '/../classes/database.php';
@@ -250,7 +239,7 @@ if ($sectionEarly === 'dashboard') {
     if ($action && $isAjaxAction) {
         header('Content-Type: application/json');
         try {
-            $pdo = $db->opencon();
+            $pdo = $db->opencon(); // Open database connection
             if ($action === 'get_total_orders') {
                 // Orders only (exclude catering packages)
                 $stmt = $pdo->query("SELECT COUNT(*) FROM orders");
@@ -270,31 +259,148 @@ if ($sectionEarly === 'dashboard') {
                 exit;
             }
             if ($action === 'get_best_sellers') {
+                // All-time best sellers (top 10) across all orders (excluding canceled)
                 $sql = "SELECT oi.menu_id,
                                m.menu_name,
-                               COALESCE(SUM(COALESCE(oi.oi_quantity,1)),0) AS qty
+                               m.menu_pic,
+                               SUM(COALESCE(oi.oi_quantity,1)) AS qty
                         FROM orderitems oi
                         JOIN orders o ON o.order_id = oi.order_id
                         JOIN menu m ON m.menu_id = oi.menu_id
-                        WHERE o.order_status IS NULL OR o.order_status <> 'canceled'
-                        GROUP BY oi.menu_id, m.menu_name
+                        WHERE (o.order_status IS NULL OR LOWER(o.order_status) <> 'canceled')
+                        GROUP BY oi.menu_id, m.menu_name, m.menu_pic
                         ORDER BY qty DESC, m.menu_name ASC
                         LIMIT 10";
-                $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+                $stmt = $pdo->query($sql);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 $ranked = [];
                 $rank = 1;
                 foreach ($rows as $r) {
+                    // Build image URL (assumes images are stored in ../images/menu/ or uploads/menu/). Adjust as needed.
+                    $pic = isset($r['menu_pic']) ? trim((string)$r['menu_pic']) : '';
+                    $imgUrl = '';
+                    if ($pic !== '') {
+                        if (file_exists(__DIR__ . '/../menu/' . $pic)) {
+                            $imgUrl = '../menu/' . rawurlencode($pic);
+                        } elseif (file_exists(__DIR__ . '/../uploads/' . $pic)) {
+                            $imgUrl = '../uploads/' . rawurlencode($pic);
+                        } else {
+                            $imgUrl = '../menu/' . rawurlencode($pic); // fallback path guess
+                        }
+                    }
                     $ranked[] = [
                         'rank' => $rank++,
                         'menu_id' => (int)$r['menu_id'],
                         'name' => (string)$r['menu_name'],
                         'qty' => (float)$r['qty'],
+                        'image' => $imgUrl,
                     ];
                 }
-                echo json_encode(['ok'=>true,'items'=>$ranked]);
+                echo json_encode(['ok'=>true,'items'=>$ranked,'scope'=>'all-time']);
                 exit;
             }
-            echo json_encode(['ok'=>false,'error'=>'Unknown action']);
+            if ($action === 'get_monthly_revenue') {
+                // Produce last 12 months (including current) revenue buckets from payments (orders + catering only, Paid or Partial)
+                // We'll aggregate by YYYY-MM and return an ordered list with month short labels.
+                $sql = "SELECT DATE_FORMAT(pay_date,'%Y-%m') ym, DATE_FORMAT(pay_date,'%b') mon, COALESCE(SUM(pay_amount),0) amt
+                        FROM payments
+                        WHERE (pay_status IN ('Paid','Partial'))
+                          AND (order_id IS NOT NULL OR cp_id IS NOT NULL)
+                          AND pay_date >= DATE_SUB(CURDATE(), INTERVAL 11 MONTH)
+                        GROUP BY ym, mon
+                        ORDER BY ym ASC";
+                $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+                // Build a complete 12-month sequence to fill zeros where missing
+                $map = [];
+                foreach ($rows as $r) { $map[$r['ym']] = ['month'=>$r['mon'],'amount'=>(float)$r['amt']]; }
+                $out = [];
+                $now = new DateTime('first day of this month');
+                for ($i=11; $i>=0; $i--) {
+                    $dt = (clone $now)->modify("-{$i} months");
+                    $ym = $dt->format('Y-m');
+                    if (isset($map[$ym])) { $out[] = ['ym'=>$ym,'month'=>$map[$ym]['month'],'amount'=>$map[$ym]['amount']]; }
+                    else { $out[] = ['ym'=>$ym,'month'=>$dt->format('M'),'amount'=>0.0]; }
+                }
+                echo json_encode(['ok'=>true,'months'=>$out,'current'=>end($out)['ym']]);
+                exit;
+            }
+            if ($action === 'get_notifications') {
+                // Returns new orders, catering packages, and event bookings since last seen IDs.
+                $lastOrderId = isset($_GET['last_order_id']) ? (int)$_GET['last_order_id'] : 0;
+                $lastCpId = isset($_GET['last_cp_id']) ? (int)$_GET['last_cp_id'] : 0;
+                $lastBkId = isset($_GET['last_booking_id']) ? (int)$_GET['last_booking_id'] : 0;
+                $limit = 10; // per type cap
+                $resp = [
+                    'ok' => true,
+                    'orders' => [],
+                    'catering' => [],
+                    'bookings' => [],
+                    'latest_ids' => [
+                        'order' => $lastOrderId,
+                        'cp' => $lastCpId,
+                        'booking' => $lastBkId
+                    ]
+                ];
+                // Orders
+                try {
+                    $stmt = $pdo->prepare("SELECT order_id, order_status, created_at FROM orders WHERE order_id > ? ORDER BY order_id DESC LIMIT $limit");
+                    $stmt->execute([$lastOrderId]);
+                    $rowsO = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if ($rowsO) {
+                        foreach ($rowsO as $r) {
+                            $resp['orders'][] = [
+                                'type' => 'order',
+                                'id' => (int)$r['order_id'],
+                                'label' => 'New Order #' . (int)$r['order_id'],
+                                'status' => (string)($r['order_status'] ?? ''),
+                                'time' => $r['created_at'] ?? null
+                            ];
+                        }
+                        $maxId = max(array_column($rowsO, 'order_id'));
+                        if ($maxId > $resp['latest_ids']['order']) $resp['latest_ids']['order'] = (int)$maxId;
+                    }
+                } catch (Throwable $e) {}
+                // Catering Packages
+                try {
+                    $stmt = $pdo->prepare("SELECT cp_id, cp_name, cp_date, created_at FROM cateringpackages WHERE cp_id > ? ORDER BY cp_id DESC LIMIT $limit");
+                    $stmt->execute([$lastCpId]);
+                    $rowsC = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if ($rowsC) {
+                        foreach ($rowsC as $r) {
+                            $resp['catering'][] = [
+                                'type' => 'catering',
+                                'id' => (int)$r['cp_id'],
+                                'label' => 'New Catering #' . (int)$r['cp_id'],
+                                'status' => $r['cp_date'] ? ('Event: ' . $r['cp_date']) : null,
+                                'time' => $r['created_at'] ?? null
+                            ];
+                        }
+                        $maxId = max(array_column($rowsC, 'cp_id'));
+                        if ($maxId > $resp['latest_ids']['cp']) $resp['latest_ids']['cp'] = (int)$maxId;
+                    }
+                } catch (Throwable $e) {}
+                // Event Bookings
+                try {
+                    $stmt = $pdo->prepare("SELECT eb_id, eb_name, eb_date, eb_status, created_at FROM eventbookings WHERE eb_id > ? ORDER BY eb_id DESC LIMIT $limit");
+                    $stmt->execute([$lastBkId]);
+                    $rowsB = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if ($rowsB) {
+                        foreach ($rowsB as $r) {
+                            $resp['bookings'][] = [
+                                'type' => 'booking',
+                                'id' => (int)$r['eb_id'],
+                                'label' => 'New Booking #' . (int)$r['eb_id'],
+                                'status' => $r['eb_status'] ?? null,
+                                'time' => $r['eb_date'] ?? ($r['created_at'] ?? null)
+                            ];
+                        }
+                        $maxId = max(array_column($rowsB, 'eb_id'));
+                        if ($maxId > $resp['latest_ids']['booking']) $resp['latest_ids']['booking'] = (int)$maxId;
+                    }
+                } catch (Throwable $e) {}
+                echo json_encode($resp); exit;
+            }
+            echo json_encode(['ok'=>false,'error'=>'Unknown action']); // Handle unknown actions
         } catch (Throwable $e) {
             echo json_encode(['ok'=>false,'error'=>'Failed: '.$e->getMessage()]);
         }
@@ -1926,11 +2032,20 @@ if ($sectionEarly === 'eventtypes') {
                     <!-- Right section -->
                     <div class="flex items-center gap-4">
                         <!-- Notifications -->
-                        <div class="relative">
-                            <button class="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Notifications">
+                        <div id="notifications" class="relative">
+                            <button id="notification-bell" class="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
                                 <i class="fas fa-bell text-gray-600"></i>
-                                <span class="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
+                                <span id="notification-badge" class="hidden absolute -top-1 -right-1 min-h-[20px] min-w-[20px] px-1 bg-red-500 text-white text-[10px] font-medium rounded-full flex items-center justify-center"></span>
                             </button>
+                            <!-- Dropdown Panel -->
+                            <div id="notification-panel" class="hidden absolute right-0 mt-2 w-80 bg-white shadow-lg border border-gray-200 rounded-lg z-50">
+                                <div class="flex items-center justify-between px-4 py-2 border-b">
+                                    <h3 class="text-sm font-semibold text-gray-700">Notifications</h3>
+                                    <button id="notif-mark-read" class="text-xs text-primary hover:underline" type="button">Mark all read</button>
+                                </div>
+                                <div id="notification-list" class="max-h-80 overflow-y-auto divide-y text-sm"></div>
+                                <div id="notification-empty" class="p-4 text-center text-xs text-gray-500 hidden">No notifications yet</div>
+                            </div>
                         </div>
 
                         <!-- Admin User Dropdown -->
@@ -2022,7 +2137,7 @@ if ($sectionEarly === 'eventtypes') {
                             </div>
                         </div>
 
-                        <button id="card-total-orders" type="button" onclick="if(window.__openBestSellers){window.__openBestSellers();}" class="card text-left p-6 border-l-4 border-l-accent hover:shadow-lg transition-shadow w-full">
+                        <button id="card-total-orders" type="button" class="card text-left p-6 border-l-4 border-l-accent hover:shadow-lg transition-shadow w-full">
                             <div class="flex items-center justify-between mb-2">
                                 <h3 class="text-sm font-medium">Total Orders</h3>
                                 <i class="fas fa-shopping-cart text-accent"></i>
@@ -2031,7 +2146,7 @@ if ($sectionEarly === 'eventtypes') {
                             <div class="flex items-center text-sm text-muted-foreground">
                                 <i class="fas fa-arrow-up text-green-600 mr-1"></i>
                                 <span class="text-green-600">real-time</span>
-                                <span class="ml-1">click to view best sellers</span>
+                                <span class="ml-1">updated automatically</span>
                             </div>
                         </button>
 
@@ -2077,76 +2192,32 @@ if ($sectionEarly === 'eventtypes') {
                             </div>
                         </div>
 
-                        <!-- Category Distribution -->
-                        <div class="card p-6 hover:shadow-lg transition-shadow">
-                            <div class="mb-4">
-                                <h3 class="text-lg font-medium text-primary">Service Categories</h3>
-                                <p class="text-sm text-muted-foreground">Distribution of orders by service type</p>
+                        <!-- Best Sellers (All-Time) -->
+                        <div class="card p-6 hover:shadow-lg transition-shadow" id="best-sellers-inline-card">
+                            <div class="mb-4 flex items-center justify-between gap-2 flex-wrap">
+                                <div>
+                                    <h3 class="text-lg font-medium text-primary">Best Sellers</h3>
+                                    <p class="text-sm text-muted-foreground">Top 10 items (all-time)</p>
+                                </div>
                             </div>
-                            <div class="h-64">
-                                <canvas id="categoryChart"></canvas>
+                            <div class="h-64 overflow-auto">
+                                <table class="min-w-full text-sm">
+                                    <thead class="sticky top-0 bg-white shadow">
+                                        <tr class="text-left text-primary border-b">
+                                            <th class="px-3 py-2 w-12">#</th>
+                                            <th class="px-3 py-2">Item</th>
+                                            <th class="px-3 py-2 text-right">Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="best-sellers-inline-rows">
+                                        <tr><td colspan="3" class="px-3 py-6 text-center text-gray-500">Loading…</td></tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Tables Row -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <!-- Recent Orders -->
-                        <div class="card p-6 hover:shadow-lg transition-shadow">
-                            <div class="mb-4">
-                                <h3 class="text-lg font-medium text-primary">Recent Orders</h3>
-                                <p class="text-sm text-muted-foreground">Latest orders from your customers</p>
-                            </div>
-                            <div class="space-y-4">
-                                <?php foreach($recentOrders as $order): ?>
-                                <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <span class="font-medium text-primary"><?php echo $order['id']; ?></span>
-                                            <span class="px-2 py-1 text-xs rounded <?php 
-                                                echo $order['status'] === 'Completed' ? 'bg-green-100 text-green-800' : 
-                                                    ($order['status'] === 'Delivered' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'); 
-                                            ?>">
-                                                <?php echo $order['status']; ?>
-                                            </span>
-                                        </div>
-                                        <div class="text-sm font-medium"><?php echo $order['customer']; ?></div>
-                                        <div class="text-sm text-muted-foreground"><?php echo $order['items']; ?></div>
-                                    </div>
-                                    <div class="text-right">
-                                        <div class="font-medium text-primary"><?php echo $order['amount']; ?></div>
-                                        <div class="text-sm text-muted-foreground"><?php echo $order['time']; ?></div>
-                                    </div>
-                                </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
-                        <!-- Upcoming Bookings -->
-                        <div class="card p-6 hover:shadow-lg transition-shadow">
-                            <div class="mb-4">
-                                <h3 class="text-lg font-medium text-primary">Upcoming Bookings</h3>
-                                <p class="text-sm text-muted-foreground">Events scheduled for this week</p>
-                            </div>
-                            <div class="space-y-4">
-                                <?php foreach($upcomingBookings as $booking): ?>
-                                <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                                    <div class="flex-1">
-                                        <div class="font-medium text-primary mb-1"><?php echo $booking['event']; ?></div>
-                                        <div class="text-sm text-muted-foreground"><?php echo $booking['client']; ?></div>
-                                        <div class="text-sm text-muted-foreground"><?php echo $booking['guests']; ?> guests</div>
-                                    </div>
-                                    <div class="text-right">
-                                        <div class="font-medium text-primary"><?php echo $booking['date']; ?></div>
-                                        <span class="px-2 py-1 text-xs border border-gray-300 rounded">
-                                            <?php echo $booking['package']; ?>
-                                        </span>
-                                    </div>
-                                </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Removed Recent Orders and Upcoming Bookings section -->
                 </div>
 
                 <!-- Other Section Contents (Hidden by default) -->
@@ -5086,45 +5157,48 @@ if ($sectionEarly === 'eventtypes') {
                 });
             }
 
-            // Revenue Chart (guarded)
-            const revenueCanvas = document.getElementById('revenueChart');
-            if (revenueCanvas && revenueCanvas.getContext) {
-            const revenueCtx = revenueCanvas.getContext('2d');
-            new Chart(revenueCtx, {
-                type: 'bar',
-                data: {
-                    labels: <?php echo json_encode(array_column($salesData, 'month')); ?>,
-                    datasets: [{
-                        label: 'Revenue',
-                        data: <?php echo json_encode(array_column($salesData, 'revenue')); ?>,
-                        backgroundColor: '#1B4332',
-                        borderRadius: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
+            // Revenue Chart (dynamic & real-time)
+            (function(){
+                const revenueCanvas = document.getElementById('revenueChart');
+                if (!revenueCanvas || !revenueCanvas.getContext) return;
+                const ctx = revenueCanvas.getContext('2d');
+                let revenueChart = null;
+                const GOLD = '#D4AF37';
+                const GREEN = '#1B4332';
+                async function loadMonthlyRevenue(){
+                    try {
+                        const res = await fetch('?section=dashboard&action=get_monthly_revenue&ajax=1', { headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'} });
+                        const j = await res.json();
+                        if(!j.ok) return;
+                        const labels = j.months.map(m=>m.month);
+                        const currentYm = j.current;
+                        const data = j.months.map(m=>m.amount);
+                        const bg = j.months.map(m=> m.ym === currentYm ? GOLD : GREEN);
+                        if (!revenueChart){
+                            revenueChart = new Chart(ctx, {
+                                type: 'bar',
+                                data: { labels, datasets: [{ label:'Revenue', data, backgroundColor: bg, borderRadius:4 }] },
+                                options: {
+                                    responsive:true,
+                                    maintainAspectRatio:false,
+                                    plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(ctx)=>'₱'+Number(ctx.parsed.y||0).toLocaleString('en-PH') } } },
+                                    scales:{
+                                        y:{ beginAtZero:true, grid:{ color:'#f0f0f0' }, ticks:{ callback:(v)=>'₱'+Number(v).toLocaleString('en-PH') } },
+                                        x:{ grid:{ color:'#f0f0f0' } }
+                                    }
+                                }
+                            });
+                        } else {
+                            revenueChart.data.labels = labels;
+                            revenueChart.data.datasets[0].data = data;
+                            revenueChart.data.datasets[0].backgroundColor = bg;
+                            revenueChart.update();
                         }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: '#f0f0f0'
-                            }
-                        },
-                        x: {
-                            grid: {
-                                color: '#f0f0f0'
-                            }
-                        }
-                    }
+                    } catch(_) { /* silent */ }
                 }
-            });
-            }
+                loadMonthlyRevenue();
+                setInterval(loadMonthlyRevenue, 15000); // refresh every 15s
+            })();
 
             // Category Chart (guarded)
             const categoryCanvas = document.getElementById('categoryChart');
@@ -5149,6 +5223,196 @@ if ($sectionEarly === 'eventtypes') {
                     }
                 }
             });
+            }
+
+            // Inline Best Sellers (Monthly) panel - OOP style
+            class BestSellersPanel {
+                constructor(rowsTbodyId) {
+                    this.rowsBody = document.getElementById(rowsTbodyId);
+                    if (!this.rowsBody) { this.valid = false; return; }
+                    this.valid = true;
+                }
+                setLoading(){
+                    this.rowsBody.innerHTML = '<tr><td colspan="3" class="px-3 py-6 text-center text-gray-500">Loading…</td></tr>';
+                }
+                setError(){
+                    this.rowsBody.innerHTML = '<tr><td colspan="3" class="px-3 py-6 text-center text-red-600">Error loading data</td></tr>';
+                }
+                setEmpty(){
+                    this.rowsBody.innerHTML = '<tr><td colspan="3" class="px-3 py-6 text-center text-gray-500">No data</td></tr>';
+                }
+                render(items){
+                    this.rowsBody.innerHTML = items.map(r=>{
+                        const img = r.image ? `<img src="${r.image}" alt="${(r.name||'').replace(/"/g,'&quot;')}" class=\"w-8 h-8 object-cover rounded mr-2 border border-gray-200\">` : '';
+                        return `<tr class=\"border-b last:border-b-0\"><td class=\"px-3 py-2 align-middle\">${r.rank}</td><td class=\"px-3 py-2 flex items-center\">${img}<span>${(r.name||'')}</span></td><td class=\"px-3 py-2 text-right font-medium align-middle\">${Number(r.qty||0).toLocaleString('en-PH')}</td></tr>`;
+                    }).join('');
+                }
+                async load(){
+                    if(!this.valid) return;
+                    this.setLoading();
+                    try {
+                        const res = await fetch(`?section=dashboard&action=get_best_sellers&ajax=1`, { headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'} });
+                        const data = await res.json();
+                        if (data && data.ok && Array.isArray(data.items) && data.items.length){
+                            this.render(data.items);
+                        } else { this.setEmpty(); }
+                    } catch(_){ this.setError(); }
+                }
+                static init(){
+                    const panel = new BestSellersPanel('best-sellers-inline-rows');
+                    if (panel.valid) panel.load();
+                    window.BestSellersPanelInstance = panel; // optional global reference
+                    return panel;
+                }
+            }
+            // Initialize panel
+            BestSellersPanel.init();
+
+            // Real-time Notifications Manager
+            class NotificationsManager {
+                constructor(){
+                    this.bell = document.getElementById('notification-bell');
+                    this.badge = document.getElementById('notification-badge');
+                    this.panel = document.getElementById('notification-panel');
+                    this.list = document.getElementById('notification-list');
+                    this.empty = document.getElementById('notification-empty');
+                    this.markReadBtn = document.getElementById('notif-mark-read');
+                    this.unread = 0;
+                    // Load last seen IDs from localStorage
+                    let stored = {};
+                    try { stored = JSON.parse(localStorage.getItem('notif.lastIds')||'{}')||{}; } catch(_) { stored={}; }
+                    this.lastIds = {
+                        order: stored.order||0,
+                        cp: stored.cp||0,
+                        booking: stored.booking||0
+                    };
+                    this.items = []; // merged list
+                    this.pollIntervalMs = 10000; // 10s
+                    this.nextTimer = null;
+                    this.active = true;
+                    this.attach();
+                    this.poll();
+                }
+                attach(){
+                    if (this.bell) {
+                        this.bell.addEventListener('click', (e)=>{
+                            e.stopPropagation();
+                            const open = !this.panel.classList.contains('hidden');
+                            if (open) {
+                                this.closePanel();
+                            } else {
+                                this.openPanel();
+                            }
+                        });
+                    }
+                    document.addEventListener('click', (e)=>{
+                        if (!this.panel) return;
+                        if (this.panel.classList.contains('hidden')) return;
+                        if (this.panel.contains(e.target) || (this.bell && this.bell.contains(e.target))) return;
+                        this.closePanel();
+                    });
+                    document.addEventListener('keydown', (e)=>{ if (e.key==='Escape') this.closePanel(); });
+                    if (this.markReadBtn) this.markReadBtn.addEventListener('click', ()=>{ this.markAllRead(); });
+                }
+                openPanel(){
+                    if (!this.panel) return;
+                    this.panel.classList.remove('hidden');
+                    this.bell?.setAttribute('aria-expanded','true');
+                    this.markAllRead();
+                }
+                closePanel(){
+                    if (!this.panel) return;
+                    this.panel.classList.add('hidden');
+                    this.bell?.setAttribute('aria-expanded','false');
+                }
+                markAllRead(){
+                    this.unread = 0;
+                    this.updateBadge();
+                    // Persist current lastIds as seen
+                    try { localStorage.setItem('notif.lastIds', JSON.stringify(this.lastIds)); } catch(_) {}
+                }
+                updateBadge(){
+                    if (!this.badge) return;
+                    if (this.unread > 0) {
+                        this.badge.textContent = this.unread > 99 ? '99+' : String(this.unread);
+                        this.badge.classList.remove('hidden');
+                    } else {
+                        this.badge.classList.add('hidden');
+                    }
+                }
+                mergeAndRender(newItems){
+                    if (newItems && newItems.length){
+                        // Prepend new items
+                        this.items = [...newItems, ...this.items].slice(0,100); // keep last 100
+                        if (!this.panel || this.panel.classList.contains('hidden')) {
+                            this.unread += newItems.length;
+                            this.updateBadge();
+                        }
+                    }
+                    this.render();
+                }
+                render(){
+                    if (!this.list) return;
+                    if (!this.items.length){
+                        this.empty?.classList.remove('hidden');
+                        this.list.innerHTML='';
+                        return;
+                    } else { this.empty?.classList.add('hidden'); }
+                    this.list.innerHTML = this.items.map(it=>{
+                        const icon = it.type==='order' ? 'fa-receipt' : (it.type==='catering' ? 'fa-utensils' : 'fa-calendar-alt');
+                        const time = it.time ? `<span class=\"block text-[10px] text-gray-400 mt-0.5\">${this.formatTime(it.time)}</span>` : '';
+                        const status = it.status ? `<span class=\"text-xs text-gray-500 ml-1\">(${this.escapeHtml(it.status)})</span>` : '';
+                        return `<div class=\"px-4 py-2 hover:bg-gray-50 text-gray-700 flex items-start gap-2\">`+
+                               `<i class=\"fas ${icon} mt-0.5 text-primary text-xs\"></i>`+
+                               `<div class=\"flex-1 min-w-0\"><span class=\"font-medium\">${this.escapeHtml(it.label)}</span>${status}${time}</div>`+
+                               `</div>`;
+                    }).join('');
+                }
+                escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+                formatTime(t){
+                    // Attempt to parse; if already datetime string; fallback to raw
+                    const d = new Date(t.replace(' ','T'));
+                    if (isNaN(d.getTime())) return t;
+                    const now = new Date();
+                    const diffMs = now - d;
+                    const diffMin = Math.floor(diffMs/60000);
+                    if (diffMin < 1) return 'just now';
+                    if (diffMin < 60) return diffMin + 'm ago';
+                    const diffHr = Math.floor(diffMin/60);
+                    if (diffHr < 24) return diffHr + 'h ago';
+                    return d.toLocaleDateString();
+                }
+                async poll(){
+                    if (!this.active) return;
+                    try {
+                        const url = `?section=dashboard&action=get_notifications&ajax=1&last_order_id=${this.lastIds.order}&last_cp_id=${this.lastIds.cp}&last_booking_id=${this.lastIds.booking}`;
+                        const res = await fetch(url, { headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'} });
+                        const data = await res.json();
+                        if (data && data.ok) {
+                            const newItems = [];
+                            if (Array.isArray(data.orders)) newItems.push(...data.orders);
+                            if (Array.isArray(data.catering)) newItems.push(...data.catering);
+                            if (Array.isArray(data.bookings)) newItems.push(...data.bookings);
+                            // Sort newest first by id/time heuristic
+                            newItems.sort((a,b)=> b.id - a.id);
+                            // Update latest IDs
+                            if (data.latest_ids) {
+                                this.lastIds.order = data.latest_ids.order || this.lastIds.order;
+                                this.lastIds.cp = data.latest_ids.cp || this.lastIds.cp;
+                                this.lastIds.booking = data.latest_ids.booking || this.lastIds.booking;
+                            }
+                            if (newItems.length) this.mergeAndRender(newItems);
+                            else this.render();
+                        }
+                    } catch(_) { /* ignore errors; next poll will retry */ }
+                    finally {
+                        this.nextTimer = setTimeout(()=>this.poll(), this.pollIntervalMs);
+                    }
+                }
+            }
+            // Only initialize notifications on dashboard section (or when no specific section provided)
+            if (!initialSection || initialSection === 'dashboard') {
+                window.NotificationsManagerInstance = new NotificationsManager();
             }
         });
 
