@@ -50,6 +50,43 @@ $collections = [
 ];
 
 // Triple the collections for seamless infinite scroll
+// Override Our Collections images from site settings (if configured)
+try {
+    require_once __DIR__ . '/../classes/database.php';
+    $pdoTmp = (new database())->opencon();
+    $pdoTmp->exec("CREATE TABLE IF NOT EXISTS site_settings (setting_key VARCHAR(100) PRIMARY KEY, setting_value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+    $stmt = $pdoTmp->prepare("SELECT setting_value FROM site_settings WHERE setting_key='collections_images'");
+    $stmt->execute();
+    $val = $stmt->fetchColumn();
+    if ($val) {
+        $imgs = json_decode($val, true);
+        if (is_array($imgs) && !empty($imgs)) {
+            // Detect app base (e.g., /Binggay/)
+            $scriptName = isset($_SERVER['SCRIPT_NAME']) ? str_replace('\\','/', $_SERVER['SCRIPT_NAME']) : '';
+            $parts = array_values(array_filter(explode('/', trim($scriptName,'/'))));
+            $appBase = '/';
+            if (!empty($parts)) {
+                $first = $parts[0];
+                $docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? rtrim(str_replace('\\','/', $_SERVER['DOCUMENT_ROOT']), '/') : '';
+                if (count($parts) > 1 || ($docRoot && is_dir($docRoot.'/'.$first))) { $appBase = '/'.$first.'/'; }
+            }
+            $serverBasePath = isset($_SERVER['DOCUMENT_ROOT']) ? rtrim(str_replace('\\','/', $_SERVER['DOCUMENT_ROOT']), '/').$appBase : null;
+            $norm = function($p) use ($appBase, $serverBasePath){
+                $p = trim((string)$p);
+                if ($p === '') return null; if (preg_match('~^https?://~i',$p)) return $p;
+                $p = str_replace('\\','/', $p); $p = preg_replace('~^(\./|\.\./)+~','', $p); $p = ltrim($p,'/');
+                if (($pos = stripos($p,'uploads/')) !== false) { $p = substr($p,$pos); }
+                if (strpos($p,'uploads/') !== 0) { $p = 'uploads/collections/'.basename($p); }
+                $web = rtrim($appBase,'/').'/'.ltrim($p,'/'); $web = preg_replace('~/{2,}~','/', $web);
+                if ($serverBasePath) { $fs = rtrim($serverBasePath,'/').'/'.ltrim($p,'/'); if (!is_file($fs)) { return $web; } }
+                return $web;
+            };
+            $i = 0; $max = min(count($collections), count($imgs));
+            for ($i=0; $i<$max; $i++) { $u = $norm($imgs[$i]); if ($u) { $collections[$i]['image'] = $u; } }
+        }
+    }
+} catch (Throwable $e) { /* ignore */ }
+
 $duplicatedCollections = array_merge($collections, $collections, $collections);
 
 // Load packages + items from DB for "Our Packages" section
@@ -647,6 +684,9 @@ try {
                     celebration with impeccable taste and presentation.
                 </p>
             </div>
+
+            <?php // Dynamic rotating images for Our Menu section
+            include __DIR__ . '/../partials/menu-hero.php'; ?>
 
             <!-- Menu Grid -->
             <div class="grid lg:grid-cols-2 gap-8">

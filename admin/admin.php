@@ -1446,6 +1446,120 @@ if ($sectionEarly === 'eventtypes') {
         header('Location: ?section=eventtypes'); exit;
     }
 }
+
+// Site Settings early actions (AJAX endpoints) - menu section rotating images and collections images
+if ($sectionEarly === 'settings') {
+    $action = $_GET['action'] ?? '';
+    if (!$action) { $action = $_POST['action'] ?? ''; }
+    $isAjaxAction = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_POST['ajax']) && $_POST['ajax'] == '1')
+        || (isset($_GET['ajax']) && $_GET['ajax'] == '1');
+    if ($action && $isAjaxAction) {
+        header('Content-Type: application/json');
+        try {
+            $pdo = $db->opencon();
+            // Ensure table exists (lightweight guard) - optional; ignore errors
+            $pdo->exec("CREATE TABLE IF NOT EXISTS site_settings (setting_key VARCHAR(100) PRIMARY KEY, setting_value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+            if ($action === 'get_menu_images') {
+                $stmt = $pdo->prepare("SELECT setting_value FROM site_settings WHERE setting_key = 'menu_section_images'");
+                $stmt->execute();
+                $val = $stmt->fetchColumn();
+                $images = [];
+                if ($val) {
+                    $decoded = json_decode($val, true);
+                    if (is_array($decoded)) { $images = $decoded; }
+                }
+                echo json_encode(['success'=>true,'images'=>$images]);
+                exit;
+            }
+            if ($action === 'update_menu_images') {
+                // Accept either uploaded files or posted URLs array
+                $existing = [];
+                if (isset($_POST['existing']) && is_string($_POST['existing'])) {
+                    $decoded = json_decode($_POST['existing'], true);
+                    if (is_array($decoded)) { $existing = $decoded; }
+                }
+                $uploads = [];
+                if (!empty($_FILES['images']['name']) && is_array($_FILES['images']['name'])) {
+                    $count = count($_FILES['images']['name']);
+                    for ($i=0;$i<$count;$i++) {
+                        if ($_FILES['images']['error'][$i] === UPLOAD_ERR_OK) {
+                            $tmp = $_FILES['images']['tmp_name'][$i];
+                            $orig = basename($_FILES['images']['name'][$i]);
+                            $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                            if (!in_array($ext, ['jpg','jpeg','png','webp','avif'])) continue;
+                            $newName = 'menu_hero_'.time()."_".$i.'.'.$ext;
+                            $targetDir = __DIR__.'/../uploads/menu_hero';
+                            if (!is_dir($targetDir)) { @mkdir($targetDir, 0775, true); }
+                            $targetPath = $targetDir.'/'.$newName;
+                            if (move_uploaded_file($tmp, $targetPath)) {
+                                $rel = 'uploads/menu_hero/'.$newName; // store relative; output logic adds base URL
+                                $uploads[] = $rel;
+                            }
+                        }
+                    }
+                }
+                $final = array_values(array_slice(array_merge($uploads, $existing), 0, 10)); // limit 10 images
+                $json = json_encode($final, JSON_UNESCAPED_SLASHES);
+                $stmt = $pdo->prepare("INSERT INTO site_settings (setting_key, setting_value) VALUES ('menu_section_images', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+                $stmt->execute([$json]);
+                echo json_encode(['success'=>true,'images'=>$final]);
+                exit;
+            }
+            if ($action === 'get_collections_images') {
+                $stmt = $pdo->prepare("SELECT setting_value FROM site_settings WHERE setting_key = 'collections_images'");
+                $stmt->execute();
+                $val = $stmt->fetchColumn();
+                $images = [];
+                if ($val) {
+                    $decoded = json_decode($val, true);
+                    if (is_array($decoded)) { $images = $decoded; }
+                }
+                echo json_encode(['success'=>true,'images'=>$images]);
+                exit;
+            }
+            if ($action === 'update_collections_images') {
+                // Accept either uploaded files or posted URLs array
+                $existing = [];
+                if (isset($_POST['existing']) && is_string($_POST['existing'])) {
+                    $decoded = json_decode($_POST['existing'], true);
+                    if (is_array($decoded)) { $existing = $decoded; }
+                }
+                $uploads = [];
+                if (!empty($_FILES['images']['name']) && is_array($_FILES['images']['name'])) {
+                    $count = count($_FILES['images']['name']);
+                    for ($i=0;$i<$count;$i++) {
+                        if ($_FILES['images']['error'][$i] === UPLOAD_ERR_OK) {
+                            $tmp = $_FILES['images']['tmp_name'][$i];
+                            $orig = basename($_FILES['images']['name'][$i]);
+                            $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                            if (!in_array($ext, ['jpg','jpeg','png','webp','avif'])) continue;
+                            $newName = 'collections_'.time()."_".$i.'.'.$ext;
+                            $targetDir = __DIR__.'/../uploads/collections';
+                            if (!is_dir($targetDir)) { @mkdir($targetDir, 0775, true); }
+                            $targetPath = $targetDir.'/'.$newName;
+                            if (move_uploaded_file($tmp, $targetPath)) {
+                                $rel = 'uploads/collections/'.$newName; // store relative; output logic adds base URL
+                                $uploads[] = $rel;
+                            }
+                        }
+                    }
+                }
+                // We will allow up to 12 collection images (2 full rows in most screens)
+                $final = array_values(array_slice(array_merge($uploads, $existing), 0, 24));
+                $json = json_encode($final, JSON_UNESCAPED_SLASHES);
+                $stmt = $pdo->prepare("INSERT INTO site_settings (setting_key, setting_value) VALUES ('collections_images', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+                $stmt->execute([$json]);
+                echo json_encode(['success'=>true,'images'=>$final]);
+                exit;
+            }
+            echo json_encode(['success'=>false,'error'=>'Unknown action']);
+        } catch (Throwable $e) {
+            echo json_encode(['success'=>false,'error'=>$e->getMessage()]);
+        }
+        exit;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -3400,20 +3514,149 @@ if ($sectionEarly === 'eventtypes') {
                 </div>
 
                 <div id="settings-content" class="section-content <?php echo ($section === 'settings') ? '' : 'hidden '; ?>p-6">
-                    <div class="card max-w-2xl mx-auto p-8">
-                        <h2 class="text-2xl font-medium text-primary mb-2">Settings</h2>
-                        <p class="text-muted-foreground mb-8">Configure system settings and preferences</p>
-                        <div class="text-center py-12">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i class="fas fa-cog text-2xl text-primary"></i>
-                            </div>
-                            <p class="text-muted-foreground mb-4">System configuration, user preferences, notification settings, and administrative controls will be displayed here.</p>
+                    <h2 class="text-2xl font-medium text-primary mb-2">Settings</h2>
+                    <p class="text-muted-foreground mb-8">Configure system settings and preferences</p>
+                    <div class="grid gap-6 lg:grid-cols-2">
+                        <div class="card p-6">
+                            <h3 class="text-lg font-medium mb-4 flex items-center gap-2"><i class="fas fa-images text-primary"></i> Our Menu Section Images</h3>
+                            <p class="text-sm text-muted-foreground mb-4">Upload up to 10 images to rotate in the public "Our Menu" section (guest & user home pages). First image appears first. Click X to remove before saving.</p>
+                            <form id="menu-images-form" class="space-y-4" enctype="multipart/form-data">
+                                <input type="hidden" name="ajax" value="1" />
+                                <input type="hidden" name="action" value="update_menu_images" />
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Add New Images</label>
+                                    <input type="file" name="images[]" multiple accept="image/*" class="block w-full text-sm" />
+                                    <p class="text-[11px] text-gray-500 mt-1">Accepted: JPG, PNG, WEBP, AVIF. Large images will not be resized automatically.</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Current Images</label>
+                                    <div id="menu-images-preview" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+                                </div>
+                                <div class="flex items-center gap-3 flex-wrap">
+                                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded hover:bg-green-700 flex items-center gap-2"><i class="fas fa-upload"></i> Save Images</button>
+                                    <button type="button" id="refresh-menu-images" class="px-3 py-2 border rounded text-sm hover:bg-gray-50"><i class="fas fa-rotate"></i> Refresh</button>
+                                    <div id="menu-images-status" class="text-sm text-gray-500"></div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="card p-6">
+                            <h3 class="text-lg font-medium mb-4 flex items-center gap-2"><i class="fas fa-images text-primary"></i> Our Collections Images</h3>
+                            <p class="text-sm text-muted-foreground mb-4">Upload images to use in the landing page "Our Collections" slider. Only the images will change; the titles, hover effects, and continuous sliding remain untouched. First image appears first.</p>
+                            <form id="collections-images-form" class="space-y-4" enctype="multipart/form-data">
+                                <input type="hidden" name="ajax" value="1" />
+                                <input type="hidden" name="action" value="update_collections_images" />
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Add New Images</label>
+                                    <input type="file" name="images[]" multiple accept="image/*" class="block w-full text-sm" />
+                                    <p class="text-[11px] text-gray-500 mt-1">Accepted: JPG, PNG, WEBP, AVIF. Recommended landscape 16:9 or 4:3 for best results.</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Current Images</label>
+                                    <div id="collections-images-preview" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+                                </div>
+                                <div class="flex items-center gap-3 flex-wrap">
+                                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded hover:bg-green-700 flex items-center gap-2"><i class="fas fa-upload"></i> Save Images</button>
+                                    <button type="button" id="refresh-collections-images" class="px-3 py-2 border rounded text-sm hover:bg-gray-50"><i class="fas fa-rotate"></i> Refresh</button>
+                                    <div id="collections-images-status" class="text-sm text-gray-500"></div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="card p-6">
+                            <h3 class="text-lg font-medium mb-4"><i class="fas fa-cog text-primary mr-2"></i> General</h3>
+                            <p class="text-muted-foreground mb-4">Additional system configuration panels will be added here.</p>
                             <div class="inline-flex items-center gap-2 text-sm text-primary">
                                 <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
                                 Coming Soon
                             </div>
                         </div>
                     </div>
+                    <script>
+                    (function(){
+                        const BASE_URL = (function(){
+                            // Compute base URL by removing trailing /admin from current path
+                            let path = window.location.pathname;
+                            if (path.match(/\/admin\//)) {
+                                path = path.replace(/\/admin\/(.*)$/,'/');
+                            }
+                            return path.replace(/\/+$/, '');
+                        })();
+                        const preview = document.getElementById('menu-images-preview');
+                        const form = document.getElementById('menu-images-form');
+                        const statusEl = document.getElementById('menu-images-status');
+                        const refreshBtn = document.getElementById('refresh-menu-images');
+                        if(!preview) return;
+                        let current = [];
+                        function render(){
+                            preview.innerHTML='';
+                            if(!current.length){ preview.innerHTML='<div class="col-span-full text-xs text-gray-500">No images configured yet.</div>'; return; }
+                            current.forEach((src,i)=>{
+                                let displaySrc = src;
+                                if(!/^https?:\/\//i.test(displaySrc)) {
+                                    displaySrc = BASE_URL + '/' + displaySrc.replace(/^\/+/, '');
+                                }
+                                const wrap=document.createElement('div');
+                                wrap.className='relative group border rounded overflow-hidden aspect-video bg-gray-100';
+                                wrap.innerHTML='<img src="'+displaySrc+'" class="w-full h-full object-cover" alt="menu hero '+(i+1)+'"/>\n<button type="button" data-idx="'+i+'" class="absolute top-1 right-1 bg-black/60 text-white rounded px-1 text-xs opacity-0 group-hover:opacity-100 transition">&times;</button>';
+                                preview.appendChild(wrap);
+                            });
+                        }
+                        function load(){
+                            fetch('?section=settings&action=get_menu_images&ajax=1')
+                              .then(r=>r.json()).then(j=>{ if(j.success){ current=j.images||[]; render(); } });
+                        }
+                        preview.addEventListener('click', e=>{
+                            const btn=e.target.closest('button[data-idx]');
+                            if(!btn) return; const idx=parseInt(btn.getAttribute('data-idx')); if(isNaN(idx)) return; current.splice(idx,1); render();
+                        });
+                        form.addEventListener('submit', e=>{
+                            e.preventDefault();
+                            const fd=new FormData(form); fd.append('existing', JSON.stringify(current));
+                            statusEl.textContent='Saving...';
+                            fetch('?section=settings&action=update_menu_images', {method:'POST', body:fd})
+                              .then(r=>r.json()).then(j=>{ if(j.success){ current=j.images||[]; render(); statusEl.textContent='Saved ('+current.length+' images).'; form.reset(); } else { statusEl.textContent='Error: '+(j.error||'Unknown'); } })
+                              .catch(err=> statusEl.textContent='Error: '+err.message);
+                        });
+                        refreshBtn.addEventListener('click', load);
+                        if(document.location.search.includes('section=settings')) { load(); }
+                    })();
+                    // Collections images manager
+                    (function(){
+                        const BASE_URL = (function(){
+                            let path = window.location.pathname;
+                            if (path.match(/\/admin\//)) { path = path.replace(/\/admin\/(.*)$/,'/'); }
+                            return path.replace(/\/+$/, '');
+                        })();
+                        const preview = document.getElementById('collections-images-preview');
+                        const form = document.getElementById('collections-images-form');
+                        const statusEl = document.getElementById('collections-images-status');
+                        const refreshBtn = document.getElementById('refresh-collections-images');
+                        if(!preview) return;
+                        let current = [];
+                        function render(){
+                            preview.innerHTML='';
+                            if(!current.length){ preview.innerHTML='<div class="col-span-full text-xs text-gray-500">No images configured yet.</div>'; return; }
+                            current.forEach((src,i)=>{
+                                let displaySrc = src;
+                                if(!/^https?:\/\//i.test(displaySrc)) { displaySrc = BASE_URL + '/' + displaySrc.replace(/^\/+/, ''); }
+                                const wrap=document.createElement('div');
+                                wrap.className='relative group border rounded overflow-hidden aspect-video bg-gray-100';
+                                wrap.innerHTML='<img src="'+displaySrc+'" class="w-full h-full object-cover" alt="collection '+(i+1)+'"/>\n<button type="button" data-idx="'+i+'" class="absolute top-1 right-1 bg-black/60 text-white rounded px-1 text-xs opacity-0 group-hover:opacity-100 transition">&times;</button>';
+                                preview.appendChild(wrap);
+                            });
+                        }
+                        function load(){ fetch('?section=settings&action=get_collections_images&ajax=1').then(r=>r.json()).then(j=>{ if(j.success){ current=j.images||[]; render(); } }); }
+                        preview.addEventListener('click', e=>{ const btn=e.target.closest('button[data-idx]'); if(!btn) return; const idx=parseInt(btn.getAttribute('data-idx')); if(isNaN(idx)) return; current.splice(idx,1); render(); });
+                        form.addEventListener('submit', e=>{
+                            e.preventDefault(); const fd=new FormData(form); fd.append('existing', JSON.stringify(current));
+                            statusEl.textContent='Saving...';
+                            fetch('?section=settings&action=update_collections_images', {method:'POST', body:fd})
+                              .then(r=>r.json()).then(j=>{ if(j.success){ current=j.images||[]; render(); statusEl.textContent='Saved ('+current.length+' images).'; form.reset(); } else { statusEl.textContent='Error: '+(j.error||'Unknown'); } })
+                              .catch(err=> statusEl.textContent='Error: '+err.message);
+                        });
+                        if(refreshBtn) refreshBtn.addEventListener('click', load);
+                        if(document.location.search.includes('section=settings')) { load(); }
+                    })();
+                    </script>
                 </div>
 
                 <!-- Packages Section -->
