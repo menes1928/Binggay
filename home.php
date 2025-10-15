@@ -880,7 +880,7 @@ try {
                     </div>
                     <div class="px-5 pb-5">
                         <?php if ($isActive): ?>
-                        <a href="cateringpackages.php" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-green-800 text-white hover:bg-green-700 transition">
+                        <a href="cateringpackages" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-green-800 text-white hover:bg-green-700 transition">
                             <i class="fas fa-calendar-check"></i>
                             Book Now
                         </a>
@@ -903,7 +903,7 @@ try {
 
             <!-- Section CTA -->
             <div class="text-center mt-16 fade-in-element" data-delay="400">
-                <a href="cateringpackages.php" class="inline-flex items-center gap-3 bg-green-800 text-white px-10 py-4 font-semibold tracking-wider hover:bg-green-700 transition-all duration-300 transform hover:scale-105 hover:shadow-xl group">
+                <a href="cateringpackages" class="inline-flex items-center gap-3 bg-green-800 text-white px-10 py-4 font-semibold tracking-wider hover:bg-green-700 transition-all duration-300 transform hover:scale-105 hover:shadow-xl group">
                     <i class="fas fa-calendar-check"></i>
                     Book Now
                 </a>

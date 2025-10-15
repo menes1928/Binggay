@@ -160,6 +160,8 @@ try {
             overflow: hidden;
             transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
+            display: flex; /* ensure image + content stack and content grows */
+            flex-direction: column;
         }
         
         .package-card::before {
@@ -554,55 +556,59 @@ try {
                                 <i class="<?php echo $badgeIcon; ?> mr-2"></i><?php echo $badgeLabel; ?>
                             </div>
                         </div>
-                        <div class="package-content">
-                            <h3 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars($pkg['name']); ?></h3>
-                            <p class="gold-text text-xl mb-4"><?php echo (int)$pkg['pax']; ?> Persons</p>
-                            <p class="opacity-90 mb-6"><?php echo $pkg['active'] ? 'Carefully curated for your celebration.' : 'Inactive • Not available for booking currently.'; ?></p>
+                        <div class="package-content flex flex-col h-full">
+                            <div class="flex-1">
+                                <h3 class="text-3xl font-bold mb-2"><?php echo htmlspecialchars($pkg['name']); ?></h3>
+                                <p class="gold-text text-xl mb-4"><?php echo (int)$pkg['pax']; ?> Persons</p>
+                                <p class="opacity-90 mb-6"><?php echo $pkg['active'] ? 'Carefully curated for your celebration.' : 'Inactive • Not available for booking currently.'; ?></p>
 
-                            <h4 class="font-semibold mb-3 text-lg gold-text">Package Includes:</h4>
-                            <div class="space-y-2 mb-4">
-                                <?php if (!empty($pkg['items'])): ?>
-                                    <?php foreach ($pkg['items'] as $it): ?>
-                                        <div class="feature-item">
-                                            <i class="fas fa-check-circle"></i>
-                                            <span>
-                                                <?php echo htmlspecialchars($it['label']); ?>
-                                                <?php if (!empty($it['qty'])): ?>
-                                                    — <?php echo htmlspecialchars($it['qty']); ?> <?php echo htmlspecialchars($it['unit']); ?>
-                                                <?php endif; ?>
-                                                <?php if (!empty($it['optional'])): ?>
-                                                    <span class="ml-1 text-[10px] px-1 rounded bg-amber-50/10 border border-amber-300/30 text-amber-200">optional</span>
-                                                <?php endif; ?>
-                                            </span>
-                                        </div>
-                                    <?php endforeach; ?>
+                                <h4 class="font-semibold mb-3 text-lg gold-text">Package Includes:</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 mb-4">
+                                    <?php if (!empty($pkg['items'])): ?>
+                                        <?php foreach ($pkg['items'] as $it): ?>
+                                            <div class="feature-item">
+                                                <i class="fas fa-check-circle"></i>
+                                                <span>
+                                                    <?php echo htmlspecialchars($it['label']); ?>
+                                                    <?php if (!empty($it['qty'])): ?>
+                                                        — <?php echo htmlspecialchars($it['qty']); ?> <?php echo htmlspecialchars($it['unit']); ?>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($it['optional'])): ?>
+                                                        <span class="ml-1 text-[10px] px-1 rounded bg-amber-50/10 border border-amber-300/30 text-amber-200">optional</span>
+                                                    <?php endif; ?>
+                                                </span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <div class="feature-item md:col-span-2"><i class="fas fa-circle-info"></i><span>Items coming soon.</span></div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <div class="mt-auto">
+                                <div class="price-tag">
+                                    <p class="text-sm mb-1">Starting at</p>
+                                    <p class="text-4xl font-bold">₱<?php echo number_format(max(0,(float)$pkg['price'])); ?></p>
+                                    <?php if ((int)$pkg['pax'] > 0 && (float)$pkg['price'] > 0): ?>
+                                        <p class="text-sm mt-1 opacity-80">₱<?php echo number_format(ceil($pkg['price'] / max(1,(int)$pkg['pax']))); ?> per person</p>
+                                    <?php endif; ?>
+                                </div>
+
+                                <?php if ($pkg['active']): ?>
+                                    <button class="btn-inquire w-full mt-6"
+                                            data-package-id="<?php echo (int)$pkg['id']; ?>"
+                                            data-package-name="<?php echo htmlspecialchars($pkg['name']); ?>"
+                                            data-package-pax="<?php echo (int)$pkg['pax']; ?>"
+                                            data-package-price="<?php echo (float)$pkg['price']; ?>"
+                                            onclick="openPackageModal(this)">
+                                        <span><i class="fas fa-envelope mr-2"></i>Inquire Now</span>
+                                    </button>
                                 <?php else: ?>
-                                    <div class="feature-item"><i class="fas fa-circle-info"></i><span>Items coming soon.</span></div>
+                                    <button class="btn-inquire w-full mt-6" disabled style="opacity:.6;cursor:not-allowed">
+                                        <span><i class="fas fa-ban mr-2"></i>Not Available</span>
+                                    </button>
                                 <?php endif; ?>
                             </div>
-
-                            <div class="price-tag">
-                                <p class="text-sm mb-1">Starting at</p>
-                                <p class="text-4xl font-bold">₱<?php echo number_format(max(0,(float)$pkg['price'])); ?></p>
-                                <?php if ((int)$pkg['pax'] > 0 && (float)$pkg['price'] > 0): ?>
-                                    <p class="text-sm mt-1 opacity-80">₱<?php echo number_format(ceil($pkg['price'] / max(1,(int)$pkg['pax']))); ?> per person</p>
-                                <?php endif; ?>
-                            </div>
-
-                            <?php if ($pkg['active']): ?>
-                                <button class="btn-inquire w-full mt-6"
-                                        data-package-id="<?php echo (int)$pkg['id']; ?>"
-                                        data-package-name="<?php echo htmlspecialchars($pkg['name']); ?>"
-                                        data-package-pax="<?php echo (int)$pkg['pax']; ?>"
-                                        data-package-price="<?php echo (float)$pkg['price']; ?>"
-                                        onclick="openPackageModal(this)">
-                                    <span><i class="fas fa-envelope mr-2"></i>Inquire Now</span>
-                                </button>
-                            <?php else: ?>
-                                <button class="btn-inquire w-full mt-6" disabled style="opacity:.6;cursor:not-allowed">
-                                    <span><i class="fas fa-ban mr-2"></i>Not Available</span>
-                                </button>
-                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
