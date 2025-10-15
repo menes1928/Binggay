@@ -771,6 +771,46 @@ $BF_LOCK_ATTR = $BF_IS_LOGGED_IN ? 'readonly' : '';
                     </div>
                 </div>
             </div>
+
+            <!-- Gender Reveal -->
+            <div class="event-card scroll-animate">
+                <img src="https://images.unsplash.com/photo-1519741497674-611481863552?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" 
+                     alt="Gender Reveal" class="event-card-image">
+                <div class="event-card-content">
+                    <div class="event-icon">
+                        <i class="fas fa-baby"></i>
+                    </div>
+                    <h3 class="event-title">Gender Reveal</h3>
+                    <p class="event-description">
+                        Celebrate the big surprise with pastel décor, themed desserts, and a picture-perfect reveal moment.
+                    </p>
+                    <div class="event-features">
+                        <span class="feature-badge">Custom Theme</span>
+                        <span class="feature-badge">Dessert Bar</span>
+                        <span class="feature-badge">Photo Corner</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- And Many More -->
+            <div class="event-card scroll-animate">
+                <img src="https://images.unsplash.com/photo-1519681393784-d120267933ba?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" 
+                     alt="Many More Events" class="event-card-image">
+                <div class="event-card-content">
+                    <div class="event-icon">
+                        <i class="fas fa-infinity"></i>
+                    </div>
+                    <h3 class="event-title">And Many More</h3>
+                    <p class="event-description">
+                        From baby showers and christenings to graduations and housewarmings—we’ll tailor the menu to your celebration.
+                    </p>
+                    <div class="event-features">
+                        <span class="feature-badge">Custom Menus</span>
+                        <span class="feature-badge">Flexible Setups</span>
+                        <span class="feature-badge">On-site Staff</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -1291,7 +1331,7 @@ $BF_LOCK_ATTR = $BF_IS_LOGGED_IN ? 'readonly' : '';
         document.getElementById('bookingForm').addEventListener('submit', function(e) {
             if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
                 e.preventDefault();
-                window.location.href = '../login.php?next=' + encodeURIComponent('user/booking.php');
+                window.location.href = '../login?next=' + encodeURIComponent('user/booking');
                 return false;
             }
             e.preventDefault();

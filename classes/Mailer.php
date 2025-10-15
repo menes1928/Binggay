@@ -1,6 +1,7 @@
 <?php
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception as PHPMailerException;
+use PHPMailer\PHPMailer\SMTP;
 
 class Mailer
 {
@@ -34,6 +35,12 @@ class Mailer
         }
         $mail->isHTML(true);
         $mail->CharSet = 'UTF-8';
+
+        // Optional debug output controlled by MAIL_DEBUG constant (used by test scripts)
+        if (defined('MAIL_DEBUG') && MAIL_DEBUG) {
+            $mail->SMTPDebug = SMTP::DEBUG_SERVER;
+            $mail->Debugoutput = 'html';
+        }
         return $mail;
     }
 
@@ -50,6 +57,80 @@ class Mailer
         } catch (PHPMailerException $e) {
             // Log error in production
             return false;
+        }
+    }
+
+    /**
+     * Attempt to establish an SMTP connection without sending an email.
+     * Returns an array with success flag, message and debug/details.
+     */
+    public function testConnection(): array
+    {
+        $debugBuffer = '';
+        try {
+            $mail = $this->baseMailer();
+            // Force debug capture even if MAIL_DEBUG is not defined
+            $mail->SMTPDebug = SMTP::DEBUG_SERVER;
+            $mail->Debugoutput = function ($str, $level) use (&$debugBuffer) {
+                $debugBuffer .= '[' . $level . '] ' . $str . "\n";
+            };
+            $connected = $mail->smtpConnect();
+            if ($connected) {
+                $mail->smtpClose();
+                return [
+                    'success' => true,
+                    'message' => 'SMTP connection established successfully',
+                    'details' => [
+                        'host' => $this->cfg['host'] ?? '',
+                        'port' => (string)($this->cfg['port'] ?? ''),
+                        'encryption' => (string)($this->cfg['encryption'] ?? ''),
+                        'username' => $this->cfg['username'] ?? '',
+                        'debug' => $debugBuffer,
+                    ],
+                ];
+            }
+            return [
+                'success' => false,
+                'message' => 'Unable to establish SMTP connection',
+                'details' => [ 'debug' => $debugBuffer ],
+            ];
+        } catch (PHPMailerException $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'details' => [ 'debug' => $debugBuffer ],
+            ];
+        }
+    }
+
+    /**
+     * Send a minimal test email to verify end-to-end delivery.
+     */
+    public function sendTestEmail(string $toEmail): array
+    {
+        $debugBuffer = '';
+        try {
+            $mail = $this->baseMailer();
+            $mail->SMTPDebug = SMTP::DEBUG_SERVER;
+            $mail->Debugoutput = function ($str, $level) use (&$debugBuffer) {
+                $debugBuffer .= '[' . $level . '] ' . $str . "\n";
+            };
+            $mail->addAddress($toEmail);
+            $mail->Subject = 'Test Email - Sandok ni Binggay';
+            $mail->Body = '<h1>Test Email</h1><p>This is a verification email from Sandok ni Binggay.</p>';
+            $mail->AltBody = 'This is a verification email from Sandok ni Binggay.';
+            $mail->send();
+            return [
+                'success' => true,
+                'message' => 'Test email sent successfully',
+                'details' => [ 'debug' => $debugBuffer ],
+            ];
+        } catch (PHPMailerException $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'details' => [ 'debug' => $debugBuffer ],
+            ];
         }
     }
 

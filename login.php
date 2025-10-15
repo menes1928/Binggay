@@ -361,7 +361,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 <div class="relative z-10 text-center animate-fade-in-left">
                     <!-- Logo -->
                     <div class="mb-8 float-animation">
-                        <img src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=150&h=150&fit=crop&crop=center" 
+                        <img src="images/logo.png" 
                              alt="Sandok ni Binggay" 
                              class="w-32 h-32 mx-auto rounded-full border-4 border-white/30 shadow-2xl object-cover">
                     </div>

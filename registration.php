@@ -505,7 +505,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                 </div>
                 
                 <div class="relative z-10 animate-fade-in-up">
-                    <img src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=150&h=150&fit=crop&crop=center" 
+                    <img src="images/logo.png" 
                          alt="Sandok ni Binggay" 
                          class="w-24 h-24 mx-auto rounded-full border-4 border-white/30 shadow-2xl object-cover mb-4">
                     <h1 class="text-3xl font-bold text-white mb-2">Join Sandok ni Binggay</h1>

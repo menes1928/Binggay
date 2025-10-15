@@ -1786,7 +1786,8 @@ if ($sectionEarly === 'settings') {
             if ($n === 'paid') return 'bg-emerald-50 border-emerald-300 text-emerald-800';
             if ($n === 'downpayment' || $n === 'partial') return 'bg-blue-50 border-blue-300 text-blue-800';
             if ($n === 'completed') return 'bg-blue-50 border-blue-300 text-blue-800';
-            if ($n === 'in progress' || $n === 'processing' || $n === 'ongoing') return 'bg-amber-50 border-amber-300 text-amber-800';
+            // Treat Confirmed (new) like previous In Progress for styling; keep legacy values for compatibility
+            if ($n === 'confirmed' || $n === 'in progress' || $n === 'processing' || $n === 'ongoing') return 'bg-amber-50 border-amber-300 text-amber-800';
             if ($n === 'canceled' || $n === 'cancelled') return 'bg-rose-50 border-rose-300 text-rose-800';
             // Pending/default
             return 'bg-gray-50 border-gray-300 text-gray-800';
@@ -2134,15 +2135,6 @@ if ($sectionEarly === 'settings') {
                         </div>
                     </div>
 
-                    <!-- Center section - Search -->
-                    <div class="flex-1 max-w-md mx-8">
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
-                            <input type="text" placeholder="Search orders, customers, or menu items..." 
-                                   class="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary transition-colors">
-                        </div>
-                    </div>
-
                     <!-- Right section -->
                     <div class="flex items-center gap-4">
                         <!-- Notifications -->
@@ -2301,7 +2293,7 @@ if ($sectionEarly === 'settings') {
                                 <h3 class="text-lg font-medium text-primary">Monthly Revenue & Orders</h3>
                                 <p class="text-sm text-muted-foreground">Revenue and order trends over the last 6 months</p>
                             </div>
-                            <div class="h-64">
+                            <div class="h-96">
                                 <canvas id="revenueChart"></canvas>
                             </div>
                         </div>
@@ -2314,7 +2306,7 @@ if ($sectionEarly === 'settings') {
                                     <p class="text-sm text-muted-foreground">Top 10 items (all-time)</p>
                                 </div>
                             </div>
-                            <div class="h-64 overflow-auto">
+                            <div class="h-96 overflow-auto">
                                 <table class="min-w-full text-sm">
                                     <thead class="sticky top-0 bg-white shadow">
                                         <tr class="text-left text-primary border-b">
@@ -2821,7 +2813,15 @@ if ($sectionEarly === 'settings') {
                         if ($bkQ !== '') { $w[] = "(eb.eb_name LIKE ? OR eb.eb_contact LIKE ? OR eb.eb_venue LIKE ?)"; $p[] = '%'.$bkQ.'%'; $p[] = '%'.$bkQ.'%'; $p[] = '%'.$bkQ.'%'; }
                         if ($bkType !== '') { $w[] = "et.name = ?"; $p[] = $bkType; }
                         if ($bkOrder !== '') { $w[] = "eb.eb_order = ?"; $p[] = $bkOrder; }
-                        if ($bkStatus !== '') { $w[] = "eb.eb_status = ?"; $p[] = $bkStatus; }
+                        if ($bkStatus !== '') {
+                            if ($bkStatus === 'Confirmed') {
+                                // Support legacy data stored as 'In Progress' while new flow uses 'Confirmed'
+                                $w[] = "(eb.eb_status = ? OR eb.eb_status = 'In Progress')";
+                                $p[] = 'Confirmed';
+                            } else {
+                                $w[] = "eb.eb_status = ?"; $p[] = $bkStatus;
+                            }
+                        }
                         if ($bkDate !== '') { $w[] = "DATE(eb.eb_date) = ?"; $p[] = $bkDate; }
                         $where = $w ? ('WHERE ' . implode(' AND ', $w)) : '';
                         // Count with join to event_types when filtering by type
@@ -2879,7 +2879,7 @@ if ($sectionEarly === 'settings') {
                                 <select id="bk-status" name="bk_status" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
                                     <option value="">All</option>
                                     <option value="Pending" <?= $bkStatus==='Pending'?'selected':'' ?>>Pending</option>
-                                    <option value="In Progress" <?= $bkStatus==='In Progress'?'selected':'' ?>>In Progress</option>
+                                    <option value="Confirmed" <?= $bkStatus==='Confirmed'?'selected':'' ?>>Confirmed</option>
                                     <option value="Downpayment" <?= $bkStatus==='Downpayment'?'selected':'' ?>>Downpayment</option>
                                     <option value="Completed" <?= $bkStatus==='Completed'?'selected':'' ?>>Completed</option>
                                     <option value="Paid" <?= $bkStatus==='Paid'?'selected':'' ?>>Paid</option>
@@ -3990,7 +3990,7 @@ if ($sectionEarly === 'settings') {
                     if (!btnConfirm && !btnComplete) return; // existing .bk-paid handled by modal below
                     const btn = btnConfirm || btnComplete;
                     const id = btn.getAttribute('data-bk-id');
-                    const newStatus = btnConfirm ? 'In Progress' : 'Completed';
+                    const newStatus = btnConfirm ? 'Confirmed' : 'Completed';
                     try {
                         const fd = new FormData();
                         fd.append('section','bookings');
@@ -4020,7 +4020,8 @@ if ($sectionEarly === 'settings') {
                         const chip = card?.querySelector('[data-bk-status]');
                         if (chip) {
                             chip.textContent = newStatus;
-                            chip.className = '<?= booking_chip_base_classes(); ?> ' + (newStatus.toLowerCase()==='completed' ? 'bg-blue-50 border-blue-300 text-blue-800' : (newStatus.toLowerCase()==='in progress' ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-gray-50 border-gray-300 text-gray-800'));
+                            const ns = newStatus.toLowerCase();
+                            chip.className = '<?= booking_chip_base_classes(); ?> ' + (ns==='completed' ? 'bg-blue-50 border-blue-300 text-blue-800' : (ns==='confirmed' || ns==='in progress' ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-gray-50 border-gray-300 text-gray-800'));
                         }
                     } catch (_) { alert('Network error'); }
                 });
@@ -5653,8 +5654,8 @@ if ($sectionEarly === 'settings') {
                     }
                 }
             }
-            // Only initialize notifications on dashboard section (or when no specific section provided)
-            if (!initialSection || initialSection === 'dashboard') {
+            // Initialize notifications on all sections if the bell exists
+            if (document.getElementById('notification-bell')) {
                 window.NotificationsManagerInstance = new NotificationsManager();
             }
         });
@@ -6425,7 +6426,7 @@ if ($sectionEarly === 'settings') {
                             <label class="text-sm text-muted-foreground">Status</label>
                             <select name="eb_status" id="bk-status-input" class="w-full mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:border-primary focus:ring-1 focus:ring-primary">
                                 <option value="Pending">Pending</option>
-                                <option value="In Progress">In Progress</option>
+                                <option value="Confirmed">Confirmed</option>
                                 <option value="Downpayment">Downpayment</option>
                                 <option value="Completed">Completed</option>
                                 <option value="Paid">Paid</option>
