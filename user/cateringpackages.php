@@ -518,6 +518,14 @@ try {
             opacity: 1;
             transform: translateY(0);
         }
+
+        /* Tablet tuning for package includes to avoid column overlap */
+        @media (min-width: 768px) and (max-width: 1023.98px) {
+            .features-grid .feature-item { padding: 4px 0; }
+            .features-grid .feature-item i { margin-right: 8px; min-width: 16px; }
+            .features-grid .feature-item span { line-height: 1.25; }
+            .features-grid .feature-item:hover { padding-left: 6px; }
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -609,7 +617,7 @@ try {
                             <p class="opacity-90 mb-6"><?php echo $pkg['active'] ? 'Carefully curated for your celebration.' : 'Inactive • Not available for booking currently.'; ?></p>
 
                             <h4 class="font-semibold mb-3 text-lg gold-text">Package Includes:</h4>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 features-grid">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-1 lg:gap-2 mb-4 features-grid md:text-sm lg:text-base md:leading-snug lg:leading-normal">
                                 <?php if (!empty($pkg['items'])): ?>
                                     <?php foreach ($pkg['items'] as $it): ?>
                                         <div class="feature-item">

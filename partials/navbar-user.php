@@ -92,7 +92,7 @@ function current_user_display_name_user() {
 ?>
 
 <header class="nav-root nav-clear fixed top-0 left-0 right-0 z-50">
-    <div class="container mx-auto px-6 py-4">
+    <div class="container mx-auto px-6 py-3">
         <nav class="flex items-center justify-between">
             <!-- Logo -->
             <a href="home" class="flex items-center space-x-3">
@@ -100,13 +100,13 @@ function current_user_display_name_user() {
                     <img src="../images/logo.png" alt="Sandok ni Binggay Logo" class="w-10 h-10 object-contain" />
                 </div>
                 <div>
-                    <h1 class="text-yellow-400 text-base md:text-base lg:text-lg xl:text-xl font-semibold leading-tight">Sandok ni Binggay</h1>
-                    <p class="text-yellow-300 text-[11px] md:text-xs tracking-wider">CATERING SERVICES</p>
+                    <h1 class="text-yellow-400 text-base md:text-sm lg:text-lg xl:text-xl font-semibold leading-tight">Sandok ni Binggay</h1>
+                    <p class="text-yellow-300 text-[11px] md:text-[10px] tracking-wider">CATERING SERVICES</p>
                 </div>
             </a>
 
             <!-- Desktop Navigation -->
-            <div class="hidden md:flex items-center space-x-4 lg:space-x-8">
+            <div class="hidden md:flex items-center space-x-3 lg:space-x-8">
                 <?php $current = strtolower(basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))); ?>
                 <?php
                     $links = [
@@ -118,7 +118,7 @@ function current_user_display_name_user() {
                 ?>
                 <?php foreach ($links as $ln): $isActive = ($current === strtolower($ln['key'])); ?>
                     <a href="<?php echo htmlspecialchars($ln['href']); ?>"
-                       class="nav-link text-sm lg:text-base transition-colors duration-300 relative group <?php echo $isActive ? 'text-amber-400' : ''; ?>">
+                       class="nav-link px-1.5 py-2 text-xs lg:text-base transition-colors duration-300 relative group <?php echo $isActive ? 'text-amber-400' : ''; ?>">
                         <?php echo htmlspecialchars($ln['label']); ?>
                         <span class="absolute -bottom-1 left-0 h-0.5 bg-amber-400 transition-all duration-300 <?php echo $isActive ? 'w-10' : 'w-0 group-hover:w-full'; ?>"></span>
                     </a>
@@ -130,10 +130,10 @@ function current_user_display_name_user() {
                 <?php if ($NAV_IS_LOGGED_IN): ?>
                     <!-- Notifications Button + Dropdown (moved before Cart) -->
                     <div class="relative" id="nav-notif">
-                        <button id="nav-notif-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative text-sm md:text-sm lg:text-base">
+                        <button id="nav-notif-btn" class="px-2 py-1.5 rounded border-2 transition-colors flex items-center gap-2 relative text-xs md:text-xs lg:text-sm">
                             <i class="fas fa-bell"></i>
                             <span class="sr-only">Notifications</span>
-                            <span id="notifBadge" class="hidden absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
+                            <span id="notifBadge" class="hidden absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 items-center justify-center text-[10px] font-bold"></span>
                         </button>
                         <div id="notifDropdown" class="absolute right-0 mt-2 w-96 max-w-[95vw] rounded-md bg-white shadow-lg ring-1 ring-black/5 hidden">
                             <div class="p-3 border-b border-gray-100 flex items-center justify-between">
@@ -149,15 +149,15 @@ function current_user_display_name_user() {
                         </div>
                     </div>
                     <!-- Global Cart Button (visible only when logged in) -->
-                    <button id="nav-cart-btn" class="px-3 py-2 rounded border-2 transition-colors flex items-center gap-2 relative text-sm md:text-sm lg:text-base">
+                    <button id="nav-cart-btn" class="px-2 py-1.5 rounded border-2 transition-colors flex items-center gap-2 relative text-xs md:text-xs lg:text-sm">
                         <i class="fas fa-shopping-cart"></i>
                         <span class="sr-only">Cart</span>
-                        <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-6 h-6 items-center justify-center text-xs font-bold"></span>
+                        <span id="cartBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-white rounded-full w-5 h-5 items-center justify-center text-[10px] font-bold"></span>
                     </button>
                     <div class="relative" id="nav-profile">
                         <button id="profile-btn" class="flex items-center gap-2 text-white hover:text-yellow-400 transition-colors">
-                            <img src="<?php echo htmlspecialchars(current_user_avatar_user()); ?>" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-yellow-400/30" onerror="this.onerror=null;this.src='/Binggay/images/logo.png';" />
-                            <span class="max-w-[200px] truncate text-sm md:text-sm lg:text-base"><span class="hidden lg:inline">Welcome, </span><?php echo htmlspecialchars(current_user_display_name_user()); ?></span>
+                            <img src="<?php echo htmlspecialchars(current_user_avatar_user()); ?>" alt="Avatar" class="w-9 h-9 md:w-8 md:h-8 lg:w-9 lg:h-9 rounded-full object-cover border border-yellow-400/30" onerror="this.onerror=null;this.src='/Binggay/images/logo.png';" />
+                            <span class="max-w-[160px] md:max-w-[120px] lg:max-w-[200px] truncate text-sm md:text-xs lg:text-base"><span class="hidden lg:inline">Welcome, </span><?php echo htmlspecialchars(current_user_display_name_user()); ?></span>
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd"/></svg>
                         </button>
                         <div id="profile-menu" class="absolute right-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/5 py-1 hidden">
@@ -208,6 +208,23 @@ function current_user_display_name_user() {
                 <?php endif; ?>
             </div>
         </div>
+
+        <!-- Mobile Notifications Panel (small, readable) -->
+        <div id="notifMobileOverlay" class="fixed inset-0 z-[60] hidden">
+            <div class="absolute inset-0 bg-black/40"></div>
+            <div class="relative mx-auto mt-24 w-[92vw] max-w-sm rounded-lg bg-white shadow-xl ring-1 ring-black/5">
+                <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <span class="text-sm font-semibold text-gray-700">Order updates</span>
+                    <div class="flex items-center gap-2">
+                        <button id="notifRefreshMobile" class="text-xs text-amber-600 hover:text-amber-700 px-2 py-1 rounded">Refresh</button>
+                        <button id="notifCloseMobile" class="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded" aria-label="Close notifications">Close</button>
+                    </div>
+                </div>
+                <div id="notifListMobile" class="max-h-[70vh] overflow-auto divide-y divide-gray-100">
+                    <div class="p-4 text-sm text-gray-500">Loading…</div>
+                </div>
+            </div>
+        </div>
     </div>
 </header>
 
@@ -228,6 +245,11 @@ function current_user_display_name_user() {
     const notifDropdown = document.getElementById('notifDropdown');
     const notifList = document.getElementById('notifList');
     const notifRefresh = document.getElementById('notifRefresh');
+    // Mobile notif elements
+    const notifMobileOverlay = document.getElementById('notifMobileOverlay');
+    const notifListMobile = document.getElementById('notifListMobile');
+    const notifCloseMobile = document.getElementById('notifCloseMobile');
+    const notifRefreshMobile = document.getElementById('notifRefreshMobile');
     const hideNotifBadges = () => {
         if (notifBadge) notifBadge.classList.add('hidden');
         notifBadges.forEach(el => el && el.classList.add('hidden'));
@@ -344,9 +366,14 @@ function current_user_display_name_user() {
             if (!mobileBtn) return;
             if (window.lucide && typeof window.lucide.createIcons === 'function') {
                 mobileBtn.innerHTML = isOpen ? '<i data-lucide="x" class="w-6 h-6"></i>' : '<i data-lucide="menu" class="w-6 h-6"></i>';
+                mobileBtn.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
                 window.lucide.createIcons();
             } else {
-                mobileBtn.textContent = isOpen ? 'Close' : 'Menu';
+                // Fallback to icon glyphs instead of text labels
+                mobileBtn.innerHTML = isOpen
+                    ? '<span aria-hidden="true" class="text-2xl leading-none">✕</span>'
+                    : '<span aria-hidden="true" class="text-2xl leading-none">☰</span>';
+                mobileBtn.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
             }
         };
         if (mobileBtn && mobileMenu) {
@@ -417,9 +444,9 @@ function current_user_display_name_user() {
             notifOpen = !notifOpen;
             notifDropdown.classList.toggle('hidden', !notifOpen);
             if (notifOpen) {
-                loadNotifications();
+                loadNotifications(false, notifList);
                 if (notifAutoTimer) clearInterval(notifAutoTimer);
-                notifAutoTimer = setInterval(() => loadNotifications(true), 15000);
+                notifAutoTimer = setInterval(() => loadNotifications(true, notifList), 15000);
             }
         };
         const closeNotif = (e) => {
@@ -443,35 +470,65 @@ function current_user_display_name_user() {
             document.addEventListener('click', closeNotif);
         }
         if (notifRefresh) {
-            notifRefresh.addEventListener('click', (e)=>{ e.preventDefault(); loadNotifications(true); });
+            notifRefresh.addEventListener('click', (e)=>{ e.preventDefault(); loadNotifications(true, notifList); });
         }
+        // Mobile notifications panel behavior
         if (notifBtnMobile) {
             notifBtnMobile.addEventListener('click', (e)=>{
                 e.preventDefault();
-                // Simpler behavior on mobile: navigate to menu notifications anchor
+                if (!notifMobileOverlay || !notifListMobile) {
+                    // Fallback: navigate to notifications section
+                    if (typeof window.__binggay_mark_notif_seen === 'function') window.__binggay_mark_notif_seen();
+                    hideNotifBadges();
+                    window.location.href = 'menu.php#notifications';
+                    return;
+                }
                 if (typeof window.__binggay_mark_notif_seen === 'function') window.__binggay_mark_notif_seen();
                 hideNotifBadges();
-                window.location.href = 'menu.php#notifications';
+                notifMobileOverlay.classList.remove('hidden');
+                document.documentElement.classList.add('overflow-hidden');
+                document.body.classList.add('overflow-hidden');
+                loadNotifications(true, notifListMobile);
             });
         }
+        if (notifCloseMobile && notifMobileOverlay) {
+            const closeMobilePanel = () => {
+                notifMobileOverlay.classList.add('hidden');
+                document.documentElement.classList.remove('overflow-hidden');
+                document.body.classList.remove('overflow-hidden');
+            };
+            notifCloseMobile.addEventListener('click', (e)=>{ e.preventDefault(); closeMobilePanel(); });
+            notifMobileOverlay.addEventListener('click', (e)=>{ if (e.target === notifMobileOverlay) closeMobilePanel(); });
+        }
+        if (notifRefreshMobile) {
+            notifRefreshMobile.addEventListener('click', (e)=>{ e.preventDefault(); loadNotifications(true, notifListMobile); });
+        }
 
-        async function loadNotifications(force = false) {
-            if (!notifList) return;
-            notifList.innerHTML = '<div class="p-4 text-sm text-gray-500">Loading…</div>';
+        async function loadNotifications(force = false, listEl) {
+            const target = listEl || notifList;
+            if (!target) return;
+            target.innerHTML = '<div class="p-4 text-sm text-gray-500">Loading…</div>';
             try {
                 const res = await fetch('api_notifications.php?all=1', { credentials: 'same-origin' });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();
                 const items = (data && Array.isArray(data.items)) ? data.items : [];
-                renderNotifications(items);
+                renderNotificationsTo(items, target);
             } catch (err) {
-                notifList.innerHTML = '<div class="p-4 text-sm text-rose-600">Failed to load notifications.</div>';
+                target.innerHTML = '<div class="p-4 text-sm text-rose-600">Failed to load notifications.</div>';
             }
         }
 
         function renderNotifications(items) {
+            // Back-compat for desktop dropdown
+            renderNotificationsTo(items, notifList);
+        }
+
+        function renderNotificationsTo(items, target) {
+            const listTarget = target || notifList;
+            if (!listTarget) return;
             if (!Array.isArray(items) || items.length === 0) {
-                notifList.innerHTML = '<div class="p-4 text-sm text-gray-500">No recent orders yet.</div>';
+                listTarget.innerHTML = '<div class="p-4 text-sm text-gray-500">No recent orders yet.</div>';
                 [notifBadge, ...notifBadges].filter(Boolean).forEach(el => el.classList.add('hidden'));
                 return;
             }
@@ -508,8 +565,8 @@ function current_user_display_name_user() {
                 if (ts > lastSeenLocal) unreadCount++;
                 frag.appendChild(li);
             });
-            notifList.innerHTML = '';
-            notifList.appendChild(frag);
+            listTarget.innerHTML = '';
+            listTarget.appendChild(frag);
             const lastSeen = (typeof window.__binggay_notif_last_seen === 'number') ? window.__binggay_notif_last_seen : 0;
             const shouldShow = latestTs > lastSeen && unreadCount > 0;
             const updateBadge = (el) => {
@@ -623,7 +680,7 @@ function current_user_display_name_user() {
                                 lastEventId = Number(ev.lastEventId || 0) || lastEventId;
                                 await checkForUpdates();
                                 if (typeof notifOpen !== 'undefined' && notifOpen) {
-                                    loadNotifications(true);
+                                    loadNotifications(true, notifList);
                                 }
                             } catch (_) {}
                         });

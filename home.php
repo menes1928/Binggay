@@ -431,9 +431,9 @@ try {
         <div class="container max-w-7xl mx-auto px-6 lg:px-12 pt-28 relative z-10">
             <div class="grid lg:grid-cols-2 gap-10 items-center">
                 <!-- Left Content -->
-                <div class="space-y-8 fade-in-element md:text-center lg:text-left md:mx-auto md:max-w-2xl md:order-2 lg:order-1" data-delay="0">
+                <div class="space-y-8 fade-in-element text-center lg:text-left md:mx-auto md:max-w-2xl order-2 md:order-2 lg:order-1" data-delay="0">
                     <!-- Decorative Line -->
-                    <div class="w-20 h-1 bg-yellow-400 md:mx-auto lg:mx-0" id="decorative-line"></div>
+                    <div class="w-20 h-1 bg-yellow-400 mx-auto lg:mx-0" id="decorative-line"></div>
 
                     <!-- Main Heading -->
                     <div>
@@ -456,14 +456,14 @@ try {
                     </div>
 
                     <!-- Action Buttons -->
-                    <div class="flex flex-wrap gap-4 md:justify-center lg:justify-start fade-in-element" data-delay="800">
-                        <button class="bg-yellow-400 text-green-900 px-8 py-4 md:px-6 md:py-3 md:text-sm lg:px-8 lg:py-4 lg:text-base font-semibold tracking-wide hover:bg-yellow-300 transition-all duration-300 transform hover:scale-105 hover:shadow-xl group">
+                    <div class="flex flex-wrap gap-3 justify-center md:justify-center lg:justify-start fade-in-element" data-delay="800">
+                        <button class="bg-yellow-400 text-green-900 px-4 py-2 text-xs sm:px-5 sm:py-2.5 sm:text-sm md:px-6 md:py-3 md:text-sm lg:px-8 lg:py-4 lg:text-base font-semibold tracking-wide whitespace-nowrap hover:bg-yellow-300 transition-all duration-300 transform hover:scale-105 hover:shadow-xl group">
                             <span class="relative">
                                 BOOK YOUR EVENT
                                 <span class="absolute inset-0 bg-yellow-300 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left -z-10"></span>
                             </span>
                         </button>
-                        <button class="border-2 border-white text-white px-8 py-4 md:px-6 md:py-3 md:text-sm lg:px-8 lg:py-4 lg:text-base font-semibold tracking-wide hover:bg-white hover:text-green-900 transition-all duration-300 transform hover:scale-105 group">
+                        <button class="border-2 border-white text-white px-4 py-2 text-xs sm:px-5 sm:py-2.5 sm:text-sm md:px-6 md:py-3 md:text-sm lg:px-8 lg:py-4 lg:text-base font-semibold tracking-wide whitespace-nowrap hover:bg-white hover:text-green-900 transition-all duration-300 transform hover:scale-105 group">
                             <span class="relative">
                                 VIEW MENU
                                 <span class="absolute inset-0 bg-white transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left -z-10"></span>
@@ -472,44 +472,44 @@ try {
                     </div>
 
                     <!-- Contact Info -->
-                    <div class="flex flex-col sm:flex-row gap-6 pt-8 md:pt-4 lg:pt-8 md:justify-center lg:justify-start md:items-center lg:items-start fade-in-element" data-delay="1000">
-                        <div class="flex items-center space-x-3 text-yellow-300 hover:text-yellow-400 transition-colors duration-300 group cursor-pointer">
-                            <i data-lucide="phone" class="w-5 h-5 group-hover:scale-110 transition-transform duration-300"></i>
-                            <span>0919-230-8344</span>
+                    <div class="flex flex-row flex-nowrap gap-3 sm:gap-4 pt-8 md:pt-4 lg:pt-8 items-center justify-center md:justify-center lg:justify-start md:items-center lg:items-start fade-in-element" data-delay="1000">
+                        <div class="flex items-center space-x-2 text-yellow-300 hover:text-yellow-400 transition-colors duration-300 group cursor-pointer">
+                            <i data-lucide="phone" class="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform duration-300"></i>
+                            <span class="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">0919-230-8344</span>
                         </div>
-                        <div class="flex items-center space-x-3 text-yellow-300 hover:text-yellow-400 transition-colors duration-300 group cursor-pointer">
-                            <i data-lucide="mail" class="w-5 h-5 group-hover:scale-110 transition-transform duration-300"></i>
-                            <span>riabrimfood@gmail.com</span>
+                        <div class="flex items-center space-x-2 text-yellow-300 hover:text-yellow-400 transition-colors duration-300 group cursor-pointer">
+                            <i data-lucide="mail" class="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform duration-300"></i>
+                            <span class="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">riabrimfood@gmail.com</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Right Content - Circular Image -->
-                <div class="flex justify-center lg:justify-end fade-in-element md:order-1 lg:order-2" data-delay="500">
+                <div class="flex justify-center lg:justify-end fade-in-element order-1 md:order-1 lg:order-2" data-delay="500">
                     <div class="relative md:mx-auto">
                         <!-- Corner Brackets -->
-                        <div class="absolute -top-8 -left-8 w-16 h-16 md:-top-3 md:-left-3 md:w-7 md:h-7 lg:-top-8 lg:-left-8 lg:w-16 lg:h-16">
-                            <div class="w-8 h-1 md:w-3 bg-yellow-400"></div>
-                            <div class="w-1 h-8 md:h-3 bg-yellow-400"></div>
+                        <div class="absolute -top-2 -left-2 w-6 h-6 md:-top-3 md:-left-3 md:w-7 md:h-7 lg:-top-8 lg:-left-8 lg:w-16 lg:h-16">
+                            <div class="w-3 lg:w-8 h-1 md:w-3 bg-yellow-400"></div>
+                            <div class="w-1 h-3 md:h-3 lg:h-8 bg-yellow-400"></div>
                         </div>
-                        <div class="absolute -top-8 -right-8 w-16 h-16 md:-top-3 md:-right-3 md:w-7 md:h-7 lg:-top-8 lg:-right-8 lg:w-16 lg:h-16">
-                            <div class="absolute top-0 right-0 w-8 h-1 md:w-3 bg-yellow-400"></div>
-                            <div class="absolute top-0 right-0 w-1 h-8 md:h-3 bg-yellow-400"></div>
+                        <div class="absolute -top-2 -right-2 w-6 h-6 md:-top-3 md:-right-3 md:w-7 md:h-7 lg:-top-8 lg:-right-8 lg:w-16 lg:h-16">
+                            <div class="absolute top-0 right-0 w-3 lg:w-8 h-1 md:w-3 bg-yellow-400"></div>
+                            <div class="absolute top-0 right-0 w-1 h-3 md:h-3 lg:h-8 bg-yellow-400"></div>
                         </div>
-                        <div class="absolute -bottom-8 -left-8 w-16 h-16 md:-bottom-3 md:-left-3 md:w-7 md:h-7 lg:-bottom-8 lg:-left-8 lg:w-16 lg:h-16 flex flex-col justify-end">
-                            <div class="w-1 h-8 md:h-3 bg-yellow-400"></div>
-                            <div class="w-8 h-1 md:w-3 bg-yellow-400"></div>
+                        <div class="absolute -bottom-2 -left-2 w-6 h-6 md:-bottom-3 md:-left-3 md:w-7 md:h-7 lg:-bottom-8 lg:-left-8 lg:w-16 lg:h-16 flex flex-col justify-end">
+                            <div class="w-1 h-3 md:h-3 lg:h-8 bg-yellow-400"></div>
+                            <div class="w-3 lg:w-8 h-1 md:w-3 bg-yellow-400"></div>
                         </div>
-                        <div class="absolute -bottom-8 -right-8 w-16 h-16 md:-bottom-3 md:-right-3 md:w-7 md:h-7 lg:-bottom-8 lg:-right-8 lg:w-16 lg:h-16 flex flex-col justify-end items-end">
-                            <div class="w-1 h-8 md:h-3 bg-yellow-400"></div>
-                            <div class="w-8 h-1 md:w-3 bg-yellow-400"></div>
+                        <div class="absolute -bottom-2 -right-2 w-6 h-6 md:-bottom-3 md:-right-3 md:w-7 md:h-7 lg:-bottom-8 lg:-right-8 lg:w-16 lg:h-16 flex flex-col justify-end items-end">
+                            <div class="w-1 h-3 md:h-3 lg:h-8 bg-yellow-400"></div>
+                            <div class="w-3 lg:w-8 h-1 md:w-3 bg-yellow-400"></div>
                         </div>
 
                         <!-- Glowing Background Circle -->
                         <div class="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-full blur-xl scale-110"></div>
                         
                         <!-- Main Circle (Real Logo) -->
-                        <div class="relative w-96 h-96 md:w-56 md:h-56 lg:w-[28rem] lg:h-[28rem] rounded-full overflow-hidden border-4 border-yellow-400/30 shadow-2xl hover-scale bg-white/5">
+                        <div class="relative w-48 h-48 md:w-56 md:h-56 lg:w-[28rem] lg:h-[28rem] rounded-full overflow-hidden border-4 border-yellow-400/30 shadow-2xl hover-scale bg-white/5">
                             <img src="images/logo.png" alt="Sandok ni Binggay Logo" class="w-full h-full object-contain" />
                         </div>
                     </div>

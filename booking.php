@@ -561,45 +561,6 @@
 
     <!-- Event Types Section -->
     <section class="container mx-auto px-4 py-16">
-                <!-- Gender Reveal -->
-                <div class="event-card scroll-animate">
-                    <img src="https://images.unsplash.com/photo-1519741497674-611481863552?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" 
-                         alt="Gender Reveal" class="event-card-image">
-                    <div class="event-card-content">
-                        <div class="event-icon">
-                            <i class="fas fa-baby"></i>
-                        </div>
-                        <h3 class="event-title">Gender Reveal</h3>
-                        <p class="event-description">
-                            Celebrate the big surprise with pastel décor, themed desserts, and a picture-perfect reveal moment.
-                        </p>
-                        <div class="event-features">
-                            <span class="feature-badge">Custom Theme</span>
-                            <span class="feature-badge">Dessert Bar</span>
-                            <span class="feature-badge">Photo Corner</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Many More -->
-                <div class="event-card scroll-animate">
-                    <img src="https://images.unsplash.com/photo-1519681393784-d120267933ba?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" 
-                         alt="Many More Events" class="event-card-image">
-                    <div class="event-card-content">
-                        <div class="event-icon">
-                            <i class="fas fa-infinity"></i>
-                        </div>
-                        <h3 class="event-title">And Many More</h3>
-                        <p class="event-description">
-                            From baby showers and christenings to graduations and housewarmings—we’ll tailor the menu to your celebration.
-                        </p>
-                        <div class="event-features">
-                            <span class="feature-badge">Custom Menus</span>
-                            <span class="feature-badge">Flexible Setups</span>
-                            <span class="feature-badge">On-site Staff</span>
-                        </div>
-                    </div>
-                </div>
         <h2 class="text-4xl md:text-5xl font-bold text-center mb-4 gold-text scroll-animate">Events We Cater</h2>
         <p class="text-center text-lg mb-12 opacity-90 scroll-animate">Choose from our wide range of event catering services</p>
         
@@ -729,6 +690,46 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Gender Reveal -->
+            <div class="event-card scroll-animate">
+                <img src="https://images.unsplash.com/photo-1519741497674-611481863552?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" 
+                     alt="Gender Reveal" class="event-card-image">
+                <div class="event-card-content">
+                    <div class="event-icon">
+                        <i class="fas fa-baby"></i>
+                    </div>
+                    <h3 class="event-title">Gender Reveal</h3>
+                    <p class="event-description">
+                        Celebrate the big surprise with pastel décor, themed desserts, and a picture-perfect reveal moment.
+                    </p>
+                    <div class="event-features">
+                        <span class="feature-badge">Custom Theme</span>
+                        <span class="feature-badge">Dessert Bar</span>
+                        <span class="feature-badge">Photo Corner</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- And Many More -->
+            <div class="event-card scroll-animate">
+                <img src="https://images.unsplash.com/photo-1519681393784-d120267933ba?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" 
+                     alt="Many More Events" class="event-card-image">
+                <div class="event-card-content">
+                    <div class="event-icon">
+                        <i class="fas fa-infinity"></i>
+                    </div>
+                    <h3 class="event-title">And Many More</h3>
+                    <p class="event-description">
+                        From baby showers and christenings to graduations and housewarmings—we’ll tailor the menu to your celebration.
+                    </p>
+                    <div class="event-features">
+                        <span class="feature-badge">Custom Menus</span>
+                        <span class="feature-badge">Flexible Setups</span>
+                        <span class="feature-badge">On-site Staff</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -757,13 +758,13 @@
 
                     <div class="form-group">
                         <label class="form-label">Contact Number *</label>
-                        <input type="tel" name="phone" class="form-input" placeholder="09XX XXX XXXX" required>
+                        <input type="tel" name="phone" class="form-input" placeholder="09XX XXX XXXX" maxlength="11" required>
                         <i class="fas fa-phone input-icon"></i>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Alternative Contact</label>
-                        <input type="tel" name="altPhone" class="form-input" placeholder="Optional">
+                        <input type="tel" name="altPhone" class="form-input" placeholder="Optional" maxlength="11">
                         <i class="fas fa-phone-alt input-icon"></i>
                     </div>
                 </div>
@@ -772,16 +773,8 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div class="form-group">
                         <label class="form-label">Event Type *</label>
-                        <select name="eventType" class="form-select" required>
-                            <option value="">Select Event Type</option>
-                            <option value="birthday">Birthday Party</option>
-                            <option value="wedding">Wedding</option>
-                            <option value="debut">Debut (18th Birthday)</option>
-                            <option value="corporate">Corporate Event</option>
-                            <option value="reunion">Family Reunion</option>
-                            <option value="anniversary">Anniversary</option>
-                            <option value="christening">Christening/Baptism</option>
-                            <option value="other">Other</option>
+                        <select name="eventTypeId" id="bf-event-type" class="form-select" required>
+                            <option value="">Loading...</option>
                         </select>
                     </div>
 
@@ -798,109 +791,131 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Number of Guests *</label>
-                        <select name="guestCount" class="form-select" required>
-                            <option value="">Select Number of Guests</option>
-                            <option value="50">50 Persons</option>
-                            <option value="100">100 Persons</option>
-                            <option value="150">150 Persons</option>
-                            <option value="200">200 Persons</option>
-                            <option value="200+">More than 200 Persons</option>
+                        <label class="form-label">Preferred Package *</label>
+                        <select name="packageId" id="bf-package" class="form-select" required>
+                            <option value="">Select an event type first</option>
                         </select>
+                        <div id="pkg-price-info" class="mt-2 text-sm opacity-80"></div>
                     </div>
                 </div>
 
                 <!-- Venue Information -->
-                <div class="form-group mt-6">
-                    <label class="form-label">Venue Address *</label>
-                    <input type="text" name="venue" class="form-input" placeholder="Complete event venue address" required>
-                    <i class="fas fa-map-marker-alt input-icon"></i>
-                </div>
-
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div class="form-group">
-                        <label class="form-label">City/Municipality *</label>
-                        <input type="text" name="city" class="form-input" placeholder="e.g., Quezon City" required>
-                        <i class="fas fa-city input-icon"></i>
+                        <label class="form-label">Venue Name *</label>
+                        <input type="text" name="venueName" class="form-input" placeholder="Venue or Hall name" required>
+                        <i class="fas fa-building input-icon"></i>
                     </div>
-
+                    <div class="form-group">
+                        <label class="form-label">Street *</label>
+                        <input type="text" name="venueStreet" class="form-input" placeholder="Street / Block / Lot" required>
+                        <i class="fas fa-road input-icon"></i>
+                    </div>
                     <div class="form-group">
                         <label class="form-label">Barangay</label>
-                        <input type="text" name="barangay" class="form-input" placeholder="Optional">
+                        <input type="text" name="venueBarangay" class="form-input" placeholder="Optional">
                         <i class="fas fa-location-arrow input-icon"></i>
                     </div>
+                    <div class="form-group">
+                        <label class="form-label">City/Municipality *</label>
+                        <input type="text" name="venueCity" class="form-input" placeholder="e.g., Quezon City" required>
+                        <i class="fas fa-city input-icon"></i>
+                    </div>
+                    <div class="form-group md:col-span-2">
+                        <label class="form-label">Province *</label>
+                        <input type="text" name="venueProvince" class="form-input" placeholder="e.g., Batangas" required>
+                        <i class="fas fa-map input-icon"></i>
+                    </div>
                 </div>
 
-                <!-- Package Selection -->
+                <!-- Add-ons -->
                 <div class="form-group mt-6">
-                    <label class="form-label">Preferred Package</label>
-                    <select name="package" class="form-select">
-                        <option value="">Select a package (Optional)</option>
-                        <option value="intimate">Intimate Gathering (50 Pax)</option>
-                        <option value="classic">Classic Celebration (100 Pax)</option>
-                        <option value="grand">Grand Festivity (150 Pax)</option>
-                        <option value="ultimate">Ultimate Experience (200 Pax)</option>
-                        <option value="custom">Custom Package</option>
-                    </select>
+                    <label class="form-label">Add-ons</label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="checkbox-group">
+                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Pax">
+                                <span><i class="fas fa-user-friends gold-text mr-2"></i>Pax (+₱200/head)</span>
+                            </label>
+                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Pax">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select name="addon[Pax][unit]" class="form-select">
+                                        <option value="head">Per Head</option>
+                                    </select>
+                                    <input type="number" min="1" name="addon[Pax][qty]" class="form-input" placeholder="Qty">
+                                </div>
+                                <div id="pax-estimate" class="mt-2 text-sm opacity-80 hidden"></div>
+                                <div id="pax-limit" class="mt-1 text-xs opacity-80 hidden"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="checkbox-group">
+                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Table">
+                                <span><i class="fas fa-th-large gold-text mr-2"></i>Table</span>
+                            </label>
+                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Table">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select name="addon[Table][unit]" class="form-select">
+                                        <option value="table">Table</option>
+                                    </select>
+                                    <input type="number" min="1" name="addon[Table][qty]" class="form-input" placeholder="Qty">
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="checkbox-group">
+                                <input type="checkbox" class="checkbox-input bf-addon" data-addon="Chairs">
+                                <span><i class="fas fa-chair gold-text mr-2"></i>Chairs</span>
+                            </label>
+                            <div class="mt-2 hidden bf-addon-fields" data-addon-fields="Chairs">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select name="addon[Chairs][unit]" class="form-select">
+                                        <option value="chair">Chair</option>
+                                    </select>
+                                    <input type="number" min="1" name="addon[Chairs][qty]" class="form-input" placeholder="Qty">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Additional Services -->
-                <div class="form-group mt-6">
-                    <label class="form-label mb-4">Additional Services</label>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <label class="checkbox-group">
-                            <input type="checkbox" name="services[]" value="tables-chairs" class="checkbox-input">
-                            <span><i class="fas fa-chair gold-text mr-2"></i>Tables & Chairs</span>
+                <!-- Inclusions (dynamic based on Event Type) -->
+                <div id="inclusions-section" class="form-group mt-6 hidden">
+                    <label class="form-label">Inclusions</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <label class="checkbox-group bf-inclusion-item hidden" data-inc="Clowns" id="inc-clowns">
+                            <input type="checkbox" class="checkbox-input bf-inclusion" value="Clowns">
+                            <span><i class="fas fa-smile gold-text mr-2"></i>Clowns</span>
                         </label>
-                        
-                        <label class="checkbox-group">
-                            <input type="checkbox" name="services[]" value="decorations" class="checkbox-input">
-                            <span><i class="fas fa-palette gold-text mr-2"></i>Event Decorations</span>
+                        <label class="checkbox-group bf-inclusion-item" data-inc="Entertainer" id="inc-entertainer">
+                            <input type="checkbox" class="checkbox-input bf-inclusion" value="Entertainer">
+                            <span><i class="fas fa-microphone gold-text mr-2"></i>Entertainer</span>
                         </label>
-                        
-                        <label class="checkbox-group">
-                            <input type="checkbox" name="services[]" value="waiters" class="checkbox-input">
-                            <span><i class="fas fa-concierge-bell gold-text mr-2"></i>Extra Waiters</span>
-                        </label>
-                        
-                        <label class="checkbox-group">
-                            <input type="checkbox" name="services[]" value="sound-system" class="checkbox-input">
-                            <span><i class="fas fa-volume-up gold-text mr-2"></i>Sound System</span>
+                        <label class="checkbox-group bf-inclusion-item" data-inc="Props" id="inc-props">
+                            <input type="checkbox" class="checkbox-input bf-inclusion" value="Props">
+                            <span><i class="fas fa-theater-masks gold-text mr-2"></i>Props</span>
                         </label>
                     </div>
+                    <p class="mt-2 text-sm opacity-80">Select any applicable inclusions for your event.</p>
                 </div>
 
                 <!-- Special Requests -->
                 <div class="form-group mt-6">
-                    <label class="form-label">Menu Preferences & Special Requests</label>
-                    <textarea name="specialRequests" class="form-textarea" rows="6" 
-                              placeholder="Please let us know about:&#10;- Dietary restrictions or allergies&#10;- Preferred dishes or menu items&#10;- Event theme or color scheme&#10;- Any other special requirements"></textarea>
-                </div>
-
-                <!-- Budget Range -->
-                <div class="form-group mt-6">
-                    <label class="form-label">Budget Range (Optional)</label>
-                    <select name="budget" class="form-select">
-                        <option value="">Select your budget range</option>
-                        <option value="10000-15000">₱10,000 - ₱15,000</option>
-                        <option value="15000-25000">₱15,000 - ₱25,000</option>
-                        <option value="25000-35000">₱25,000 - ₱35,000</option>
-                        <option value="35000-50000">₱35,000 - ₱50,000</option>
-                        <option value="50000+">₱50,000 and above</option>
-                    </select>
+                    <label class="form-label">Notes</label>
+                    <textarea name="notes" class="form-textarea" rows="6" placeholder="Any additional notes"></textarea>
                 </div>
 
                 <!-- Terms and Conditions -->
                 <div class="form-group mt-8">
                     <label class="checkbox-group">
-                        <input type="checkbox" name="terms" class="checkbox-input" required>
-                        <span>I agree to the <a href="#" class="gold-text hover:underline">Terms and Conditions</a> and understand that a 50% downpayment is required to confirm my booking.</span>
+                        <input type="checkbox" id="bf-agree" name="agree" class="checkbox-input" required>
+                        <span>I agree to the Terms and Agreement: 50% payment in person and contract signing before confirmation.</span>
                     </label>
                 </div>
 
                 <!-- Submit Button -->
                 <div class="text-center mt-10">
-                    <button type="submit" class="btn-submit">
+                    <button type="submit" id="bf-submit" class="btn-submit" disabled>
                         <span><i class="fas fa-calendar-check mr-3"></i>Submit Booking Request</span>
                     </button>
                     <p class="mt-4 text-sm opacity-75">We'll review your request and contact you within 24 hours</p>
@@ -940,45 +955,181 @@
         window.addEventListener('scroll', handleScrollAnimation);
         handleScrollAnimation(); // Initial check
 
-        // Form Validation and Submission (requires login)
+        // Gate submit button by terms checkbox
+        const agreeEl = document.getElementById('bf-agree');
+        const submitBtn = document.getElementById('bf-submit');
+        if (agreeEl && submitBtn) {
+            const syncAgree = ()=> { submitBtn.disabled = !agreeEl.checked; submitBtn.style.opacity = agreeEl.checked ? '1' : '0.6'; };
+            agreeEl.addEventListener('change', syncAgree); syncAgree();
+        }
+
+        // Populate Event Types and Packages (guest paths are from project root)
+        const etSel = document.getElementById('bf-event-type');
+        const pkgSel = document.getElementById('bf-package');
+        async function loadEventTypes(){
+            try {
+                const r = await fetch('admin/admin.php?section=eventtypes&ajax=1&action=list', { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                const j = await r.json();
+                if (!j.success) throw new Error();
+                etSel.innerHTML = '<option value="">Select Event Type</option>' + (j.data||[]).map(et=>`<option value="${et.event_type_id}">${et.name}</option>`).join('');
+            } catch(_) { etSel.innerHTML = '<option value="">Failed to load</option>'; }
+        }
+        async function loadPackagesFor(etId){
+            pkgSel.innerHTML = '<option value="">Loading packages...</option>';
+            try {
+                // Filter allowed packages for this event type
+                const res = await fetch('admin/admin.php?section=eventtypes&ajax=1&action=get&event_type_id='+encodeURIComponent(etId), { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                const data = await res.json();
+                if (!data.success) throw new Error();
+                const allowed = new Set((data.package_ids||[]).map(Number));
+                const all = await fetch('admin/admin.php?section=eventtypes&ajax=1&action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.json());
+                if (!all.success) throw new Error();
+                const opts = (all.data||[]).filter(p=>allowed.has(Number(p.package_id))).map(p=>{
+                    const price = (p.base_price!=null && p.base_price!=='') ? Number(p.base_price) : '';
+                    const label = (p.name||'') + (p.pax?(' - '+p.pax):'');
+                    const paxAttr = (p.pax!=null && p.pax!=='') ? ` data-pax="${p.pax}"` : '';
+                    const dp = price!=='' ? ` data-price="${price}"` : '';
+                    return `<option value="${p.package_id}"${dp}${paxAttr}>${label}</option>`;
+                });
+                pkgSel.innerHTML = opts.length ? ('<option value="">Select Package</option>'+opts.join('')) : '<option value="">No packages available</option>';
+            } catch(_) { pkgSel.innerHTML = '<option value="">Failed to load packages</option>'; }
+        }
+        const inclusionsSection = document.getElementById('inclusions-section');
+        const incClowns = document.getElementById('inc-clowns');
+        const incChecks = document.querySelectorAll('.bf-inclusion');
+        const pkgPriceInfo = document.getElementById('pkg-price-info');
+        const paxEstimateEl = document.getElementById('pax-estimate');
+        const paxLimitEl = document.getElementById('pax-limit');
+        const paxCb = document.querySelector('.bf-addon[data-addon="Pax"]');
+        const paxQtyInput = document.querySelector('.bf-addon-fields[data-addon-fields="Pax"] input[name="addon[Pax][qty]"]');
+        const PER_HEAD_RATE = 200;
+        const VENUE_CAPACITY = 250; // Global cap per venue as requested
+
+        function formatCurrency(num){
+            const n = Number(num||0);
+            return '₱' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function getSelectedPackagePrice(){
+            if (!pkgSel) return null;
+            const opt = pkgSel.options && pkgSel.selectedIndex >= 0 ? pkgSel.options[pkgSel.selectedIndex] : null;
+            if (!opt) return null;
+            const dp = opt.getAttribute('data-price');
+            return (dp!==null && dp!=='') ? Number(dp) : null;
+        }
+
+        function getSelectedPackagePax(){
+            if (!pkgSel) return null;
+            const opt = pkgSel.options && pkgSel.selectedIndex >= 0 ? pkgSel.options[pkgSel.selectedIndex] : null;
+            if (!opt) return null;
+            const pax = opt.getAttribute('data-pax');
+            return (pax!==null && pax!=='') ? Number(pax) : null;
+        }
+
+        function computePaxMax(){
+            const pkgPax = getSelectedPackagePax();
+            if (pkgPax==null) return null;
+            if (pkgPax === 50) return 50; // special rule
+            const max = Math.max(0, VENUE_CAPACITY - pkgPax);
+            return max;
+        }
+
+        function updatePaxLimitUI(){
+            if (!paxLimitEl) return;
+            const max = computePaxMax();
+            if (max==null){
+                paxLimitEl.textContent = '';
+                paxLimitEl.classList.add('hidden');
+                if (paxQtyInput){ paxQtyInput.removeAttribute('max'); }
+                return;
+            }
+            paxLimitEl.textContent = `You can add up to ${max} additional pax for this venue/package.`;
+            paxLimitEl.classList.remove('hidden');
+            if (paxQtyInput){
+                paxQtyInput.setAttribute('max', String(max));
+                const cur = Number(paxQtyInput.value||0);
+                if (cur > max){ paxQtyInput.value = String(max); }
+            }
+        }
+
+        function updatePackagePriceDisplay(){
+            const price = getSelectedPackagePrice();
+            if (pkgPriceInfo){
+                if (price!=null){ pkgPriceInfo.textContent = `Package price: ${formatCurrency(price)}`; }
+                else { pkgPriceInfo.textContent = ''; }
+            }
+            updatePaxEstimate();
+            updatePaxLimitUI();
+        }
+
+        function updatePaxEstimate(){
+            if (!paxEstimateEl) return;
+            const price = getSelectedPackagePrice();
+            const paxChecked = paxCb ? paxCb.checked : false;
+            const qty = paxQtyInput ? Number(paxQtyInput.value||0) : 0;
+            if (price!=null && paxChecked && qty>0){
+                const estimate = price + (qty * PER_HEAD_RATE);
+                paxEstimateEl.textContent = `Estimated total: ${formatCurrency(estimate)}`;
+                paxEstimateEl.classList.remove('hidden');
+            } else {
+                paxEstimateEl.textContent = '';
+                paxEstimateEl.classList.add('hidden');
+            }
+        }
+        function syncInclusionsVisibility(){
+            if (!etSel) return;
+            const selectedText = etSel.options && etSel.selectedIndex >= 0 ? (etSel.options[etSel.selectedIndex].text||'') : '';
+            const hasEvent = !!etSel.value;
+            if (inclusionsSection) inclusionsSection.classList.toggle('hidden', !hasEvent);
+            const isBirthday = /birthday/i.test(selectedText);
+            if (incClowns){
+                incClowns.classList.toggle('hidden', !isBirthday);
+                if (!isBirthday){
+                    const cb = incClowns.querySelector('input[type="checkbox"]');
+                    if (cb) cb.checked = false;
+                }
+            }
+        }
+        etSel?.addEventListener('change', (e)=>{ const v = e.target.value; if (v) loadPackagesFor(v); else { pkgSel.innerHTML = '<option value="">Select an event type first</option>'; } syncInclusionsVisibility(); updatePackagePriceDisplay(); });
+        // Initial sync
+        syncInclusionsVisibility();
+        loadEventTypes();
+        // Package price change
+        pkgSel?.addEventListener('change', updatePackagePriceDisplay);
+        // Also recompute limit when Pax qty changes (so estimate shows after clamping)
+        paxQtyInput?.addEventListener('input', ()=>{ updatePaxLimitUI(); updatePaxEstimate(); });
+
+        // Add-ons UI: toggle fields when checked
+        const addonBoxes = document.querySelectorAll('.bf-addon');
+        function toggleAddonFields(cb){
+            const name = cb.getAttribute('data-addon');
+            const fields = document.querySelector(`.bf-addon-fields[data-addon-fields="${name}"]`);
+            if (!fields) return;
+            const qtyInput = fields.querySelector('input[name^="addon["]');
+            if (cb.checked){
+                fields.classList.remove('hidden');
+                if (qtyInput){ qtyInput.required = true; qtyInput.focus({preventScroll:true}); }
+            } else {
+                fields.classList.add('hidden');
+                if (qtyInput){ qtyInput.required = false; qtyInput.value = ''; }
+            }
+        }
+        addonBoxes.forEach(cb=>{ cb.addEventListener('change', ()=>{ toggleAddonFields(cb); updatePaxEstimate(); }); toggleAddonFields(cb); });
+        paxQtyInput?.addEventListener('input', updatePaxEstimate);
+        // Run once on load
+        updatePackagePriceDisplay();
+
+        // Form Validation and Submission (guest cannot book)
         document.getElementById('bookingForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            // If not logged in, send to login with safe next to user booking
             if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
-                e.preventDefault();
-                window.location.href = 'login?next=' + encodeURIComponent('user/booking');
+                window.location.href = 'login?next=' + encodeURIComponent('/Binggay/user/booking.php');
                 return false;
             }
-            e.preventDefault();
-            
-            // Show loading overlay
-            document.getElementById('loadingOverlay').classList.add('active');
-            
-            // Get form data
-            const formData = new FormData(this);
-            const data = Object.fromEntries(formData);
-            
-            // Get selected services
-            const services = [];
-            document.querySelectorAll('input[name="services[]"]:checked').forEach(checkbox => {
-                services.push(checkbox.value);
-            });
-            data.services = services;
-            
-            // Simulate form submission (replace with actual backend call)
-            setTimeout(() => {
-                console.log('Booking submitted:', data);
-                
-                // Hide loading overlay
-                document.getElementById('loadingOverlay').classList.remove('active');
-                
-                // Show success message
-                alert('🎉 Thank you for your booking request!\n\nWe have received your information and will contact you within 24 hours to confirm the details and discuss your event requirements.\n\nA confirmation email has been sent to ' + data.email);
-                
-                // Reset form
-                this.reset();
-                
-                // Scroll to top
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }, 2000);
+            // If already logged in, take them to the user booking page
+            window.location.href = '/Binggay/user/booking.php';
+            return false;
         });
 
     // Require event date at least 14 days from now
@@ -1005,21 +1156,7 @@
             });
         });
 
-        // Event type change handler
-        document.querySelector('select[name="eventType"]').addEventListener('change', function() {
-            const customPackages = {
-                'birthday': 'We recommend our Classic Celebration package for birthdays!',
-                'wedding': 'Our Ultimate Experience package is perfect for weddings!',
-                'debut': 'The Grand Festivity package is ideal for debut celebrations!',
-                'corporate': 'Professional catering packages available for corporate events!',
-                'reunion': 'Family-style packages perfect for reunions!',
-                'anniversary': 'Romantic and elegant packages for anniversaries!'
-            };
-            
-            if (customPackages[this.value]) {
-                console.log(customPackages[this.value]);
-            }
-        });
+        // Removed old static event type tip handler; now dynamic based on DB.
     </script>
 </body>
 </html>
