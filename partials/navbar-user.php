@@ -162,7 +162,7 @@ function current_user_display_name_user() {
                         </button>
                         <div id="profile-menu" class="absolute right-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/5 py-1 hidden">
                             <a href="profile" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
-                            <a href="logout" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
+                            <a href="logout.php" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
                         </div>
                     </div>
                 <?php else: ?>
@@ -201,7 +201,7 @@ function current_user_display_name_user() {
                 <a href="booking" class="block nav-link transition-colors duration-300">Occasions</a>
                 <?php if ($NAV_IS_LOGGED_IN): ?>
                     <a href="profile" class="block nav-link transition-colors duration-300">Profile</a>
-                    <a href="../logout" class="block nav-link transition-colors duration-300">Logout</a>
+                    <a href="logout.php" class="block nav-link transition-colors duration-300">Logout</a>
                 <?php else: ?>
                     <a href="../login" class="block nav-link transition-colors duration-300">Login</a>
                     <a href="../registration" class="block nav-link transition-colors duration-300">Sign up</a>
