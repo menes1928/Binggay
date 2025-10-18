@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 14, 2025 at 05:44 PM
+-- Generation Time: Oct 18, 2025 at 11:50 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -104,7 +104,7 @@ CREATE TABLE `eventbookings` (
 INSERT INTO `eventbookings` (`eb_id`, `user_id`, `event_type_id`, `package_id`, `eb_name`, `eb_email`, `eb_contact`, `eb_venue`, `eb_date`, `eb_order`, `eb_status`, `eb_addon_pax`, `eb_notes`, `created_at`) VALUES
 (1, 1, 2, 2, 'John Andal', '', '09023347823, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-12 18:04:26', 'Wedding Package - 100', 'Pending', '0', NULL, '2025-10-12 14:03:50'),
 (2, 1, 2, 3, 'Cris Carlo', '', '09278334233, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-27 05:30:00', 'Corporate - 150', 'Downpayment', '0', NULL, '2025-10-12 14:39:58'),
-(3, 1, 2, 1, 'Cris Carlo', 'jmbmaines17@gmail.com', '09023347823, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-12 18:04:22', 'Standard - 50', 'Pending', '10 pax, 5 tables, 10 chairs', NULL, '2025-10-12 16:39:59');
+(3, 1, 2, 1, 'Cris Carlo', 'jmbmaines17@gmail.com', '09023347823, 09892374982', 'Villa Antonina , J.P Rizal Street , Poblacion , Padre Garcia , Batangas', '2025-10-12 18:04:00', 'Standard - 50', 'Confirmed', '10', NULL, '2025-10-12 16:39:59');
 
 -- --------------------------------------------------------
 
@@ -128,7 +128,13 @@ CREATE TABLE `event_types` (
 
 INSERT INTO `event_types` (`event_type_id`, `name`, `min_package_pax`, `max_package_pax`, `notes`, `created_at`, `updated_at`) VALUES
 (1, 'Wedding', '100', '200', NULL, '2025-10-12 11:36:35', '2025-10-12 11:36:35'),
-(2, 'Birthday', '50', '200', NULL, '2025-10-12 12:55:46', '2025-10-12 12:55:46');
+(2, 'Birthday', '50', '200', NULL, '2025-10-12 12:55:46', '2025-10-12 12:55:46'),
+(3, 'Baptism', '50', '200', NULL, '2025-10-15 14:55:29', '2025-10-15 14:55:29'),
+(4, 'Anniversaries', '50', '200', NULL, '2025-10-15 14:59:13', '2025-10-15 14:59:13'),
+(5, 'Blessings', '50', '200', NULL, '2025-10-15 14:59:28', '2025-10-15 14:59:28'),
+(6, 'Gender Reveal', '50', '200', NULL, '2025-10-15 14:59:48', '2025-10-15 14:59:48'),
+(7, 'Reunions', '50', '200', NULL, '2025-10-15 15:00:17', '2025-10-15 15:00:17'),
+(8, 'Debut (Birthday)', '50', '200', NULL, '2025-10-15 15:03:45', '2025-10-15 15:03:45');
 
 -- --------------------------------------------------------
 
@@ -147,11 +153,36 @@ CREATE TABLE `event_type_packages` (
 --
 
 INSERT INTO `event_type_packages` (`event_type_id`, `package_id`, `created_at`) VALUES
-(1, 2, '2025-10-12 11:36:35'),
-(1, 3, '2025-10-12 11:36:35'),
+(1, 2, '2025-10-15 15:00:26'),
+(1, 3, '2025-10-15 15:00:26'),
+(1, 4, '2025-10-15 15:00:26'),
 (2, 1, '2025-10-12 12:55:46'),
 (2, 2, '2025-10-12 12:55:46'),
-(2, 3, '2025-10-12 12:55:46');
+(2, 3, '2025-10-12 12:55:46'),
+(3, 1, '2025-10-15 14:55:29'),
+(3, 2, '2025-10-15 14:55:29'),
+(3, 3, '2025-10-15 14:55:29'),
+(3, 4, '2025-10-15 14:55:29'),
+(4, 1, '2025-10-15 14:59:13'),
+(4, 2, '2025-10-15 14:59:13'),
+(4, 3, '2025-10-15 14:59:13'),
+(4, 4, '2025-10-15 14:59:13'),
+(5, 1, '2025-10-15 14:59:28'),
+(5, 2, '2025-10-15 14:59:28'),
+(5, 3, '2025-10-15 14:59:28'),
+(5, 4, '2025-10-15 14:59:28'),
+(6, 1, '2025-10-15 14:59:48'),
+(6, 2, '2025-10-15 14:59:48'),
+(6, 3, '2025-10-15 14:59:48'),
+(6, 4, '2025-10-15 14:59:48'),
+(7, 1, '2025-10-15 15:00:17'),
+(7, 2, '2025-10-15 15:00:17'),
+(7, 3, '2025-10-15 15:00:17'),
+(7, 4, '2025-10-15 15:00:17'),
+(8, 1, '2025-10-15 15:04:27'),
+(8, 2, '2025-10-15 15:04:27'),
+(8, 3, '2025-10-15 15:04:27'),
+(8, 4, '2025-10-15 15:04:27');
 
 -- --------------------------------------------------------
 
@@ -192,7 +223,7 @@ INSERT INTO `menu` (`menu_id`, `menu_name`, `menu_desc`, `menu_pax`, `menu_price
 (15, 'Fried Chicken (Full Pan)', NULL, '10-15 pax', 1200.00, 'default.jpg', 1, '2025-06-14 05:05:25'),
 (16, 'Chicken Afritada (Half Pan)', NULL, '6-8 pax', 700.00, 'default.jpg', 1, '2025-06-14 05:05:25'),
 (17, 'Chicken Afritada (Full Pan)', NULL, '10-15 pax', 1200.00, 'default.jpg', 1, '2025-06-14 05:05:25'),
-(18, 'Baked Tahong', '3 kls per pan', '10-15 pax', 1000.00, 'default.jpg', 1, '2025-06-14 05:05:25'),
+(18, 'Baked Tahong', '3 kls per pan', '10-15', 1000.00, 'menu_68ee9557244644.46677557.jpg', 1, '2025-06-14 05:05:25'),
 (19, 'Butter Shrimp', '1 kl per pan', '10-15 pax', 1300.00, 'default.jpg', 1, '2025-06-14 05:05:25'),
 (20, 'Shrimp Salvatore', '1 kl per pan', '10-15 pax', 1500.00, 'default.jpg', 1, '2025-06-14 05:05:25'),
 (21, 'Fish Fillet', '2 kls per pan', '10-15 pax', 1200.00, 'default.jpg', 1, '2025-06-14 05:05:25'),
@@ -413,7 +444,8 @@ CREATE TABLE `orderaddress` (
 
 INSERT INTO `orderaddress` (`oa_id`, `order_id`, `oa_street`, `oa_city`, `oa_province`, `created_at`) VALUES
 (6, 2, '21', 'dsfsdf', 'fdsfesdf', '2025-10-13 18:32:42'),
-(7, 3, '21', 'dsfsdf', 'fdsfesdf', '2025-10-13 20:15:39');
+(7, 3, '21', 'dsfsdf', 'fdsfesdf', '2025-10-13 20:15:39'),
+(8, 4, '21', 'dsfsdf', 'fdsfesdf', '2025-10-14 17:06:53');
 
 -- --------------------------------------------------------
 
@@ -436,7 +468,9 @@ CREATE TABLE `orderitems` (
 INSERT INTO `orderitems` (`oi_id`, `order_id`, `menu_id`, `oi_quantity`, `oi_price`) VALUES
 (3, 2, 18, 2.00, 1000.00),
 (4, 3, 18, 1.00, 1000.00),
-(5, 3, 91, 1.00, 800.00);
+(5, 3, 91, 1.00, 800.00),
+(6, 4, 91, 1.00, 800.00),
+(7, 4, 92, 1.00, 1400.00);
 
 -- --------------------------------------------------------
 
@@ -461,7 +495,8 @@ CREATE TABLE `orders` (
 
 INSERT INTO `orders` (`order_id`, `user_id`, `order_date`, `order_status`, `order_amount`, `order_needed`, `created_at`, `updated_at`) VALUES
 (2, 1, '2025-10-13 18:32:42', 'completed', 2000.00, '2025-10-16', '2025-10-13 18:32:42', '2025-10-13 18:33:17'),
-(3, 1, '2025-10-13 20:15:39', 'in progress', 1800.00, '2025-10-16', '2025-10-13 20:15:39', '2025-10-13 20:27:02');
+(3, 1, '2025-10-13 20:15:39', 'in progress', 1800.00, '2025-10-16', '2025-10-13 20:15:39', '2025-10-13 20:27:02'),
+(4, 1, '2025-10-14 17:06:53', 'pending', 2200.00, '2025-10-17', '2025-10-14 17:06:53', '2025-10-14 17:06:53');
 
 -- --------------------------------------------------------
 
@@ -487,8 +522,9 @@ CREATE TABLE `packages` (
 
 INSERT INTO `packages` (`package_id`, `name`, `pax`, `base_price`, `is_active`, `notes`, `package_image`, `created_at`, `updated_at`) VALUES
 (1, 'Standard', '50', 35000.00, 1, '', 'uploads/packages/package_1.jpg', '2025-10-09 17:43:42', '2025-10-11 11:00:23'),
-(2, 'Wedding Package', '100', 55000.00, 1, '', 'uploads/packages/package_2.jpg', '2025-10-09 18:03:25', '2025-10-11 10:59:54'),
-(3, 'Corporate', '150', 78000.00, 0, '', 'uploads/packages/package_3.jpg', '2025-10-09 18:04:56', '2025-10-11 13:57:39');
+(2, 'Deluxe', '100', 55000.00, 1, '', 'uploads/packages/package_2.jpg', '2025-10-09 18:03:25', '2025-10-15 14:56:08'),
+(3, 'Corporate', '150', 78000.00, 1, '', 'uploads/packages/package_3.jpg', '2025-10-09 18:04:56', '2025-10-15 08:02:58'),
+(4, 'Supreme', '200', 99000.00, 1, '', 'uploads/packages/package_4.png', '2025-10-15 08:10:20', '2025-10-15 08:10:20');
 
 -- --------------------------------------------------------
 
@@ -529,27 +565,57 @@ INSERT INTO `package_items` (`item_id`, `package_id`, `item_label`, `qty`, `unit
 (165, 1, '60 Pax Silverware and Dinner ware', 60, 'pcs', 0, 12, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
 (166, 1, '2 Food Attendants', 2, 'attendants', 0, 13, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
 (167, 1, 'Elegant Table Buffet', NULL, 'other', 0, 14, '', '2025-10-11 12:33:52', '2025-10-11 12:33:52'),
-(168, 2, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(169, 2, 'Pork Menu', NULL, 'dish', 0, 1, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(170, 2, 'Chicken Menu', NULL, 'dish', 0, 2, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(171, 2, 'Rice', NULL, 'dish', 0, 3, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(172, 2, 'Veggies/Pasta/Fish Fillet', NULL, 'dish', 0, 4, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(173, 2, '100 Cups of Dessert', NULL, 'cups', 0, 5, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(174, 2, 'Drinks', NULL, 'dish', 0, 6, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(175, 2, 'Backdrop & Platform/ Complete Setup', NULL, 'other', 0, 7, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(176, 2, 'Table Buffet w/ Skirting Setup', NULL, 'other', 0, 8, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(177, 2, '7 Chaffing Dish w/ Food Heat Lamp', NULL, 'pcs', 0, 9, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(178, 2, 'Cake & Gift Table w/ Skirting Designs', NULL, 'other', 0, 10, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(179, 2, 'Chairs w/ Cover', NULL, 'other', 0, 11, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(180, 2, 'Tables w/ cover', NULL, 'other', 0, 12, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(181, 2, '100 PAX Silverware, Glassware, Dinner ware', NULL, 'pax', 0, 13, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(182, 2, '100pcs Serving Spoon', NULL, 'pcs', 0, 14, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(183, 2, '4 Food Attendants', NULL, 'attendants', 0, 15, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(184, 2, 'Elegant Table Buffet', NULL, 'other', 0, 16, '', '2025-10-11 12:34:05', '2025-10-11 12:34:05'),
-(194, 3, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59'),
-(195, 3, 'Chicken Menu', NULL, 'dish', 0, 1, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59'),
-(196, 3, 'Pork Menu', NULL, 'dish', 0, 2, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59'),
-(197, 3, 'Veggies/Pasta/Fish Fillet', NULL, 'attendants', 0, 3, '', '2025-10-11 13:40:59', '2025-10-11 13:40:59');
+(214, 4, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(215, 4, 'Pork Menu', NULL, 'dish', 0, 1, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(216, 4, 'Chicken Menu', NULL, 'dish', 0, 2, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(217, 4, 'Rice', NULL, 'dish', 0, 3, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(218, 4, 'Veggies/Pasta/Fish Fillet', NULL, 'dish', 0, 4, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(219, 4, '200 cups of Desserts', 200, 'cups', 0, 5, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(220, 4, 'Drinks', NULL, 'dish', 0, 6, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(221, 4, 'Backdrop and Platform/Complete Setup', NULL, 'other', 0, 7, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(222, 4, 'Table Buffet w/ Skirting Setup', NULL, 'other', 0, 8, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(223, 4, '7 Chaffing Dish w/ Food Heat Lamp', 7, 'pcs', 0, 9, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(224, 4, 'Cake and Gift Table w/ Skirting Designs', NULL, 'other', 0, 10, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(225, 4, 'Chairs w/ cover', NULL, 'other', 0, 11, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(226, 4, 'Table w/ cover', NULL, 'other', 0, 12, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(227, 4, '200 pax Silverware, Glassware, and Dinnerware', 200, 'pax', 0, 13, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(228, 4, '200pcs Serving Spoons', 200, 'pcs', 0, 14, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(229, 4, '8 Food Attendants', 8, 'attendants', 0, 15, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(230, 4, 'Elegant Table Buffet', NULL, 'other', 0, 16, '', '2025-10-15 08:27:55', '2025-10-15 08:27:55'),
+(231, 2, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(232, 2, 'Pork Menu', NULL, 'dish', 0, 1, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(233, 2, 'Chicken Menu', NULL, 'dish', 0, 2, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(234, 2, 'Rice', NULL, 'dish', 0, 3, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(235, 2, 'Veggies/Pasta/Fish Fillet', NULL, 'dish', 0, 4, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(236, 2, '100 Cups of Dessert', NULL, 'cups', 0, 5, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(237, 2, 'Drinks', NULL, 'dish', 0, 6, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(238, 2, 'Backdrop & Platform/ Complete Setup', NULL, 'other', 0, 7, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(239, 2, 'Table Buffet w/ Skirting Setup', NULL, 'other', 0, 8, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(240, 2, '7 Chaffing Dish w/ Food Heat Lamp', NULL, 'pcs', 0, 9, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(241, 2, 'Cake & Gift Table w/ Skirting Designs', NULL, 'other', 0, 10, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(242, 2, 'Chairs w/ Cover', NULL, 'other', 0, 11, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(243, 2, 'Tables w/ cover', NULL, 'other', 0, 12, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(244, 2, '100 PAX Silverware, Glassware, Dinner ware', NULL, 'pax', 0, 13, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(245, 2, '100pcs Serving Spoon', NULL, 'pcs', 0, 14, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(246, 2, '4 Food Attendants', NULL, 'attendants', 0, 15, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(247, 2, 'Elegant Table Buffet', NULL, 'other', 0, 16, '', '2025-10-15 14:56:08', '2025-10-15 14:56:08'),
+(248, 3, 'Beef Menu', NULL, 'dish', 0, 0, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(249, 3, 'Chicken Menu', NULL, 'dish', 0, 1, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(250, 3, 'Pork Menu', NULL, 'dish', 0, 2, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(251, 3, 'Veggies/Pasta/Fish Fillet', NULL, 'dish', 0, 3, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(252, 3, '100 Cups of Desserts', 100, 'cups', 0, 4, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(253, 3, 'Drinks', NULL, 'dish', 0, 5, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(254, 3, 'Backdrop and Platform / Complete Setup', NULL, 'other', 0, 6, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(255, 3, 'Table Buffet w/ Skirting Setup', NULL, 'other', 0, 7, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(256, 3, '7 Chaffing Dish w/ Food Heat Lamp', 7, 'pcs', 0, 8, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(257, 3, 'Cake and Gift Table w/ Skirting Designs', NULL, 'other', 0, 9, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(258, 3, 'Chairs w/ cover', NULL, 'other', 0, 10, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(259, 3, 'Tables w/ cover', NULL, 'other', 0, 11, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(260, 3, '150 Pax Silverware, Glassware, and Dinner ware', 150, 'pax', 0, 12, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(261, 3, '150pcs Serving spoons', 150, 'pcs', 0, 13, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(262, 3, '6 Food Attendants', 6, 'attendants', 0, 14, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(263, 3, 'Elegant Table Buffet', NULL, 'other', 0, 15, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07'),
+(264, 3, 'Rice', NULL, 'other', 0, 3, '', '2025-10-15 14:57:07', '2025-10-15 14:57:07');
 
 -- --------------------------------------------------------
 
@@ -574,11 +640,32 @@ CREATE TABLE `payments` (
 --
 
 INSERT INTO `payments` (`pay_id`, `order_id`, `cp_id`, `user_id`, `pay_date`, `pay_amount`, `pay_method`, `pay_status`, `created_at`) VALUES
-(1, NULL, 2, 1, '2025-10-12', 18000.00, '', 'Partial', '2025-10-12 15:12:13'),
-(2, NULL, 3, 1, '2025-10-12', 18500.00, '', 'Partial', '2025-10-13 20:33:35'),
+(1, NULL, 2, 1, '2025-10-15', 36000.00, 'Cash', 'Paid', '2025-10-15 14:39:10'),
+(2, NULL, 3, 1, '2025-10-15', 37000.00, 'Cash', 'Paid', '2025-10-15 14:26:48'),
 (3, NULL, 4, 1, '2025-10-13', 35000.00, 'Cash', 'Paid', '2025-10-12 18:57:38'),
 (4, 2, NULL, 1, '2025-10-14', 2000.00, 'Cash', 'Paid', '2025-10-13 18:33:17'),
-(5, 3, NULL, 1, '2025-10-13', 1800.00, 'Gcash', 'Pending', '2025-10-13 20:15:39');
+(5, 3, NULL, 1, '2025-10-13', 1800.00, 'Gcash', 'Pending', '2025-10-13 20:15:39'),
+(6, 4, NULL, 1, '2025-10-14', 2200.00, 'Cash', 'Pending', '2025-10-14 17:06:53');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `site_settings`
+--
+
+CREATE TABLE `site_settings` (
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` text DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `site_settings`
+--
+
+INSERT INTO `site_settings` (`setting_key`, `setting_value`, `updated_at`) VALUES
+('collections_images', '[\"uploads/collections/collections_1760473094_0.jpg\",\"uploads/collections/collections_1760473048_0.jpg\"]', '2025-10-14 20:18:14'),
+('menu_section_images', '[\"uploads/menu_hero/menu_hero_1760471445_0.jpg\",\"uploads/menu_hero/menu_hero_1760470768_0.jpg\",\"/../uploads/menu_hero/menu_hero_1760470466_0.jpg\"]', '2025-10-14 19:50:45');
 
 -- --------------------------------------------------------
 
@@ -606,8 +693,9 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`user_id`, `user_fn`, `user_ln`, `user_sex`, `user_email`, `user_phone`, `user_username`, `user_password`, `user_photo`, `user_type`, `created_at`, `updated_at`) VALUES
-(1, 'John', 'Andal', 'Male', 'jmbmaines17@gmail.com', '09267834238', 'JAB12', '$2y$10$c0xnIHFrY.d6HidBDW5jtuDZZus.hB7xk.YQiBf45h/F.DlwsyQhK', NULL, 0, '2025-10-12 04:33:59', '2025-10-12 04:33:59'),
-(2, 'Sandok', 'Binggay', 'Male', 'sandokdummy@gmail.com', '09238914072', 'sdby', '$2y$10$AGOejyyIW9SoFCyFy/n98u8d9B.VJt6N5uQr09JxCAIvIZolvxU0u', NULL, 1, '2025-10-12 19:10:02', '2025-10-12 19:10:17');
+(1, 'John', 'Andal', 'Male', 'jmbmaines17@gmail.com', '09267834238', 'JAB12', '$2y$10$HT.CBUI4fJjKc6Hk24Cic.pDMPhn88A/uImC4Tz/BBe4fRx1fksE.', NULL, 0, '2025-10-12 04:33:59', '2025-10-18 06:32:00'),
+(2, 'Sandok', 'Binggay', 'Male', 'sandokdummy@gmail.com', '09238914072', 'sdby', '$2y$10$AGOejyyIW9SoFCyFy/n98u8d9B.VJt6N5uQr09JxCAIvIZolvxU0u', NULL, 1, '2025-10-12 19:10:02', '2025-10-12 19:10:17'),
+(3, 'Ace', 'Randolf', 'Male', 'phenominalgamer19@gmail.com', '09238947239', 'AcB22', '$2y$10$ru9qHYNNYAJE6xbeOjMVvODQXOLnTLM54DxFYcGeestXJO7sDV8Se', '../uploads/profile/68f334f35a59b1.27722469.jpg', 0, '2025-10-18 06:34:27', '2025-10-18 07:12:49');
 
 -- --------------------------------------------------------
 
@@ -725,6 +813,12 @@ ALTER TABLE `payments`
   ADD KEY `idx_payments_user_id` (`user_id`);
 
 --
+-- Indexes for table `site_settings`
+--
+ALTER TABLE `site_settings`
+  ADD PRIMARY KEY (`setting_key`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -763,7 +857,7 @@ ALTER TABLE `eventbookings`
 -- AUTO_INCREMENT for table `event_types`
 --
 ALTER TABLE `event_types`
-  MODIFY `event_type_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `event_type_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `menu`
@@ -781,43 +875,43 @@ ALTER TABLE `menucategory`
 -- AUTO_INCREMENT for table `orderaddress`
 --
 ALTER TABLE `orderaddress`
-  MODIFY `oa_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `oa_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `orderitems`
 --
 ALTER TABLE `orderitems`
-  MODIFY `oi_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `oi_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `order_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `packages`
 --
 ALTER TABLE `packages`
-  MODIFY `package_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `package_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `package_items`
 --
 ALTER TABLE `package_items`
-  MODIFY `item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=198;
+  MODIFY `item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=265;
 
 --
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `pay_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- Constraints for dumped tables
