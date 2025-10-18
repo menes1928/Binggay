@@ -462,6 +462,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             <div class="p-6 sm:p-8 md:p-12 flex flex-col justify-center bg-white">
                 <!-- LOGIN CONTENT (shown by default) -->
                 <div id="login-content" class="max-w-md mx-auto w-full animate-fade-in-right">
+                        <div class="mb-4 -mt-2">
+                            <a href="home" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline">
+                                <i class="fas fa-arrow-left mr-2"></i>Back to Sandok ni Binggay
+                            </a>
+                        </div>
                     <!-- Mobile Logo -->
                     <div class="md:hidden text-center mb-8">
                         <img src="images/logo.png" 

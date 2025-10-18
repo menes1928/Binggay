@@ -2,6 +2,17 @@
 // You can add PHP logic here for authentication, database connections, etc.
 session_start();
 
+// Redirect away from admin area based on login state
+// - If not logged in: go to guest home
+// - If logged in: go to user home
+$uid = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+if ($uid <= 0) {
+    header('Location: ../home');
+    exit;
+}
+header('Location: ../user/home');
+exit;
+
 // Sample data arrays (in a real application, these would come from a database)
 $salesData = [
     ['month' => 'Jan', 'revenue' => 45000, 'orders' => 156],
