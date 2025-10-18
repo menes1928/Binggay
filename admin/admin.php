@@ -2,16 +2,16 @@
 // You can add PHP logic here for authentication, database connections, etc.
 session_start();
 
-// Redirect away from admin area based on login state
-// - If not logged in: go to guest home
-// - If logged in: go to user home
 $uid = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 if ($uid <= 0) {
     header('Location: ../home');
     exit;
 }
-header('Location: ../user/home');
-exit;
+$utype = isset($_SESSION['user_type']) ? (int)$_SESSION['user_type'] : 0;
+if ($utype !== 1) {
+    header('Location: ../user/home');
+    exit;
+}
 
 // Sample data arrays (in a real application, these would come from a database)
 $salesData = [
@@ -2193,10 +2193,6 @@ if ($sectionEarly === 'settings') {
                                     <div class="text-sm font-medium truncate"><?= htmlspecialchars($adminName) ?></div>
                                     
                                 </div>
-                                <a href="../user/profile.php" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm">
-                                    <i class="fas fa-user text-gray-600 w-4"></i>
-                                    <span>Profile</span>
-                                </a>
                                 <a href="../user/logout.php" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm text-rose-700">
                                     <i class="fas fa-sign-out-alt w-4"></i>
                                     <span>Logout</span>

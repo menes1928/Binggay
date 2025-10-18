@@ -72,8 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     if ($redirect === '') {
                         // Simple role-based fallback: 1 = admin
                         $redirect = ((int)$user['user_type'] === 1)
-                            ? '/Binggay/admin/admin.php'
-                            : '/Binggay/user/home.php';
+                            ? '/Binggay/admin/admin'
+                            : '/Binggay/user/home';
                     }
                     header('Location: ' . $redirect);
                     exit;

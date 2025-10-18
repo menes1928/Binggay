@@ -48,9 +48,6 @@ $collections = [
         'hasFrame' => false
     ]
 ];
-
-// Triple the collections for seamless infinite scroll
-// Override Our Collections images from site settings (if configured)
 try {
     require_once __DIR__ . '/classes/database.php';
     $pdoTmp = (new database())->opencon();
@@ -107,14 +104,24 @@ try {
         $pid = (int)$row['package_id'];
         $itemsStmt->execute([$pid]);
         $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        // Normalize function: turn DB path into web path relative to this page (prefer uploads/*)
+        $normalizeWeb = static function ($p) {
+            $p = isset($p) ? trim((string)$p) : '';
+            if ($p === '') return '';
+            $p = str_replace('\\', '/', $p);
+            if (preg_match('~^https?://~i', $p)) return $p; // external URL
+            // Strip leading ./, ../, or /
+            $p = preg_replace('~^((\./)|(\.\./)|/)+~', '', $p);
+            // If contains uploads/, keep from there
+            $pos = stripos($p, 'uploads/');
+            if ($pos !== false) { $p = substr($p, $pos); }
+            return $p; // e.g., uploads/... relative to project root
+        };
+
         // Normalize package_image from packages table (admin-uploaded) first
         $pkgImg = '';
         if (isset($row['package_image'])) {
-            $pkgImg = trim((string)$row['package_image']);
-            $pkgImg = str_replace('\\', '/', $pkgImg);
-            if ($pkgImg !== '' && !preg_match('~^https?://~i', $pkgImg)) {
-                $pkgImg = '../' . ltrim($pkgImg, '/');
-            }
+            $pkgImg = $normalizeWeb($row['package_image']);
         }
 
         // Normalize image paths for items; pick first non-empty as fallback cover
@@ -122,12 +129,7 @@ try {
         $seen = [];
         $dedup = [];
         foreach ($items as &$it) {
-            $p = isset($it['item_pic']) ? trim((string)$it['item_pic']) : '';
-            $p = str_replace('\\', '/', $p);
-            if ($p !== '' && !preg_match('~^https?://~i', $p)) {
-                // Make relative to /user/* pages
-                $p = '../' . ltrim($p, '/');
-            }
+            $p = $normalizeWeb($it['item_pic'] ?? '');
             $it['item_pic'] = $p;
             if ($firstItemImg === '' && $p !== '') { $firstItemImg = $p; }
             // Deduplicate items (label+qty+unit+optional+pic) to avoid repeated last item bug
@@ -826,7 +828,7 @@ try {
                     <div class="relative h-44 overflow-hidden">
                         <img src="<?php echo htmlspecialchars($coverUrl); ?>"
                              alt="<?php echo htmlspecialchars($pkg['name']); ?>"
-                             onerror="this.onerror=null;this.src='../images/logo.png';"
+                             onerror="this.onerror=null;this.src='images/logo.png';"
                              class="w-full h-full object-cover transform group-hover:scale-105 transition duration-500" />
                         <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-70"></div>
                         <div class="absolute top-3 left-3">
