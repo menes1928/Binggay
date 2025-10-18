@@ -265,6 +265,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             background-size: 1000px 100%;
             animation: shimmer 3s infinite;
         }
+
+        /* Forgot Password Sliding Panel (desktop >= md) */
+        .auth-card { position: relative; }
+        .left-panel {
+            position: absolute;
+            inset: 0;
+            transition: transform 0.6s ease;
+            will-change: transform;
+            z-index: 20;
+        }
+        .auth-card.forgot-active .left-panel { transform: translateX(100%); }
+        /* Mobile modal */
+        #forgot-modal { display: none; }
+        #forgot-modal.show { display: flex; }
     </style>
     <script>
         tailwind.config = {
@@ -343,72 +357,122 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         });
     </script>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
+<body class="min-h-screen flex items-center justify-center p-3 sm:p-4">
     <!-- Background Decorative Elements -->
-    <div class="decorative-circle" style="width: 400px; height: 400px; top: -200px; right: -200px;"></div>
-    <div class="decorative-circle" style="width: 300px; height: 300px; bottom: -150px; left: -150px;"></div>
+    <div class="decorative-circle hidden md:block" style="width: 400px; height: 400px; top: -200px; right: -200px;"></div>
+    <div class="decorative-circle hidden lg:block" style="width: 300px; height: 300px; bottom: -150px; left: -150px;"></div>
 
     <!-- Main Container -->
-    <div class="w-full max-w-6xl">
-        <div class="bg-white rounded-2xl shadow-2xl overflow-hidden grid md:grid-cols-2 min-h-[600px]">
-            <!-- Left Side - Branding -->
-            <div class="gradient-bg p-12 flex flex-col justify-center items-center text-white relative overflow-hidden hidden md:flex">
-                <!-- Decorative Pattern -->
-                <div class="absolute inset-0 opacity-10">
-                    <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+    <div class="w-full max-w-6xl px-2 sm:px-4">
+        <div id="auth-card" class="auth-card bg-white rounded-2xl shadow-2xl overflow-hidden grid md:grid-cols-2 min-h-[520px] md:min-h-[600px]">
+            <!-- Left Side: White forgot panel with green branding overlay that slides right (desktop) -->
+            <div class="relative hidden md:block">
+                <!-- White panel underneath with forgot-password fields -->
+                <div class="p-6 sm:p-10 md:p-12 flex flex-col justify-center items-center bg-white min-h-[520px] md:min-h-[600px]">
+                    <div class="w-full max-w-md">
+                        <a href="#" onclick="closeForgot(); return false;" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline mb-4">
+                            <i class="fas fa-arrow-left mr-2"></i>
+                            Back to sign in
+                        </a>
+                        <h2 class="text-2xl md:text-3xl font-bold mb-2 text-primary">Forgot Password</h2>
+                        <p class="text-gray-600 mb-6">We’ll send a 6-character code to your email.</p>
+
+                        <div id="fp-alert" class="hidden mb-4 p-3 rounded-md text-sm"></div>
+
+                        <!-- Step 1: Email -->
+                        <div id="fp-step-email" class="space-y-3">
+                            <label class="block text-sm font-medium text-gray-700">Email</label>
+                            <input id="fp-email" type="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="you@example.com">
+                            <button id="fp-send-btn" class="btn-primary w-full bg-primary hover:bg-primary-dark text-white font-semibold py-3 rounded-lg" onclick="sendOtp()">
+                                <i class="fas fa-paper-plane mr-2"></i>Send OTP
+                            </button>
+                        </div>
+
+                        <!-- Step 2: OTP -->
+                        <div id="fp-step-otp" class="space-y-3 hidden mt-2">
+                            <label class="block text-sm font-medium text-gray-700">Enter OTP</label>
+                            <input id="fp-code" type="text" maxlength="6" class="w-full px-4 py-3 border border-gray-300 rounded-lg tracking-widest text-center uppercase font-mono" placeholder="XXXXXX">
+                            <div class="flex gap-2">
+                                <button id="fp-verify-btn" class="btn-primary flex-1 bg-primary hover:bg-primary-dark text-white font-semibold py-3 rounded-lg" onclick="verifyOtp()">
+                                    <i class="fas fa-check mr-2"></i>Verify OTP
+                                </button>
+                                <button id="fp-resend-btn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-lg border border-gray-300" onclick="resendOtp()">
+                                    Resend
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Reset Password -->
+                        <div id="fp-step-reset" class="space-y-3 hidden mt-2">
+                            <label class="block text-sm font-medium text-gray-700">New Password</label>
+                            <div class="relative">
+                                <input id="fp-pass" type="password" class="w-full px-4 py-3 border border-gray-300 rounded-lg pr-12" placeholder="New password">
+                                <button type="button" onclick="toggleVisibility('fp-pass','fp-pass-eye')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary">
+                                    <i id="fp-pass-eye" class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <label class="block text-sm font-medium text-gray-700">Confirm Password</label>
+                            <div class="relative">
+                                <input id="fp-confirm" type="password" class="w-full px-4 py-3 border border-gray-300 rounded-lg pr-12" placeholder="Confirm password">
+                                <button type="button" onclick="toggleVisibility('fp-confirm','fp-confirm-eye')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary">
+                                    <i id="fp-confirm-eye" class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500">Must be at least 8 characters and include 1 uppercase, 1 lowercase, 1 number, and 1 special character.</p>
+                            <button id="fp-reset-btn" class="btn-primary w-full bg-primary hover:bg-primary-dark text-white font-semibold py-3 rounded-lg" onclick="resetPassword()">
+                                <i class="fas fa-key mr-2"></i>Update Password
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="relative z-10 text-center animate-fade-in-left">
-                    <!-- Logo -->
-                    <div class="mb-8 float-animation">
-                        <img src="images/logo.png" 
-                             alt="Sandok ni Binggay" 
-                             class="w-32 h-32 mx-auto rounded-full border-4 border-white/30 shadow-2xl object-cover">
+                <!-- Green branding overlay that slides to the right to reveal the white panel -->
+                <div id="left-panel" class="left-panel gradient-bg p-8 lg:p-12 flex flex-col justify-center items-center text-white overflow-hidden">
+                    <!-- Decorative Pattern -->
+                    <div class="absolute inset-0 opacity-10">
+                        <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
                     </div>
-
-                    <!-- Branding Text -->
-                    <h1 class="text-4xl font-bold mb-4 text-white">Sandok ni Binggay</h1>
-                    <div class="h-1 w-24 bg-accent mx-auto mb-6 rounded-full"></div>
-                    <p class="text-xl text-white/90 mb-8">Nothing Beats Home-Cooked Meals</p>
-
-                    <!-- Features -->
-                    <div class="space-y-4 text-left max-w-sm mx-auto">
-                        <div class="flex items-center gap-3 text-white/90 animate-fade-in-left delay-100">
-                            <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                                <i class="fas fa-utensils"></i>
-                            </div>
-                            <span>Authentic Filipino Cuisine</span>
+                    <!-- Branding Content -->
+                    <div class="relative z-10 text-center animate-fade-in-left">
+                        <div class="mb-8 float-animation">
+                            <img src="images/logo.png" alt="Sandok ni Binggay" class="w-32 h-32 mx-auto rounded-full border-4 border-white/30 shadow-2xl object-cover">
                         </div>
-                        <div class="flex items-center gap-3 text-white/90 animate-fade-in-left delay-200">
-                            <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                                <i class="fas fa-star"></i>
+                        <h1 class="text-3xl lg:text-4xl font-bold mb-4 text-white">Sandok ni Binggay</h1>
+                        <div class="h-1 w-24 bg-accent mx-auto mb-6 rounded-full"></div>
+                        <p class="text-lg lg:text-xl text-white/90 mb-8">Nothing Beats Home-Cooked Meals</p>
+                        <div class="space-y-4 text-left max-w-sm mx-auto">
+                            <div class="flex items-center gap-3 text-white/90 animate-fade-in-left delay-100">
+                                <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center"><i class="fas fa-utensils"></i></div>
+                                <span>Authentic Filipino Cuisine</span>
                             </div>
-                            <span>Premium Catering Services</span>
-                        </div>
-                        <div class="flex items-center gap-3 text-white/90 animate-fade-in-left delay-300">
-                            <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                                <i class="fas fa-heart"></i>
+                            <div class="flex items-center gap-3 text-white/90 animate-fade-in-left delay-200">
+                                <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center"><i class="fas fa-star"></i></div>
+                                <span>Premium Catering Services</span>
                             </div>
-                            <span>Made with Love & Care</span>
+                            <div class="flex items-center gap-3 text-white/90 animate-fade-in-left delay-300">
+                                <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center"><i class="fas fa-heart"></i></div>
+                                <span>Made with Love & Care</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right Side - Login Form -->
-            <div class="p-12 flex flex-col justify-center bg-white">
-                <div class="max-w-md mx-auto w-full animate-fade-in-right">
+            <!-- Right Side - Login Form / Mobile Forgot -->
+            <div class="p-6 sm:p-8 md:p-12 flex flex-col justify-center bg-white">
+                <!-- LOGIN CONTENT (shown by default) -->
+                <div id="login-content" class="max-w-md mx-auto w-full animate-fade-in-right">
                     <!-- Mobile Logo -->
                     <div class="md:hidden text-center mb-8">
-                        <img src="../images/logo.png" 
+                        <img src="images/logo.png" 
                              alt="Sandok ni Binggay" 
                              class="w-20 h-20 mx-auto rounded-full border-4 border-primary shadow-lg object-cover mb-4">
-                        <h2 class="text-2xl font-bold text-primary">Sandok ni Binggay</h2>
+                        <h2 class="text-xl sm:text-2xl font-bold text-primary">Sandok ni Binggay</h2>
                     </div>
 
                     <!-- Welcome Text -->
-                    <div class="mb-8 animate-fade-in-up">
-                        <h2 class="text-3xl font-bold text-primary mb-2">Welcome Back!</h2>
+                    <div class="mb-6 md:mb-8 animate-fade-in-up">
+                        <h2 class="text-2xl md:text-3xl font-bold text-primary mb-2">Welcome Back!</h2>
                         <p class="text-gray-600">Sign in to access your account</p>
                     </div>
 
@@ -483,9 +547,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                                        class="custom-checkbox w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary focus:ring-2 cursor-pointer">
                                 <span class="ml-2 text-sm text-gray-600 group-hover:text-primary transition-colors">Remember me</span>
                             </label>
-                            <a href="#" class="text-sm text-accent hover:text-accent-dark transition-colors font-medium">
+                            <button type="button" onclick="openForgot()" class="text-sm text-accent hover:text-accent-dark transition-colors font-medium">
                                 Forgot Password?
-                            </a>
+                            </button>
                         </div>
 
                         <!-- Login Button -->
@@ -506,7 +570,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                         </div>
 
                         <!-- Social Login Buttons -->
-                        <div class="grid grid-cols-2 gap-4 animate-fade-in-up delay-500">
+                        <div class="grid grid-cols-2 gap-3 sm:gap-4 animate-fade-in-up delay-500">
                             <button type="button" 
                                     class="flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all hover:shadow-md">
                                 <i class="fab fa-google text-red-500"></i>
@@ -543,6 +607,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                         </div>
                     </div>
                 </div>
+
+                <!-- MOBILE FORGOT CONTENT (hidden by default, mobile only) -->
+                <div id="mobile-forgot" class="md:hidden hidden max-w-md mx-auto w-full animate-fade-in-right">
+                    <div class="text-center mb-6">
+                        <button class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline" onclick="closeForgot()">
+                            <i class="fas fa-arrow-left mr-2"></i>Back to sign in
+                        </button>
+                    </div>
+                    <h2 class="text-2xl font-bold mb-2 text-primary">Forgot Password</h2>
+                    <p class="text-gray-600 mb-4">We’ll send a 6-character code to your email.</p>
+                    <div id="m-fp-alert" class="hidden mb-3 p-3 rounded-md text-sm"></div>
+                    <!-- Step 1: Email -->
+                    <div id="m-fp-step-email" class="space-y-3">
+                        <label class="block text-sm text-gray-700">Email</label>
+                        <input id="m-fp-email" type="email" class="w-full px-4 py-3 border rounded-lg" placeholder="you@example.com">
+                        <button id="m-fp-send-btn" class="w-full bg-primary text-white rounded-lg py-3" onclick="sendOtp(true)">Send OTP</button>
+                    </div>
+                    <!-- Step 2: OTP -->
+                    <div id="m-fp-step-otp" class="space-y-3 hidden mt-2">
+                        <label class="block text-sm text-gray-700">Enter OTP</label>
+                        <input id="m-fp-code" type="text" maxlength="6" class="w-full px-4 py-3 border rounded-lg tracking-widest text-center uppercase font-mono" placeholder="XXXXXX">
+                        <div class="flex gap-2">
+                            <button class="flex-1 bg-primary text-white rounded-lg py-3" onclick="verifyOtp(true)">Verify</button>
+                            <button class="flex-1 bg-gray-100 rounded-lg py-3" onclick="resendOtp(true)">Resend</button>
+                        </div>
+                    </div>
+                    <!-- Step 3: Reset Password -->
+                    <div id="m-fp-step-reset" class="space-y-3 hidden mt-2">
+                        <label class="block text-sm text-gray-700">New Password</label>
+                        <div class="relative">
+                            <input id="m-fp-pass" type="password" class="w-full px-4 py-3 border rounded-lg pr-12">
+                            <button type="button" onclick="toggleVisibility('m-fp-pass','m-fp-pass-eye')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary">
+                                <i id="m-fp-pass-eye" class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <label class="block text-sm text-gray-700">Confirm Password</label>
+                        <div class="relative">
+                            <input id="m-fp-confirm" type="password" class="w-full px-4 py-3 border rounded-lg pr-12">
+                            <button type="button" onclick="toggleVisibility('m-fp-confirm','m-fp-confirm-eye')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary">
+                                <i id="m-fp-confirm-eye" class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-500">Must be at least 8 characters and include 1 uppercase, 1 lowercase, 1 number, and 1 special character.</p>
+                        <button class="w-full bg-primary text-white rounded-lg py-3" onclick="resetPassword(true)">Update Password</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -556,5 +666,215 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             </p>
         </div>
     </div>
+    
+    <!-- Mobile inline forgot password replaces login content; modal removed -->
+<script>
+    // Forgot Password Flow
+    let fpEmail = '';
+
+    function isMobile() { return window.matchMedia('(max-width: 767px)').matches; }
+
+    function openForgot() {
+        resetForgotUI();
+        if (isMobile()) {
+            // Swap views on mobile: show forgot, hide login
+            const loginWrap = document.getElementById('login-content');
+            const forgotWrap = document.getElementById('mobile-forgot');
+            if (loginWrap) loginWrap.classList.add('hidden');
+            if (forgotWrap) forgotWrap.classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            document.getElementById('auth-card').classList.add('forgot-active');
+        }
+        // Prefill forgot email from login email if available
+        const loginEmailEl = document.getElementById('email');
+        const loginEmail = loginEmailEl && loginEmailEl.value ? loginEmailEl.value.trim() : '';
+        if (loginEmail) {
+            const fpEmailEl = document.getElementById('fp-email');
+            if (fpEmailEl) fpEmailEl.value = loginEmail;
+            const mfpEmailEl = document.getElementById('m-fp-email');
+            if (mfpEmailEl) mfpEmailEl.value = loginEmail;
+        }
+    }
+    function closeForgot() {
+        if (isMobile()) {
+            // Swap views back on mobile: show login, hide forgot
+            const loginWrap = document.getElementById('login-content');
+            const forgotWrap = document.getElementById('mobile-forgot');
+            if (forgotWrap) forgotWrap.classList.add('hidden');
+            if (loginWrap) loginWrap.classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            document.getElementById('auth-card').classList.remove('forgot-active');
+        }
+        resetForgotUI();
+    }
+
+    function resetForgotUI() {
+        // Desktop fields
+        const alertD = document.getElementById('fp-alert');
+        alertD.className = 'hidden mb-4 p-3 rounded-md text-sm';
+        alertD.textContent = '';
+        document.getElementById('fp-email').value = '';
+        document.getElementById('fp-code').value = '';
+        document.getElementById('fp-pass').value = '';
+        document.getElementById('fp-confirm').value = '';
+        showStep('email', false);
+
+        // Mobile fields
+        const alertM = document.getElementById('m-fp-alert');
+        alertM.className = 'hidden mb-3 p-3 rounded-md text-sm';
+        alertM.textContent = '';
+        document.getElementById('m-fp-email').value = '';
+        document.getElementById('m-fp-code').value = '';
+        document.getElementById('m-fp-pass').value = '';
+        document.getElementById('m-fp-confirm').value = '';
+        showStep('email', true);
+        fpEmail = '';
+    }
+
+    function showAlert(type, msg, mobile = false) {
+        const el = document.getElementById(mobile ? 'm-fp-alert' : 'fp-alert');
+        el.className = 'mb-4 p-3 rounded-md text-sm ' + (mobile ? '' : '') + (type === 'error' ? ' bg-red-50 text-red-700 border border-red-200' : (type === 'success' ? ' bg-green-50 text-green-700 border border-green-200' : ' bg-yellow-50 text-yellow-800 border border-yellow-200'));
+        el.innerHTML = msg;
+        el.classList.remove('hidden');
+    }
+
+    function showStep(step, mobile = false) {
+        const map = mobile ? {
+            email: 'm-fp-step-email', otp: 'm-fp-step-otp', reset: 'm-fp-step-reset'
+        } : {
+            email: 'fp-step-email', otp: 'fp-step-otp', reset: 'fp-step-reset'
+        };
+        Object.values(map).forEach(id => document.getElementById(id).classList.add('hidden'));
+        document.getElementById(map[step]).classList.remove('hidden');
+    }
+
+    function setLoading(btn, loading) {
+        if (!btn) return;
+        btn.disabled = loading;
+        btn.dataset.originalText = btn.dataset.originalText || btn.innerHTML;
+        btn.innerHTML = loading ? '<i class="fas fa-spinner fa-spin mr-2"></i>Please wait...' : btn.dataset.originalText;
+    }
+
+    function isValidEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    async function sendOtp(mobile = false) {
+        const emailInput = document.getElementById(mobile ? 'm-fp-email' : 'fp-email');
+        const btn = document.getElementById(mobile ? 'm-fp-send-btn' : 'fp-send-btn');
+        const email = (emailInput.value || '').trim();
+    if (!email) { showAlert('error', 'Please enter your email address.', mobile); return; }
+    if (!isValidEmail(email)) { showAlert('error', 'Please enter a valid email address.', mobile); return; }
+        setLoading(btn, true);
+        try {
+            const fd = new FormData();
+            fd.append('email', email);
+            const res = await fetch('AJAX/forgot_send_otp.php', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.ok) {
+                fpEmail = email;
+                showAlert('success', 'OTP sent. Please check your email.', mobile);
+                showStep('otp', mobile);
+            } else {
+                const msg = data.error || 'Failed to send OTP.';
+                showAlert('error', msg, mobile);
+            }
+        } catch (e) {
+            showAlert('error', 'Network error. Please try again.', mobile);
+        } finally {
+            setLoading(btn, false);
+        }
+    }
+
+    async function verifyOtp(mobile = false) {
+        const codeInputId = mobile ? 'm-fp-code' : 'fp-code';
+        const btnId = mobile ? null : 'fp-verify-btn';
+        const code = (document.getElementById(codeInputId).value || '').trim();
+        if (!fpEmail) { showAlert('error', 'Please request an OTP first.', mobile); return; }
+        if (!code || code.length !== 6) { showAlert('error', 'Enter the 6-character OTP.', mobile); return; }
+        setLoading(btnId ? document.getElementById(btnId) : null, true);
+        try {
+            const fd = new FormData();
+            fd.append('email', fpEmail);
+            fd.append('code', code);
+            const res = await fetch('AJAX/forgot_verify_otp.php', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.ok) {
+                showAlert('success', 'OTP verified. You can now set a new password.', mobile);
+                showStep('reset', mobile);
+            } else {
+                showAlert('error', data.error || 'Invalid code.', mobile);
+            }
+        } catch {
+            showAlert('error', 'Network error. Please try again.', mobile);
+        } finally {
+            setLoading(btnId ? document.getElementById(btnId) : null, false);
+        }
+    }
+
+    function resendOtp(mobile = false) { return sendOtp(mobile); }
+
+    function validPassword(pw) {
+        return /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(pw);
+    }
+
+    function toggleVisibility(inputId, eyeId) {
+        const input = document.getElementById(inputId);
+        const eye = document.getElementById(eyeId);
+        if (!input || !eye) return;
+        if (input.type === 'password') {
+            input.type = 'text';
+            eye.classList.remove('fa-eye');
+            eye.classList.add('fa-eye-slash');
+        } else {
+            input.type = 'password';
+            eye.classList.remove('fa-eye-slash');
+            eye.classList.add('fa-eye');
+        }
+    }
+
+    async function resetPassword(mobile = false) {
+        const pass = document.getElementById(mobile ? 'm-fp-pass' : 'fp-pass').value;
+        const conf = document.getElementById(mobile ? 'm-fp-confirm' : 'fp-confirm').value;
+        const btnId = mobile ? null : 'fp-reset-btn';
+        if (!fpEmail) { showAlert('error', 'Session expired. Please request a new OTP.', mobile); return; }
+        if (!validPassword(pass)) {
+            showAlert('error', 'Password must be at least 8 chars and include uppercase, lowercase, number, and special character.', mobile);
+            return;
+        }
+        if (pass !== conf) { showAlert('error', 'Passwords do not match.', mobile); return; }
+        setLoading(btnId ? document.getElementById(btnId) : null, true);
+        try {
+            const fd = new FormData();
+            fd.append('email', fpEmail);
+            fd.append('password', pass);
+            fd.append('confirm', conf);
+            const res = await fetch('AJAX/forgot_reset_password.php', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.ok) {
+                showAlert('success', 'Password updated. You can now sign in with your new password.', mobile);
+                // Prefill login email and smoothly slide back
+                const loginEmailEl = document.getElementById('email');
+                if (loginEmailEl && fpEmail) loginEmailEl.value = fpEmail;
+                setTimeout(() => {
+                    closeForgot();
+                    // focus the password field after slide back
+                    setTimeout(() => {
+                        const pw = document.getElementById('password');
+                        if (pw) pw.focus();
+                    }, 400);
+                }, 800);
+            } else {
+                showAlert('error', data.error || 'Failed to update password.', mobile);
+            }
+        } catch {
+            showAlert('error', 'Network error. Please try again.', mobile);
+        } finally {
+            setLoading(btnId ? document.getElementById(btnId) : null, false);
+        }
+    }
+</script>
 </body>
 </html>

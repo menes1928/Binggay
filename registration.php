@@ -488,18 +488,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
         });
     </script>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
+<body class="min-h-screen flex items-center justify-center p-3 sm:p-4">
 
 
     <!-- Background Decorative Elements -->
-    <div class="decorative-circle" style="width: 500px; height: 500px; top: -250px; right: -250px;"></div>
-    <div class="decorative-circle" style="width: 400px; height: 400px; bottom: -200px; left: -200px;"></div>
+    <div class="decorative-circle hidden md:block" style="width: 500px; height: 500px; top: -250px; right: -250px;"></div>
+    <div class="decorative-circle hidden lg:block" style="width: 400px; height: 400px; bottom: -200px; left: -200px;"></div>
 
     <!-- Main Container -->
-    <div class="w-full max-w-6xl">
+    <div class="w-full max-w-6xl px-2 sm:px-4">
         <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
             <!-- Header with Logo -->
-            <div class="gradient-bg p-8 text-center text-white relative overflow-hidden">
+            <div class="gradient-bg p-6 sm:p-8 text-center text-white relative overflow-hidden">
                 <div class="absolute inset-0 opacity-10">
                     <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
                 </div>
@@ -507,14 +507,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                 <div class="relative z-10 animate-fade-in-up">
                     <img src="images/logo.png" 
                          alt="Sandok ni Binggay" 
-                         class="w-24 h-24 mx-auto rounded-full border-4 border-white/30 shadow-2xl object-cover mb-4">
-                    <h1 class="text-3xl font-bold text-white mb-2">Join Sandok ni Binggay</h1>
-                    <p class="text-white/90">Create your account and start ordering delicious home-cooked meals</p>
+                         class="w-20 sm:w-24 h-20 sm:h-24 mx-auto rounded-full border-4 border-white/30 shadow-2xl object-cover mb-4">
+                    <h1 class="text-2xl sm:text-3xl font-bold text-white mb-2">Join Sandok ni Binggay</h1>
+                    <p class="text-white/90 text-sm sm:text-base">Create your account and start ordering delicious home-cooked meals</p>
                 </div>
             </div>
 
             <!-- Registration Form -->
-            <div class="p-8 md:p-12">
+            <div class="p-6 sm:p-8 md:p-12">
                 <?php if (isset($errors) && !empty($errors)): ?>
                 <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg animate-fade-in-up">
                     <div class="flex items-start gap-2">
@@ -555,7 +555,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                     </div>
 
                     <!-- Name Fields -->
-                    <div class="grid md:grid-cols-2 gap-6">
+                    <div class="grid md:grid-cols-2 gap-4 sm:gap-6">
                         <div class="animate-fade-in-up delay-100">
                             <label for="first_name" class="block text-sm font-medium text-gray-700 mb-2 transition-colors">
                                 <i class="fas fa-user mr-2 text-primary"></i>First Name *
@@ -582,7 +582,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                     </div>
 
                     <!-- Sex & Email -->
-                    <div class="grid md:grid-cols-2 gap-6">
+                    <div class="grid md:grid-cols-2 gap-4 sm:gap-6">
                         <div class="animate-fade-in-up delay-300">
                             <label for="sex" class="block text-sm font-medium text-gray-700 mb-2 transition-colors">
                                 <i class="fas fa-venus-mars mr-2 text-primary"></i>Sex *
@@ -612,7 +612,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                     </div>
 
                     <!-- Phone & Username -->
-                    <div class="grid md:grid-cols-2 gap-6">
+                    <div class="grid md:grid-cols-2 gap-4 sm:gap-6">
                         <div class="animate-fade-in-up delay-500">
                             <label for="phone" class="block text-sm font-medium text-gray-700 mb-2 transition-colors">
                                 <i class="fas fa-phone mr-2 text-primary"></i>Phone Number *
@@ -640,7 +640,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                     </div>
 
                     <!-- Password Fields -->
-                    <div class="grid md:grid-cols-2 gap-6">
+                    <div class="grid md:grid-cols-2 gap-4 sm:gap-6">
                         <div class="animate-fade-in-up delay-700">
                             <label for="password" class="block text-sm font-medium text-gray-700 mb-2 transition-colors">
                                 <i class="fas fa-lock mr-2 text-primary"></i>Password *
