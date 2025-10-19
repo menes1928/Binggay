@@ -70,6 +70,25 @@ try {
     if ($ts < $minTs) { echo json_encode(['success'=>false,'message'=>'Event date must be at least 14 days from now.']); exit; }
     $ebDate = date('Y-m-d H:i:s', $ts);
 
+    // Check availability across bookings and catering for the selected day
+    try {
+        $day = date('Y-m-d', $ts);
+        $c1 = $pdo->prepare("SELECT COUNT(*) FROM eventbookings WHERE DATE(eb_date)=? AND COALESCE(LOWER(eb_status),'') NOT IN ('completed','canceled','cancelled')");
+        $c1->execute([$day]);
+        $bCount = (int)$c1->fetchColumn();
+        $c2 = $pdo->prepare("SELECT COUNT(*) FROM cateringpackages WHERE cp_date = ?");
+        $c2->execute([$day]);
+        $cCount = (int)$c2->fetchColumn();
+        if (($bCount + $cCount) > 0) {
+            echo json_encode(['success'=>false,'message'=>'Sorry, that date is no longer available. Please choose another date.']);
+            exit;
+        }
+    } catch (Throwable $e) {
+        // Fail closed to be safe
+        echo json_encode(['success'=>false,'message'=>'Unable to verify date availability at the moment. Please try again later.']);
+        exit;
+    }
+
     // Validate event type and allowed package mapping
     $chk = $pdo->prepare('SELECT 1 FROM event_type_packages WHERE event_type_id=? AND package_id=?');
     $chk->execute([$eventTypeId, $packageId]);

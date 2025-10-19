@@ -71,6 +71,25 @@ try {
         exit;
     }
 
+    // Check date availability (no overlapping with existing eventbookings or cateringpackages)
+    try {
+        $day = date('Y-m-d', strtotime($event_date));
+        if (!$day) { throw new Exception('Invalid date'); }
+        $chk1 = $pdo->prepare("SELECT COUNT(*) FROM eventbookings WHERE DATE(eb_date)=? AND COALESCE(LOWER(eb_status),'') NOT IN ('completed','canceled','cancelled')");
+        $chk1->execute([$day]);
+        $bCount = (int)$chk1->fetchColumn();
+        $chk2 = $pdo->prepare("SELECT COUNT(*) FROM cateringpackages WHERE cp_date = ?");
+        $chk2->execute([$day]);
+        $cCount = (int)$chk2->fetchColumn();
+        if (($bCount + $cCount) > 0) {
+            echo json_encode(['success'=>false,'message'=>'Sorry, that date is no longer available. Please choose another date.']);
+            exit;
+        }
+    } catch (Throwable $e) {
+        echo json_encode(['success'=>false,'message'=>'Unable to verify date availability. Please try again.']);
+        exit;
+    }
+
     $pdo->beginTransaction();
 
     // 1) Insert into cateringpackages
