@@ -552,7 +552,7 @@ try {
         <div class="info-section">
             <h2 class="text-4xl font-bold text-center mb-12 gold-text">Why Choose Our Packages?</h2>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div class="info-card scroll-animate">
+                <div class="info-card scroll-animate active">
                     <div class="info-icon">
                         <i class="fas fa-heart"></i>
                     </div>
@@ -562,7 +562,7 @@ try {
                     </p>
                 </div>
                 
-                <div class="info-card scroll-animate">
+                <div class="info-card scroll-animate active">
                     <div class="info-icon">
                         <i class="fas fa-leaf"></i>
                     </div>
@@ -572,7 +572,7 @@ try {
                     </p>
                 </div>
                 
-                <div class="info-card scroll-animate">
+                <div class="info-card scroll-animate active">
                     <div class="info-icon">
                         <i class="fas fa-users"></i>
                     </div>
@@ -582,7 +582,7 @@ try {
                     </p>
                 </div>
                 
-                <div class="info-card scroll-animate">
+                <div class="info-card scroll-animate active">
                     <div class="info-icon">
                         <i class="fas fa-truck"></i>
                     </div>
@@ -975,8 +975,9 @@ try {
         }
 
         function openPackageModal(btn){
-            // Require login before booking
-            if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
+            // Require login before booking (prefer CP_USER, fallback to SNB_USER)
+            const isLoggedIn = (window.CP_USER && window.CP_USER.loggedIn) || (window.SNB_USER && window.SNB_USER.loggedIn);
+            if (!isLoggedIn) {
                 window.location.href = '../login?next=' + encodeURIComponent('user/cateringpackages');
                 return;
             }
@@ -999,6 +1000,19 @@ try {
             if (dateEl) {
                 dateEl.min = minStr;
                 if (!dateEl.value || dateEl.value < minStr) dateEl.value = minStr;
+                // attach availability check on change
+                const setValidity = (msg)=>{ dateEl.setCustomValidity(msg||''); dateEl.reportValidity(); };
+                dateEl.addEventListener('change', async ()=>{
+                    const v = dateEl.value;
+                    setValidity('');
+                    if (!v) return;
+                    try {
+                        const r = await fetch('api_check_availability.php?date='+encodeURIComponent(v), { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                        const j = await r.json();
+                        if (!j.ok) { setValidity('Unable to verify availability. Please try again.'); return; }
+                        if (!j.available) { setValidity('That date is already booked. Please choose another.'); }
+                    } catch(_) { setValidity('Unable to verify availability.'); }
+                }, { once: true });
             }
             // Prefill and lock user identity fields when logged in
             try {
@@ -1025,7 +1039,7 @@ try {
             modal.style.display = 'none';
         }
 
-        function gotoStep(step, reset=false){
+        async function gotoStep(step, reset=false){
             document.querySelectorAll('.step').forEach(el=>el.classList.add('hidden'));
             document.getElementById(`step${step}`).classList.remove('hidden');
             if(reset){
@@ -1043,6 +1057,15 @@ try {
                 bookingState.details.phone = document.getElementById('cp_phone').value.trim();
                 bookingState.details.email = document.getElementById('cp_email').value.trim();
                 bookingState.details.date = document.getElementById('cp_date').value;
+                // Check server availability before proceeding
+                try {
+                    const r = await fetch('api_check_availability.php?date='+encodeURIComponent(bookingState.details.date), { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                    const j = await r.json();
+                    if (!j.ok || !j.available) {
+                        alert(j.ok ? 'That date is already booked. Please choose another.' : 'Unable to verify availability. Please try again.');
+                        return gotoStep(1);
+                    }
+                } catch(_) { alert('Unable to verify availability. Please try again.'); return gotoStep(1); }
                 // enforce min date (today + 14 days)
                 const minStr = document.getElementById('cp_date').min || '';
                 if (minStr && bookingState.details.date < minStr) {

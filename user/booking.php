@@ -1153,7 +1153,7 @@ $BF_LOCK_ATTR = $BF_IS_LOGGED_IN ? 'readonly' : '';
         const pkgSel = document.getElementById('bf-package');
         async function loadEventTypes(){
             try {
-                const r = await fetch('../admin/admin.php?section=eventtypes&ajax=1&action=list', { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                const r = await fetch('api_eventtypes.php?action=list', { headers:{'X-Requested-With':'XMLHttpRequest'} });
                 const j = await r.json();
                 if (!j.success) throw new Error();
                 etSel.innerHTML = '<option value="">Select Event Type</option>' + (j.data||[]).map(et=>`<option value="${et.event_type_id}">${et.name}</option>`).join('');
@@ -1163,11 +1163,11 @@ $BF_LOCK_ATTR = $BF_IS_LOGGED_IN ? 'readonly' : '';
             pkgSel.innerHTML = '<option value="">Loading packages...</option>';
             try {
                 // Filter allowed packages for this event type
-                const res = await fetch('../admin/admin.php?section=eventtypes&ajax=1&action=get&event_type_id='+encodeURIComponent(etId), { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                const res = await fetch('api_eventtypes.php?action=get&event_type_id='+encodeURIComponent(etId), { headers:{'X-Requested-With':'XMLHttpRequest'} });
                 const data = await res.json();
                 if (!data.success) throw new Error();
                 const allowed = new Set((data.package_ids||[]).map(Number));
-                const all = await fetch('../admin/admin.php?section=eventtypes&ajax=1&action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.json());
+                const all = await fetch('api_eventtypes.php?action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.json());
                 if (!all.success) throw new Error();
                 const opts = (all.data||[]).filter(p=>allowed.has(Number(p.package_id))).map(p=>{
                     const price = (p.base_price!=null && p.base_price!=='') ? Number(p.base_price) : '';
@@ -1446,6 +1446,30 @@ $BF_LOCK_ATTR = $BF_IS_LOGGED_IN ? 'readonly' : '';
     const minStr = d.toISOString().split('T')[0];
     const eventEl = document.querySelector('input[name="eventDate"]');
     if (eventEl) { eventEl.setAttribute('min', minStr); }
+
+        // Live date availability check (booking + catering)
+        async function checkDateAvailability(day){
+            if (!day) return { ok:true, available:true };
+            try {
+                const res = await fetch('api_check_availability.php?date='+encodeURIComponent(day), { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                const j = await res.json();
+                return j;
+            } catch (_) {
+                return { ok:false, available:false };
+            }
+        }
+        const dateInput = document.querySelector('input[name="eventDate"]');
+        if (dateInput){
+            const setValidity = (msg)=>{ dateInput.setCustomValidity(msg||''); dateInput.reportValidity(); };
+            dateInput.addEventListener('change', async ()=>{
+                const v = dateInput.value;
+                setValidity('');
+                if (!v) return;
+                const j = await checkDateAvailability(v);
+                if (!j.ok) { setValidity('Unable to verify availability. Please try again.'); return; }
+                if (!j.available) { setValidity('That date is already booked. Please choose another.'); }
+            });
+        }
 
         // Input animation effects
         const formInputs = document.querySelectorAll('.form-input, .form-select, .form-textarea');

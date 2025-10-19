@@ -968,7 +968,7 @@
         const pkgSel = document.getElementById('bf-package');
         async function loadEventTypes(){
             try {
-                const r = await fetch('admin/admin.php?section=eventtypes&ajax=1&action=list', { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                const r = await fetch('user/api_eventtypes.php?action=list', { headers:{'X-Requested-With':'XMLHttpRequest'} });
                 const j = await r.json();
                 if (!j.success) throw new Error();
                 etSel.innerHTML = '<option value="">Select Event Type</option>' + (j.data||[]).map(et=>`<option value="${et.event_type_id}">${et.name}</option>`).join('');
@@ -978,11 +978,11 @@
             pkgSel.innerHTML = '<option value="">Loading packages...</option>';
             try {
                 // Filter allowed packages for this event type
-                const res = await fetch('admin/admin.php?section=eventtypes&ajax=1&action=get&event_type_id='+encodeURIComponent(etId), { headers:{'X-Requested-With':'XMLHttpRequest'} });
+                const res = await fetch('user/api_eventtypes.php?action=get&event_type_id='+encodeURIComponent(etId), { headers:{'X-Requested-With':'XMLHttpRequest'} });
                 const data = await res.json();
                 if (!data.success) throw new Error();
                 const allowed = new Set((data.package_ids||[]).map(Number));
-                const all = await fetch('admin/admin.php?section=eventtypes&ajax=1&action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.json());
+                const all = await fetch('user/api_eventtypes.php?action=list_packages', { headers:{'X-Requested-With':'XMLHttpRequest'} }).then(r=>r.json());
                 if (!all.success) throw new Error();
                 const opts = (all.data||[]).filter(p=>allowed.has(Number(p.package_id))).map(p=>{
                     const price = (p.base_price!=null && p.base_price!=='') ? Number(p.base_price) : '';
