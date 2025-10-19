@@ -2,7 +2,7 @@
 if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
 require_once __DIR__ . '/../classes/database.php';
 
-if (empty($_SESSION['user_id'])) { http_response_code(302); header('Location: ../login.php'); exit; }
+if (empty($_SESSION['user_id'])) { http_response_code(302); header('Location: ../login'); exit; }
 $uid = (int)$_SESSION['user_id'];
 $cid = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if ($cid <= 0) { http_response_code(400); echo 'Invalid catering record.'; exit; }

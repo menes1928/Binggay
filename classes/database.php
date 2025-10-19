@@ -256,7 +256,7 @@ class database {
             'mysql.hostinger.com',
             'u679323211_sandok',
             'u679323211_sandok',
-            'Binggay123!'
+            '@Binggay123'
         );
     }
 }

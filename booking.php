@@ -1124,11 +1124,11 @@
             e.preventDefault();
             // If not logged in, send to login with safe next to user booking
             if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
-                window.location.href = 'login?next=' + encodeURIComponent('/Binggay/user/booking.php');
+                window.location.href = 'login?next=' + encodeURIComponent('/Binggay/user/booking');
                 return false;
             }
             // If already logged in, take them to the user booking page
-            window.location.href = '/Binggay/user/booking.php';
+            window.location.href = '/Binggay/user/booking';
             return false;
         });
 
