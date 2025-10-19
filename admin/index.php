@@ -8,7 +8,7 @@ if ($uid <= 0) {
 }
 $utype = isset($_SESSION['user_type']) ? (int)$_SESSION['user_type'] : 0;
 if ($utype !== 1) {
-    header('Location: ../user/index');
+    header('Location: ../user/index.php');
     exit;
 }
 // Admin OK: send to admin dashboard

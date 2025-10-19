@@ -71,9 +71,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     }
                     if ($redirect === '') {
                         // Simple role-based fallback: 1 = admin
+                        // Use explicit .php so it works on hosts without extensionless routing
                         $redirect = ((int)$user['user_type'] === 1)
-                            ? '/Binggay/admin/admin'
-                            : '/Binggay/user/index';
+                            ? '/Binggay/admin/admin.php'
+                            : '/Binggay/user/index.php';
                     }
                     header('Location: ' . $redirect);
                     exit;
