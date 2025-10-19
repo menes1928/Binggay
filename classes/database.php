@@ -3,10 +3,10 @@ class database {
     private PDO $pdo;
 
     public function __construct(
-        string $host = 'localhost',
-        string $db = 'sandokdb',
-        string $user = 'root',
-        string $pass = '',
+        string $host = 'mysql.hostinger.com',
+        string $db = 'u679323211_sandok',
+        string $user = 'u679323211_sandok',
+        string $pass = 'Binggay123!',
         string $charset = 'utf8mb4'
     ) {
         $dsn = "mysql:host={$host};dbname={$db};charset={$charset}";
