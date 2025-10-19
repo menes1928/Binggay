@@ -516,7 +516,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
             <!-- Registration Form -->
             <div class="p-6 sm:p-8 md:p-12">
                 <div class="mb-4 -mt-2">
+<<<<<<< HEAD
                     <a href="user/home.php" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline">
+=======
+                    <a href="index" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline">
+>>>>>>> 9ee0d081ecf9489fb018ba4d3fdcfcd7467798e5
                         <i class="fas fa-arrow-left mr-2"></i>Back to Sandok ni Binggay
                     </a>
                 </div>

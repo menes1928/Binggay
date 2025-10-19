@@ -419,7 +419,7 @@ try {
     <?php include __DIR__ . '/../partials/navbar-user.php'; ?>
 
     <!-- Hero Section -->
-    <section id="home" class="min-h-screen flex items-center relative overflow-hidden">
+    <section id="index" class="min-h-screen flex items-center relative overflow-hidden">
         <!-- Background Effects -->
         <div class="absolute inset-0 bg-gradient-to-br from-green-800 via-green-900 to-green-950"></div>
         <div class="absolute inset-0 bg-gradient-radial"></div>
@@ -1023,7 +1023,7 @@ try {
         // Navbar switches: transparent over hero (nav-clear) -> off-white after hero (nav-solid)
         (function() {
             const navRoot = document.querySelector('header.nav-root');
-            const heroSection = document.getElementById('home');
+            const heroSection = document.getElementById('index');
             if (!navRoot || !heroSection) return;
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {

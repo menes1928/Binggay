@@ -79,7 +79,7 @@ $summary = [
         'htaccess_present' => is_file(__DIR__ . '/.htaccess'),
     ],
     'clean_url_examples' => [
-        '/home' => is_file(__DIR__ . '/home.php'),
+        '/index' => is_file(__DIR__ . '/index.php'),
         '/menu' => is_file(__DIR__ . '/menu.php'),
         '/cateringpackages' => is_file(__DIR__ . '/cateringpackages.php'),
         '/booking' => is_file(__DIR__ . '/booking.php'),

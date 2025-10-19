@@ -95,7 +95,7 @@ function current_user_display_name_user() {
     <div class="container mx-auto px-6 py-3">
         <nav class="flex items-center justify-between">
             <!-- Logo -->
-            <a href="home" class="flex items-center space-x-3">
+            <a href="index" class="flex items-center space-x-3">
                 <div class="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center overflow-hidden">
                     <img src="../images/logo.png" alt="Sandok ni Binggay Logo" class="w-10 h-10 object-contain" />
                 </div>
@@ -110,7 +110,7 @@ function current_user_display_name_user() {
                 <?php $current = strtolower(basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))); ?>
                 <?php
                     $links = [
-                        ['href' => 'home', 'label' => 'Home', 'key' => 'home'],
+                        ['href' => 'index', 'label' => 'Home', 'key' => 'index'],
                         ['href' => 'menu', 'label' => 'Menu', 'key' => 'menu'],
                         ['href' => 'cateringpackages', 'label' => 'Catering', 'key' => 'cateringpackages'],
                         ['href' => 'booking', 'label' => 'Occasions', 'key' => 'booking'],
@@ -195,7 +195,7 @@ function current_user_display_name_user() {
         <!-- Mobile Navigation -->
         <div id="mobile-menu" class="md:hidden absolute top-full left-0 right-0 bg-green-900/95 backdrop-blur-sm border-t border-green-700 hidden">
             <div class="container mx-auto px-6 py-4 space-y-4">
-                <a href="home" class="block nav-link transition-colors duration-300">Home</a>
+                <a href="index" class="block nav-link transition-colors duration-300">Home</a>
                 <a href="menu" class="block nav-link transition-colors duration-300">Menu</a>
                 <a href="cateringpackages" class="block nav-link transition-colors duration-300">Catering</a>
                 <a href="booking" class="block nav-link transition-colors duration-300">Occasions</a>
