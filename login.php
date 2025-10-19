@@ -73,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                         // Simple role-based fallback: 1 = admin
                         $redirect = ((int)$user['user_type'] === 1)
                             ? '/Binggay/admin/admin'
-                            : '/Binggay/user/home';
+                            : '/Binggay/user/index';
                     }
                     header('Location: ' . $redirect);
                     exit;
@@ -463,7 +463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 <!-- LOGIN CONTENT (shown by default) -->
                 <div id="login-content" class="max-w-md mx-auto w-full animate-fade-in-right">
                         <div class="mb-4 -mt-2">
-                            <a href="home" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline">
+                            <a href="index" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline">
                                 <i class="fas fa-arrow-left mr-2"></i>Back to Sandok ni Binggay
                             </a>
                         </div>

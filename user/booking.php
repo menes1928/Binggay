@@ -1068,7 +1068,7 @@ $BF_LOCK_ATTR = $BF_IS_LOGGED_IN ? 'readonly' : '';
                 <div>
                     <h4 class="font-semibold mb-4 gold-text">Quick Links</h4>
                     <ul class="space-y-2">
-                        <li><a href="home" class="hover-gold">Home</a></li>
+                        <li><a href="index" class="hover-gold">Home</a></li>
                         <li><a href="menu" class="hover-gold">Menu</a></li>
                         <li><a href="cateringpackages" class="hover-gold">Catering</a></li>
                         <li><a href="booking" class="hover-gold">Occasions</a></li>

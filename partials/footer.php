@@ -64,11 +64,10 @@
 				<div class="reveal delay-2 hover-lift">
 				<h4>Quick Links</h4>
 				<ul class="list">
-					<li><a href="home.php">Home</a></li>
-					<li><a href="menu.php">Menu</a></li>
-					<li><a href="cateringpackages.php">Catering</a></li>
-					<li><a href="homepage.php">About Us</a></li>
-					<li><a href="booking.php">Occasions</a></li>
+					<li><a href="index">Home</a></li>
+					<li><a href="menu">Menu</a></li>
+					<li><a href="cateringpackages">Catering</a></li>
+					<li><a href="booking">Occasions</a></li>
 				</ul>
 			</div>
 
