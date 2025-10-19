@@ -95,7 +95,7 @@ function current_user_display_name_user() {
     <div class="container mx-auto px-6 py-3">
         <nav class="flex items-center justify-between">
             <!-- Logo -->
-            <a href="index" class="flex items-center space-x-3">
+            <a href="index.php" class="flex items-center space-x-3">
                 <div class="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center overflow-hidden">
                     <img src="../images/logo.png" alt="Sandok ni Binggay Logo" class="w-10 h-10 object-contain" />
                 </div>
@@ -110,10 +110,10 @@ function current_user_display_name_user() {
                 <?php $current = strtolower(basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))); ?>
                 <?php
                     $links = [
-                        ['href' => 'index', 'label' => 'Home', 'key' => 'index'],
-                        ['href' => 'menu', 'label' => 'Menu', 'key' => 'menu'],
-                        ['href' => 'cateringpackages', 'label' => 'Catering', 'key' => 'cateringpackages'],
-                        ['href' => 'booking', 'label' => 'Occasions', 'key' => 'booking'],
+                        ['href' => 'index.php', 'label' => 'Home', 'key' => 'index.php'],
+                        ['href' => 'menu.php', 'label' => 'Menu', 'key' => 'menu.php'],
+                        ['href' => 'cateringpackages.php', 'label' => 'Catering', 'key' => 'cateringpackages.php'],
+                        ['href' => 'booking.php', 'label' => 'Occasions', 'key' => 'booking.php'],
                     ];
                 ?>
                 <?php foreach ($links as $ln): $isActive = ($current === strtolower($ln['key'])); ?>
@@ -161,7 +161,7 @@ function current_user_display_name_user() {
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd"/></svg>
                         </button>
                         <div id="profile-menu" class="absolute right-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/5 py-1 hidden">
-                            <a href="profile" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
+                            <a href="profile.php" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
                             <a href="logout.php" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
                         </div>
                     </div>
@@ -195,12 +195,12 @@ function current_user_display_name_user() {
         <!-- Mobile Navigation -->
         <div id="mobile-menu" class="md:hidden absolute top-full left-0 right-0 bg-green-900/95 backdrop-blur-sm border-t border-green-700 hidden">
             <div class="container mx-auto px-6 py-4 space-y-4">
-                <a href="index" class="block nav-link transition-colors duration-300">Home</a>
-                <a href="menu" class="block nav-link transition-colors duration-300">Menu</a>
-                <a href="cateringpackages" class="block nav-link transition-colors duration-300">Catering</a>
-                <a href="booking" class="block nav-link transition-colors duration-300">Occasions</a>
+                <a href="index.php" class="block nav-link transition-colors duration-300">Home</a>
+                <a href="menu.php" class="block nav-link transition-colors duration-300">Menu</a>
+                <a href="cateringpackages.php" class="block nav-link transition-colors duration-300">Catering</a>
+                <a href="booking.php" class="block nav-link transition-colors duration-300">Occasions</a>
                 <?php if ($NAV_IS_LOGGED_IN): ?>
-                    <a href="profile" class="block nav-link transition-colors duration-300">Profile</a>
+                    <a href="profile.php" class="block nav-link transition-colors duration-300">Profile</a>
                     <a href="logout.php" class="block nav-link transition-colors duration-300">Logout</a>
                 <?php else: ?>
                     <a href="../login" class="block nav-link transition-colors duration-300">Login</a>

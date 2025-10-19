@@ -66,11 +66,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     if ($next !== '') {
                         // Only allow relative paths within this site to prevent open redirects
                         if (preg_match('~^/[^\n\r]*$~', $next)) {
+                            // If no file extension present, append .php for hosts without extensionless routing
+                            if (!preg_match('~\.[a-zA-Z0-9]+$~', $next)) {
+                                $next .= '.php';
+                            }
                             $redirect = $next;
                         }
                     }
                     if ($redirect === '') {
                         // Simple role-based fallback: 1 = admin
+                        // Use explicit .php so it works on hosts without extensionless routing
                         $redirect = ((int)$user['user_type'] === 1)
                             ? '/Binggay/admin/admin.php'
                             : '/Binggay/user/home.php';
