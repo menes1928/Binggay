@@ -67,7 +67,21 @@ class database {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
         ];
-        $this->pdo = new PDO($dsn, $user, $pass, $opts);
+        try {
+            $this->pdo = new PDO($dsn, $user, $pass, $opts);
+        } catch (PDOException $e) {
+            // Log a sanitized message to server error log to aid production diagnosis
+            $safeMsg = sprintf(
+                'DB connect failed (host=%s, db=%s, user=%s): [%s] %s',
+                (string)$host,
+                (string)$db,
+                (string)$user,
+                (string)$e->getCode(),
+                (string)$e->getMessage()
+            );
+            error_log($safeMsg);
+            throw $e; // preserve original exception behavior
+        }
     }
 
     // Expose raw PDO when needed by legacy code
