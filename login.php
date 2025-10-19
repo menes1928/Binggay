@@ -464,7 +464,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 <!-- LOGIN CONTENT (shown by default) -->
                 <div id="login-content" class="max-w-md mx-auto w-full animate-fade-in-right">
                         <div class="mb-4 -mt-2">
+<<<<<<< HEAD
+                            <a href="index.php" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline">
+=======
                             <a href="index" class="inline-flex items-center text-sm text-primary hover:text-primary-dark underline">
+>>>>>>> 9ee0d081ecf9489fb018ba4d3fdcfcd7467798e5
                                 <i class="fas fa-arrow-left mr-2"></i>Back to Sandok ni Binggay
                             </a>
                         </div>
@@ -594,7 +598,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     <div class="mt-8 text-center animate-fade-in-up delay-500">
                         <p class="text-gray-600">
                             Don't have an account? 
-                            <a href="registration" class="text-accent hover:text-accent-dark font-medium transition-colors">
+                            <a href="registration.php" class="text-accent hover:text-accent-dark font-medium transition-colors">
                                 Sign up now
                             </a>
                         </p>
