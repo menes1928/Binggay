@@ -1,17 +1,19 @@
 <?php
-// Optional DB config override: if classes/db_config.php exists, it can define
-// $DB_HOST, $DB_USER, $DB_PASS, $DB_NAME (and optional $DB_CHARSET) to point
-// to a remote database like Hostinger. Existing `new database()` calls will
-// then use those values automatically.
-@include __DIR__ . '/db_config.php';
+// Optional DB config override file. The file may define:
+//   $DB_USE_REMOTE (bool) - must be truthy to enable remote overrides
+//   $DB_HOST, $DB_USER, $DB_PASS, $DB_NAME, optional $DB_CHARSET
+// We include the file here but the constructor will only apply the overrides
+// when $DB_USE_REMOTE (or equivalent constant/env) is truthy. This prevents
+// accidental remote connections during local development.
+@include_once __DIR__ . '/db_config.php';
 class database {
     private PDO $pdo;
 
     public function __construct(
-        string $host = 'mysql.hostinger.com',
-        string $db = 'u679323211_sandok',
-        string $user = 'u679323211_sandok',
-        string $pass = 'Binggay123!',
+        string $host = 'localhost',
+        string $db = 'sandokdb',
+        string $user = 'root',
+        string $pass = '',
         string $charset = 'utf8mb4'
     ) {
         // Allow overriding defaults via globals/constants/env without changing call sites.
@@ -20,29 +22,43 @@ class database {
         // 2) Defined constants DB_HOST/DB_USER/DB_PASS/DB_NAME
         // 3) Environment variables DB_HOST/DB_USER/DB_PASS/DB_NAME (set in hosting panel)
         if ($host === 'localhost' && $db === 'sandokdb' && $user === 'root' && $pass === '') {
-            // 1) Globals
-            if (isset($GLOBALS['DB_HOST'], $GLOBALS['DB_USER'], $GLOBALS['DB_PASS'], $GLOBALS['DB_NAME'])) {
-                $host = (string)$GLOBALS['DB_HOST'];
-                $db   = (string)$GLOBALS['DB_NAME'];
-                $user = (string)$GLOBALS['DB_USER'];
-                $pass = (string)$GLOBALS['DB_PASS'];
-                $charset = isset($GLOBALS['DB_CHARSET']) ? (string)$GLOBALS['DB_CHARSET'] : $charset;
+            // only apply overrides when explicitly enabled
+            $useRemote = false;
+            if (isset($GLOBALS['DB_USE_REMOTE'])) {
+                $useRemote = (bool)$GLOBALS['DB_USE_REMOTE'];
+            } elseif (defined('DB_USE_REMOTE')) {
+                $useRemote = (bool)DB_USE_REMOTE;
+            } elseif (getenv('DB_USE_REMOTE') !== false) {
+                $useRemote = filter_var(getenv('DB_USE_REMOTE'), FILTER_VALIDATE_BOOLEAN);
             }
-            // 2) Constants
-            elseif (defined('DB_HOST') && defined('DB_USER') && defined('DB_PASS') && defined('DB_NAME')) {
-                $host = (string)DB_HOST;
-                $db   = (string)DB_NAME;
-                $user = (string)DB_USER;
-                $pass = (string)DB_PASS;
-                $charset = defined('DB_CHARSET') ? (string)DB_CHARSET : $charset;
-            }
-            // 3) Environment
-            elseif (getenv('DB_HOST') && getenv('DB_USER') && getenv('DB_NAME')) {
-                $host = (string)getenv('DB_HOST');
-                $db   = (string)getenv('DB_NAME');
-                $user = (string)getenv('DB_USER');
-                $pass = (string)(getenv('DB_PASS') ?: $pass);
-                $charset = (string)(getenv('DB_CHARSET') ?: $charset);
+            if (!$useRemote) {
+                // No remote override enabled; keep defaults (local)
+                // This avoids trying to connect to a remote host from dev machines.
+            } else {
+                // 1) Globals
+                if (isset($GLOBALS['DB_HOST'], $GLOBALS['DB_USER'], $GLOBALS['DB_PASS'], $GLOBALS['DB_NAME'])) {
+                    $host = (string)$GLOBALS['DB_HOST'];
+                    $db   = (string)$GLOBALS['DB_NAME'];
+                    $user = (string)$GLOBALS['DB_USER'];
+                    $pass = (string)$GLOBALS['DB_PASS'];
+                    $charset = isset($GLOBALS['DB_CHARSET']) ? (string)$GLOBALS['DB_CHARSET'] : $charset;
+                }
+                // 2) Constants
+                elseif (defined('DB_HOST') && defined('DB_USER') && defined('DB_PASS') && defined('DB_NAME')) {
+                    $host = (string)DB_HOST;
+                    $db   = (string)DB_NAME;
+                    $user = (string)DB_USER;
+                    $pass = (string)DB_PASS;
+                    $charset = defined('DB_CHARSET') ? (string)DB_CHARSET : $charset;
+                }
+                // 3) Environment
+                elseif (getenv('DB_HOST') && getenv('DB_USER') && getenv('DB_NAME')) {
+                    $host = (string)getenv('DB_HOST');
+                    $db   = (string)getenv('DB_NAME');
+                    $user = (string)getenv('DB_USER');
+                    $pass = (string)(getenv('DB_PASS') ?: $pass);
+                    $charset = (string)(getenv('DB_CHARSET') ?: $charset);
+                }
             }
         }
         $dsn = "mysql:host={$host};dbname={$db};charset={$charset}";
@@ -209,10 +225,10 @@ class database {
      * Env vars: DB_HOST, DB_NAME, DB_USER, DB_PASS, optional DB_CHARSET
      */
     public static function fromEnv(): self {
-        $host = getenv('DB_HOST') ?: 'mysql.hostinger.com';
-        $db   = getenv('DB_NAME') ?: 'u679323211_sandok';
-        $user = getenv('DB_USER') ?: 'u679323211_sandok';
-        $pass = getenv('DB_PASS') ?: 'Binggay123!';
+        $host = getenv('DB_HOST') ?: 'localhost';
+        $db   = getenv('DB_NAME') ?: 'sandokdb';
+        $user = getenv('DB_USER') ?: 'root';
+        $pass = getenv('DB_PASS') ?: '';
         $charset = getenv('DB_CHARSET') ?: 'utf8mb4';
         return new self($host, $db, $user, $pass, $charset);
     }
