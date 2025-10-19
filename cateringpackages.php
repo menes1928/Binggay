@@ -902,7 +902,7 @@ try {
         function openPackageModal(btn){
             // Require login before booking
             if (!(window.SNB_USER && window.SNB_USER.loggedIn)) {
-                window.location.href = 'login.php?next=' + encodeURIComponent('user/cateringpackages.php');
+                window.location.href = 'login?next=' + encodeURIComponent('user/cateringpackages');
                 return;
             }
             const modal = document.getElementById('inquiryModal');
